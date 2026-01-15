@@ -23,12 +23,13 @@ struct FloatingCardView: View {
 
   var body: some View {
     ZStack(alignment: .center) {
-      // Thumbnail
+      // Thumbnail with blur effect on hover
       Image(nsImage: item.thumbnail)
         .resizable()
         .aspectRatio(contentMode: .fill)
         .frame(width: cardWidth, height: cardHeight)
         .clipped()
+        .blur(radius: isHovering ? 2 : 0)
         .cornerRadius(cornerRadius)
 
       // Hover overlay with buttons
@@ -45,11 +46,18 @@ struct FloatingCardView: View {
       RoundedRectangle(cornerRadius: cornerRadius)
         .fill(Color.black.opacity(0.1))
     )
+    .overlay(
+      RoundedRectangle(cornerRadius: cornerRadius)
+        .stroke(Color.white.opacity(0.2), lineWidth: 1)
+    )
     .shadow(color: Color.black.opacity(0.25), radius: 8, x: 0, y: 4)
     .onHover { hovering in
       withAnimation(.easeInOut(duration: 0.2)) {
         isHovering = hovering
       }
+    }
+    .onTapGesture(count: 2) {
+      openAnnotation()
     }
     .opacity(appeared ? 1 : 0)
     .scaleEffect(appeared ? 1 : 0.8)
@@ -61,19 +69,25 @@ struct FloatingCardView: View {
     }
   }
 
+  private func openAnnotation() {
+    Task { @MainActor in
+      AnnotateManager.shared.openAnnotation(for: item)
+    }
+  }
+
   private var hoverOverlay: some View {
     ZStack {
       // Dimming overlay
       RoundedRectangle(cornerRadius: cornerRadius)
         .fill(Color.black.opacity(0.4))
 
-      // Action buttons (vertical, centered)
-      VStack(spacing: 12) {
-        CardActionButton(icon: "doc.on.doc", tooltip: "Copy to Clipboard") {
+      // Action buttons (horizontal, centered) - text-based
+      HStack(spacing: 8) {
+        CardTextButton(label: "Copy") {
           onCopy()
         }
 
-        CardActionButton(icon: "folder", tooltip: "Show in Finder") {
+        CardTextButton(label: "Folder") {
           onOpenFinder()
         }
       }
