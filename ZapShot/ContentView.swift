@@ -478,7 +478,8 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
         NSApp.activate(ignoringOtherApps: true)
 
         guard let selectedRect = rect else {
-          // Cancelled
+          // Cancelled - clear controller so user can start new selection
+          self.areaSelectionController = nil
           self.lastCaptureResult = .failure(.cancelled)
           return
         }
