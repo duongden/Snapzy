@@ -454,12 +454,20 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
   }
 
   func captureArea() {
+    // Prevent multiple area captures - only one at a time
+    if areaSelectionController != nil {
+      return
+    }
+
     // Hide main window
     NSApp.hide(nil)
 
     // Small delay to ensure window is hidden
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
       guard let self = self else { return }
+
+      // Double-check to prevent race condition
+      guard self.areaSelectionController == nil else { return }
 
       self.areaSelectionController = AreaSelectionController()
       self.areaSelectionController?.startSelection { [weak self] rect in

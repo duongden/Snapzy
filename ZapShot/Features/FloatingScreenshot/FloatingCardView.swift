@@ -17,8 +17,8 @@ struct FloatingCardView: View {
   @State private var isHovering = false
   @State private var appeared = false
 
-  private let cardWidth: CGFloat = 160
-  private let cardHeight: CGFloat = 100
+  private let cardWidth: CGFloat = 180
+  private let cardHeight: CGFloat = 112.5
   private let cornerRadius: CGFloat = 10
 
   var body: some View {
@@ -84,13 +84,13 @@ struct FloatingCardView: View {
       RoundedRectangle(cornerRadius: cornerRadius)
         .fill(Color.black.opacity(0.4))
 
-      // Action buttons (horizontal, centered) - text-based
-      HStack(spacing: 8) {
+      // Action buttons (vertical, centered) - Copy and Save only
+      VStack(spacing: 8) {
         CardTextButton(label: "Copy") {
           onCopy()
         }
 
-        CardTextButton(label: "Folder") {
+        CardTextButton(label: "Save") {
           onOpenFinder()
         }
       }
