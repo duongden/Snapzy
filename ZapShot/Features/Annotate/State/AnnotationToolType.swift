@@ -25,7 +25,7 @@ enum AnnotationToolType: String, CaseIterable, Identifiable {
 
   var icon: String {
     switch self {
-    case .selection: return "arrow.up.left"
+    case .selection: return "cursorarrow"
     case .crop: return "crop"
     case .rectangle: return "rectangle"
     case .oval: return "circle"
