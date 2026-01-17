@@ -26,10 +26,18 @@ final class RecordingToolbarWindow: NSWindow {
   var onStop: (() -> Void)?
 
   // State
-  var selectedFormat: VideoFormat = .mov
+  var selectedFormat: VideoFormat
 
   init(anchorRect: CGRect) {
     self.anchorRect = anchorRect
+
+    // Load format from preferences (default to mov if not set)
+    if let formatString = UserDefaults.standard.string(forKey: PreferencesKeys.recordingFormat),
+       let format = VideoFormat(rawValue: formatString) {
+      self.selectedFormat = format
+    } else {
+      self.selectedFormat = .mov
+    }
 
     super.init(
       contentRect: .zero,
