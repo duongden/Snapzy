@@ -3,6 +3,7 @@
 //  ZapShot
 //
 //  Status bar shown during active recording with timer and controls
+//  Styled to match Apple's native macOS recording toolbar aesthetic
 //
 
 import SwiftUI
@@ -14,7 +15,7 @@ struct RecordingStatusBarView: View {
   @State private var indicatorOpacity: Double = 1.0
 
   var body: some View {
-    HStack(spacing: 16) {
+    HStack(spacing: ToolbarConstants.itemSpacing) {
       // Recording indicator (pulsing red dot)
       Circle()
         .fill(.red)
@@ -25,37 +26,45 @@ struct RecordingStatusBarView: View {
           value: indicatorOpacity
         )
         .onAppear { indicatorOpacity = 0.3 }
+        .accessibilityLabel(recorder.isPaused ? "Recording paused" : "Recording in progress")
 
       // Timer display
       Text(recorder.formattedDuration)
         .font(.system(.body, design: .monospaced))
         .foregroundColor(recorder.isPaused ? .secondary : .primary)
-        .frame(width: 60, alignment: .leading)
+        .frame(minWidth: 60, alignment: .leading)
+        .accessibilityLabel("Duration: \(recorder.formattedDuration)")
 
-      Divider()
-        .frame(height: 20)
+      RecordingToolbarDivider()
 
       // Pause/Resume button
-      Button(action: { recorder.togglePause() }) {
-        Image(systemName: recorder.isPaused ? "play.fill" : "pause.fill")
-          .frame(width: 20)
-      }
-      .buttonStyle(.bordered)
-      .controlSize(.regular)
+      ToolbarIconButton(
+        systemName: recorder.isPaused ? "play.fill" : "pause.fill",
+        action: { recorder.togglePause() },
+        accessibilityLabel: recorder.isPaused ? "Resume recording" : "Pause recording"
+      )
+
+      RecordingToolbarDivider()
 
       // Stop button
       Button(action: onStop) {
-        Image(systemName: "stop.fill")
-          .foregroundColor(.red)
+        HStack(spacing: 6) {
+          Image(systemName: "stop.fill")
+          Text("Stop")
+        }
       }
-      .buttonStyle(.bordered)
-      .controlSize(.regular)
+      .buttonStyle(StopButtonStyle())
+      .fixedSize()
+      .accessibilityLabel("Stop recording")
+      .accessibilityHint("Stops and saves the recording")
     }
-    .padding(.horizontal, 20)
-    .padding(.vertical, 12)
+    .padding(.horizontal, ToolbarConstants.horizontalPadding)
+    .padding(.vertical, ToolbarConstants.verticalPadding)
     .background(.ultraThinMaterial)
-    .clipShape(RoundedRectangle(cornerRadius: 10))
-    .shadow(color: .black.opacity(0.2), radius: 6, y: 3)
+    .clipShape(RoundedRectangle(cornerRadius: ToolbarConstants.toolbarCornerRadius))
+    .shadow(color: .black.opacity(0.2), radius: 8, y: 4)
+    .accessibilityElement(children: .contain)
+    .accessibilityLabel("Recording status bar")
   }
 }
 

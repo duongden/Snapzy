@@ -50,6 +50,14 @@ enum VideoQuality: String, CaseIterable, Codable {
     case .low: return 2
     }
   }
+
+  var displayName: String {
+    switch self {
+    case .high: return "High"
+    case .medium: return "Medium"
+    case .low: return "Low"
+    }
+  }
 }
 
 // MARK: - Recording State

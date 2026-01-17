@@ -27,6 +27,8 @@ final class RecordingToolbarWindow: NSWindow {
 
   // State
   var selectedFormat: VideoFormat
+  var selectedQuality: VideoQuality
+  var captureAudio: Bool
 
   init(anchorRect: CGRect) {
     self.anchorRect = anchorRect
@@ -38,6 +40,17 @@ final class RecordingToolbarWindow: NSWindow {
     } else {
       self.selectedFormat = .mov
     }
+
+    // Load quality from preferences (default to high)
+    if let qualityString = UserDefaults.standard.string(forKey: PreferencesKeys.recordingQuality),
+       let quality = VideoQuality(rawValue: qualityString) {
+      self.selectedQuality = quality
+    } else {
+      self.selectedQuality = .high
+    }
+
+    // Load audio preference (default to true)
+    self.captureAudio = UserDefaults.standard.object(forKey: PreferencesKeys.recordingCaptureAudio) as? Bool ?? true
 
     super.init(
       contentRect: .zero,
@@ -63,13 +76,23 @@ final class RecordingToolbarWindow: NSWindow {
   func showPreRecordToolbar() {
     mode = .preRecord
 
-    let binding = Binding<VideoFormat>(
+    let formatBinding = Binding<VideoFormat>(
       get: { [weak self] in self?.selectedFormat ?? .mov },
       set: { [weak self] in self?.selectedFormat = $0 }
     )
+    let qualityBinding = Binding<VideoQuality>(
+      get: { [weak self] in self?.selectedQuality ?? .high },
+      set: { [weak self] in self?.selectedQuality = $0 }
+    )
+    let audioBinding = Binding<Bool>(
+      get: { [weak self] in self?.captureAudio ?? true },
+      set: { [weak self] in self?.captureAudio = $0 }
+    )
 
     let view = RecordingToolbarView(
-      selectedFormat: binding,
+      selectedFormat: formatBinding,
+      selectedQuality: qualityBinding,
+      captureAudio: audioBinding,
       onRecord: { [weak self] in self?.onRecord?() },
       onCancel: { [weak self] in self?.onCancel?() }
     )
