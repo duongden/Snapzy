@@ -14,6 +14,7 @@ import UniformTypeIdentifiers
 final class AnnotateExporter {
 
   static func saveAs(state: AnnotateState, closeWindow: Bool = true) {
+    guard state.hasImage else { return }
     let panel = NSSavePanel()
     panel.allowedContentTypes = [.png, .jpeg]
     panel.nameFieldStringValue = generateFileName(from: state.sourceURL)
@@ -29,7 +30,8 @@ final class AnnotateExporter {
 
   /// Save annotated image to original file location (overwrite)
   static func saveToOriginal(state: AnnotateState) {
-    save(state: state, to: state.sourceURL)
+    guard let sourceURL = state.sourceURL else { return }
+    save(state: state, to: sourceURL)
   }
 
   static func save(state: AnnotateState, to url: URL) {
@@ -64,13 +66,15 @@ final class AnnotateExporter {
 
   // MARK: - Private
 
-  private static func generateFileName(from url: URL) -> String {
+  private static func generateFileName(from url: URL?) -> String {
+    guard let url = url else { return "annotated_image" }
     let baseName = url.deletingPathExtension().lastPathComponent
     return "\(baseName)_annotated"
   }
 
   private static func renderFinalImage(state: AnnotateState) -> NSImage? {
-    let imageSize = state.sourceImage.size
+    guard let sourceImage = state.sourceImage else { return nil }
+    let imageSize = sourceImage.size
     let padding = state.backgroundStyle != .none ? state.padding : 0
     let totalSize = NSSize(
       width: imageSize.width + padding * 2,
@@ -101,7 +105,7 @@ final class AnnotateExporter {
       path.addClip()
     }
 
-    state.sourceImage.draw(in: imageRect)
+    sourceImage.draw(in: imageRect)
 
     // Reset clip
     context.resetClip()

@@ -15,8 +15,11 @@ final class AnnotateState: ObservableObject {
 
   // MARK: - Source Image
 
-  let sourceImage: NSImage
-  let sourceURL: URL
+  @Published var sourceImage: NSImage?
+  @Published var sourceURL: URL?
+
+  /// Whether an image is loaded
+  var hasImage: Bool { sourceImage != nil }
 
   // MARK: - Tool State
 
@@ -43,9 +46,13 @@ final class AnnotateState: ObservableObject {
 
   // MARK: - Display Metrics (for inset padding layout)
 
+  /// Default canvas size when no image loaded
+  private static let defaultCanvasWidth: CGFloat = 400
+  private static let defaultCanvasHeight: CGFloat = 300
+
   /// Original image dimensions (points, not pixels)
-  var imageWidth: CGFloat { sourceImage.size.width }
-  var imageHeight: CGFloat { sourceImage.size.height }
+  var imageWidth: CGFloat { sourceImage?.size.width ?? Self.defaultCanvasWidth }
+  var imageHeight: CGFloat { sourceImage?.size.height ?? Self.defaultCanvasHeight }
   var imageAspectRatio: CGFloat { imageWidth / imageHeight }
 
   /// Calculate display scale for given container size
@@ -134,6 +141,78 @@ final class AnnotateState: ObservableObject {
   init(image: NSImage, url: URL) {
     self.sourceImage = image
     self.sourceURL = url
+  }
+
+  /// Empty initializer for drag-drop workflow
+  init() {
+    self.sourceImage = nil
+    self.sourceURL = nil
+  }
+
+  // MARK: - Image Loading
+
+  /// Load image from URL with Retina scaling
+  func loadImage(from url: URL) {
+    guard let image = Self.loadImageWithCorrectScale(from: url) else { return }
+    self.sourceImage = image
+    self.sourceURL = url
+    // Reset annotations for new image
+    annotations.removeAll()
+    undoStack.removeAll()
+    redoStack.removeAll()
+    canUndo = false
+    canRedo = false
+    counterValue = 1
+  }
+
+  /// Load image directly
+  func loadImage(_ image: NSImage, url: URL? = nil) {
+    self.sourceImage = image
+    self.sourceURL = url
+    // Reset annotations for new image
+    annotations.removeAll()
+    undoStack.removeAll()
+    redoStack.removeAll()
+    canUndo = false
+    canRedo = false
+    counterValue = 1
+  }
+
+  /// Load image and adjust size for Retina displays
+  private static func loadImageWithCorrectScale(from url: URL) -> NSImage? {
+    guard let image = NSImage(contentsOf: url) else { return nil }
+
+    // Get the actual pixel dimensions from the bitmap representation
+    guard let bitmapRep = image.representations.first as? NSBitmapImageRep else {
+      // If no bitmap rep, try to get pixel size from any representation
+      if let rep = image.representations.first {
+        let pixelWidth = rep.pixelsWide
+        let pixelHeight = rep.pixelsHigh
+        if pixelWidth > 0 && pixelHeight > 0 {
+          // Assume Retina (2x) - divide by main screen's backing scale
+          let scaleFactor = NSScreen.main?.backingScaleFactor ?? 2.0
+          image.size = NSSize(
+            width: CGFloat(pixelWidth) / scaleFactor,
+            height: CGFloat(pixelHeight) / scaleFactor
+          )
+        }
+      }
+      return image
+    }
+
+    let pixelWidth = bitmapRep.pixelsWide
+    let pixelHeight = bitmapRep.pixelsHigh
+
+    // Get the screen's backing scale factor (2.0 for Retina)
+    let scaleFactor = NSScreen.main?.backingScaleFactor ?? 2.0
+
+    // Set the image size to point dimensions (pixels / scale factor)
+    image.size = NSSize(
+      width: CGFloat(pixelWidth) / scaleFactor,
+      height: CGFloat(pixelHeight) / scaleFactor
+    )
+
+    return image
   }
 
   // MARK: - Undo/Redo Methods

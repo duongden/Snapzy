@@ -124,6 +124,16 @@ struct MenuBarContentView: View {
 
       Divider()
 
+      // Tools
+      Button {
+        AnnotateManager.shared.openEmptyAnnotation()
+      } label: {
+        Label("Open Annotate", systemImage: "pencil.and.outline")
+      }
+      .keyboardShortcut("a", modifiers: [.command, .shift])
+
+      Divider()
+
       // Permission Status (if not granted)
       if !viewModel.hasPermission {
         Button {

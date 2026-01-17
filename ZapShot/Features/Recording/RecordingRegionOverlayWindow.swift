@@ -15,6 +15,7 @@ protocol RecordingRegionOverlayDelegate: AnyObject {
   func overlayDidRequestReselection(_ overlay: RecordingRegionOverlayWindow)
   func overlay(_ overlay: RecordingRegionOverlayWindow, didMoveRegionTo rect: CGRect)
   func overlayDidFinishMoving(_ overlay: RecordingRegionOverlayWindow)
+  func overlay(_ overlay: RecordingRegionOverlayWindow, didReselectWithRect rect: CGRect)
 }
 
 // MARK: - RecordingRegionOverlayWindow
@@ -97,6 +98,11 @@ final class RecordingRegionOverlayView: NSView {
   private var isDragging = false
   private var dragOffset: CGPoint = .zero
 
+  // New selection state (for immediate reselection on click outside)
+  private var isNewSelecting = false
+  private var newSelectionStart: CGPoint = .zero
+  private var newSelectionEnd: CGPoint = .zero
+
   private let dimColor = NSColor.black.withAlphaComponent(0.4)
   private let borderColor = NSColor.white
   private let borderWidth: CGFloat = 2.0
@@ -164,7 +170,7 @@ final class RecordingRegionOverlayView: NSView {
     let localRect = localHighlightRect()
 
     if localRect.contains(point) {
-      // Start dragging
+      // Start dragging existing selection
       isDragging = true
       dragOffset = CGPoint(
         x: point.x - localRect.origin.x,
@@ -172,39 +178,74 @@ final class RecordingRegionOverlayView: NSView {
       )
       NSCursor.closedHand.set()
     } else {
-      // Click outside - request reselection
-      overlayWindow.interactionDelegate?.overlayDidRequestReselection(overlayWindow)
+      // Click outside - start new selection immediately
+      isNewSelecting = true
+      newSelectionStart = point
+      newSelectionEnd = point
+      NSCursor.crosshair.set()
     }
   }
 
   override func mouseDragged(with event: NSEvent) {
-    guard isDragging, isInteractionEnabled, let overlayWindow = overlayWindow else { return }
+    guard isInteractionEnabled, let overlayWindow = overlayWindow else { return }
 
     let point = convert(event.locationInWindow, from: nil)
 
-    // Calculate new local origin
-    var newLocalOrigin = CGPoint(
-      x: point.x - dragOffset.x,
-      y: point.y - dragOffset.y
-    )
+    if isNewSelecting {
+      // Update new selection rect
+      newSelectionEnd = point
+      needsDisplay = true
+    } else if isDragging {
+      // Calculate new local origin for dragging
+      var newLocalOrigin = CGPoint(
+        x: point.x - dragOffset.x,
+        y: point.y - dragOffset.y
+      )
 
-    // Clamp to screen bounds
-    newLocalOrigin.x = max(0, min(newLocalOrigin.x, bounds.width - highlightRect.width))
-    newLocalOrigin.y = max(0, min(newLocalOrigin.y, bounds.height - highlightRect.height))
+      // Clamp to screen bounds
+      newLocalOrigin.x = max(0, min(newLocalOrigin.x, bounds.width - highlightRect.width))
+      newLocalOrigin.y = max(0, min(newLocalOrigin.y, bounds.height - highlightRect.height))
 
-    // Convert to screen coordinates
-    let screenOrigin = convertToScreenCoords(newLocalOrigin)
-    let newRect = CGRect(origin: screenOrigin, size: highlightRect.size)
+      // Convert to screen coordinates
+      let screenOrigin = convertToScreenCoords(newLocalOrigin)
+      let newRect = CGRect(origin: screenOrigin, size: highlightRect.size)
 
-    // Notify delegate
-    overlayWindow.interactionDelegate?.overlay(overlayWindow, didMoveRegionTo: newRect)
+      // Notify delegate
+      overlayWindow.interactionDelegate?.overlay(overlayWindow, didMoveRegionTo: newRect)
+    }
   }
 
   override func mouseUp(with event: NSEvent) {
-    guard isDragging, let overlayWindow = overlayWindow else { return }
-    isDragging = false
-    NSCursor.openHand.set()
-    overlayWindow.interactionDelegate?.overlayDidFinishMoving(overlayWindow)
+    guard let overlayWindow = overlayWindow else { return }
+
+    if isNewSelecting {
+      // Complete new selection
+      isNewSelecting = false
+      let newRect = calculateNewSelectionRect()
+
+      // Only accept if selection is large enough
+      if newRect.width > 5 && newRect.height > 5 {
+        // Convert to screen coordinates
+        let screenRect = CGRect(
+          origin: convertToScreenCoords(newRect.origin),
+          size: newRect.size
+        )
+        overlayWindow.interactionDelegate?.overlay(overlayWindow, didReselectWithRect: screenRect)
+      }
+      needsDisplay = true
+    } else if isDragging {
+      isDragging = false
+      NSCursor.openHand.set()
+      overlayWindow.interactionDelegate?.overlayDidFinishMoving(overlayWindow)
+    }
+  }
+
+  private func calculateNewSelectionRect() -> CGRect {
+    let minX = min(newSelectionStart.x, newSelectionEnd.x)
+    let maxX = max(newSelectionStart.x, newSelectionEnd.x)
+    let minY = min(newSelectionStart.y, newSelectionEnd.y)
+    let maxY = max(newSelectionStart.y, newSelectionEnd.y)
+    return CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
   }
 
   override func mouseMoved(with event: NSEvent) {
@@ -228,6 +269,12 @@ final class RecordingRegionOverlayView: NSView {
     // Draw dim overlay
     dimColor.setFill()
     bounds.fill()
+
+    // If actively making new selection, draw that instead
+    if isNewSelecting {
+      drawNewSelection()
+      return
+    }
 
     // Convert screen coords to view coords
     guard let window = window else { return }
@@ -256,5 +303,40 @@ final class RecordingRegionOverlayView: NSView {
       borderColor.setStroke()
       borderPath.stroke()
     }
+  }
+
+  private func drawNewSelection() {
+    let selectionRect = calculateNewSelectionRect()
+    guard selectionRect.width > 0 && selectionRect.height > 0 else { return }
+
+    // Clear the selection area
+    NSColor.clear.setFill()
+    selectionRect.fill(using: .copy)
+
+    // Draw border
+    let borderPath = NSBezierPath(rect: selectionRect)
+    borderPath.lineWidth = borderWidth
+    borderColor.setStroke()
+    borderPath.stroke()
+
+    // Draw size indicator
+    let sizeText = "\(Int(selectionRect.width)) x \(Int(selectionRect.height))"
+    let attributes: [NSAttributedString.Key: Any] = [
+      .font: NSFont.systemFont(ofSize: 12, weight: .medium),
+      .foregroundColor: NSColor.white,
+    ]
+    let textSize = sizeText.size(withAttributes: attributes)
+    var textRect = CGRect(
+      x: selectionRect.maxX - textSize.width - 8,
+      y: selectionRect.minY - textSize.height - 8,
+      width: textSize.width + 8,
+      height: textSize.height + 4
+    )
+    if textRect.minY < 0 { textRect.origin.y = selectionRect.maxY + 4 }
+    if textRect.maxX > bounds.maxX { textRect.origin.x = selectionRect.minX }
+
+    NSColor.black.withAlphaComponent(0.7).setFill()
+    NSBezierPath(roundedRect: textRect, xRadius: 4, yRadius: 4).fill()
+    sizeText.draw(at: CGPoint(x: textRect.minX + 4, y: textRect.minY + 2), withAttributes: attributes)
   }
 }

@@ -6,6 +6,7 @@
 //
 
 import AppKit
+import Combine
 import SwiftUI
 
 /// Manages annotation window lifecycle and content
@@ -13,6 +14,7 @@ import SwiftUI
 final class AnnotateWindowController: NSWindowController {
 
   private let state: AnnotateState
+  private var cancellables = Set<AnyCancellable>()
 
   init(item: ScreenshotItem) {
     // Load full image from URL and adjust for Retina scaling
@@ -45,15 +47,80 @@ final class AnnotateWindowController: NSWindowController {
     setupContent()
   }
 
+  /// Empty initializer for drag-drop workflow
+  init() {
+    self.state = AnnotateState()
+
+    // Default window size for empty canvas
+    let screen = NSScreen.main ?? NSScreen.screens.first!
+    let defaultWidth: CGFloat = 900
+    let defaultHeight: CGFloat = 700
+
+    let origin = NSPoint(
+      x: (screen.frame.width - defaultWidth) / 2,
+      y: (screen.frame.height - defaultHeight) / 2
+    )
+
+    let window = AnnotateWindow(
+      contentRect: NSRect(origin: origin, size: NSSize(width: defaultWidth, height: defaultHeight))
+    )
+
+    super.init(window: window)
+
+    setupContent()
+    setupImageObserver()
+  }
+
   @available(*, unavailable)
   required init?(coder: NSCoder) {
     fatalError("init(coder:) has not been implemented")
+  }
+
+  deinit {
+    cancellables.removeAll()
   }
 
   private func setupContent() {
     let capturedState = self.state
     let mainView = AnnotateMainView(state: capturedState)
     window?.contentView = NSHostingView(rootView: mainView)
+  }
+
+  /// Observe image changes to resize window when image is loaded
+  private func setupImageObserver() {
+    state.$sourceImage
+      .dropFirst()
+      .compactMap { $0 }
+      .first()
+      .receive(on: DispatchQueue.main)
+      .sink { [weak self] _ in
+        self?.resizeToFitImage()
+      }
+      .store(in: &cancellables)
+  }
+
+  /// Resize window to fit loaded image
+  private func resizeToFitImage() {
+    guard let image = state.sourceImage,
+          let window = window,
+          let screen = window.screen ?? NSScreen.main else { return }
+
+    let maxWidth = screen.frame.width * 0.8
+    let maxHeight = screen.frame.height * 0.8
+    let imageSize = image.size
+
+    let scale = min(maxWidth / imageSize.width, maxHeight / imageSize.height, 1.0)
+    let windowWidth = max(800, imageSize.width * scale + 280)
+    let windowHeight = max(600, imageSize.height * scale + 120)
+
+    let newFrame = NSRect(
+      x: window.frame.midX - windowWidth / 2,
+      y: window.frame.midY - windowHeight / 2,
+      width: windowWidth,
+      height: windowHeight
+    )
+
+    window.setFrame(newFrame, display: true, animate: true)
   }
 
   func showWindow() {
@@ -64,18 +131,14 @@ final class AnnotateWindowController: NSWindowController {
   // MARK: - Image Loading
 
   /// Load image and adjust size for Retina displays
-  /// Captured images are at 2x pixel resolution but should display at 1x point size
   private static func loadImageWithCorrectScale(from url: URL) -> NSImage? {
     guard let image = NSImage(contentsOf: url) else { return nil }
 
-    // Get the actual pixel dimensions from the bitmap representation
     guard let bitmapRep = image.representations.first as? NSBitmapImageRep else {
-      // If no bitmap rep, try to get pixel size from any representation
       if let rep = image.representations.first {
         let pixelWidth = rep.pixelsWide
         let pixelHeight = rep.pixelsHigh
         if pixelWidth > 0 && pixelHeight > 0 {
-          // Assume Retina (2x) - divide by main screen's backing scale
           let scaleFactor = NSScreen.main?.backingScaleFactor ?? 2.0
           image.size = NSSize(
             width: CGFloat(pixelWidth) / scaleFactor,
@@ -88,12 +151,8 @@ final class AnnotateWindowController: NSWindowController {
 
     let pixelWidth = bitmapRep.pixelsWide
     let pixelHeight = bitmapRep.pixelsHigh
-
-    // Get the screen's backing scale factor (2.0 for Retina)
     let scaleFactor = NSScreen.main?.backingScaleFactor ?? 2.0
 
-    // Set the image size to point dimensions (pixels / scale factor)
-    // This ensures the image displays at the correct size while retaining full resolution
     image.size = NSSize(
       width: CGFloat(pixelWidth) / scaleFactor,
       height: CGFloat(pixelHeight) / scaleFactor

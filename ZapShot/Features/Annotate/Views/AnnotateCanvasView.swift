@@ -6,10 +6,19 @@
 //
 
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Canvas view for displaying and annotating the image
 struct AnnotateCanvasView: View {
   @ObservedObject var state: AnnotateState
+  @State private var isDragOver = false
+  @State private var showDropError = false
+  @State private var dropErrorMessage = ""
+
+  /// Supported image types for drag-drop
+  static let supportedImageTypes: [UTType] = [
+    .png, .jpeg, .gif, .tiff, .bmp, .heic
+  ]
 
   var body: some View {
     GeometryReader { geometry in
@@ -17,13 +26,55 @@ struct AnnotateCanvasView: View {
         // Background
         Color(white: 0.08)
 
-        // Centered, scaled canvas
-        canvasContent(in: geometry.size)
-          .frame(width: geometry.size.width, height: geometry.size.height)
+        if state.hasImage {
+          // Centered, scaled canvas
+          canvasContent(in: geometry.size)
+            .frame(width: geometry.size.width, height: geometry.size.height)
+        } else {
+          // Drop zone when no image loaded
+          AnnotateDropZoneView(isDragOver: $isDragOver)
+        }
       }
       .onScrollWheelZoom { delta in
+        guard state.hasImage else { return }
         let newZoom = state.zoomLevel + delta * 0.1
         state.zoomLevel = min(max(newZoom, 0.25), 3.0)
+      }
+      .onDrop(of: [.fileURL, .image], isTargeted: $isDragOver) { providers in
+        handleDrop(providers: providers)
+      }
+      .overlay(alignment: .bottom) {
+        if showDropError {
+          dropErrorBanner
+        }
+      }
+    }
+  }
+
+  /// Error banner for invalid file drops
+  private var dropErrorBanner: some View {
+    Text(dropErrorMessage)
+      .font(.callout)
+      .foregroundColor(.white)
+      .padding(.horizontal, 16)
+      .padding(.vertical, 10)
+      .background(Color.red.opacity(0.9))
+      .cornerRadius(8)
+      .padding(.bottom, 20)
+      .transition(.move(edge: .bottom).combined(with: .opacity))
+      .animation(.easeInOut(duration: 0.3), value: showDropError)
+  }
+
+  /// Show error message temporarily
+  private func showError(_ message: String) {
+    Task { @MainActor in
+      dropErrorMessage = message
+      withAnimation {
+        showDropError = true
+      }
+      try? await Task.sleep(nanoseconds: 2_500_000_000) // 2.5 seconds
+      withAnimation {
+        showDropError = false
       }
     }
   }
@@ -144,18 +195,87 @@ struct AnnotateCanvasView: View {
 
   // MARK: - Image Layer
 
+  @ViewBuilder
   private func imageLayer(width: CGFloat, height: CGFloat) -> some View {
-    return Image(nsImage: state.sourceImage)
-      .resizable()
-      .aspectRatio(contentMode: .fit)
-      .frame(width: width, height: height)
-      .cornerRadius(state.cornerRadius)
-      .shadow(
-        color: .black.opacity(state.backgroundStyle != .none ? state.shadowIntensity : 0),
-        radius: 15,
-        x: 0,
-        y: 8
-      )
+    if let sourceImage = state.sourceImage {
+      Image(nsImage: sourceImage)
+        .resizable()
+        .aspectRatio(contentMode: .fit)
+        .frame(width: width, height: height)
+        .cornerRadius(state.cornerRadius)
+        .shadow(
+          color: .black.opacity(state.backgroundStyle != .none ? state.shadowIntensity : 0),
+          radius: 15,
+          x: 0,
+          y: 8
+        )
+    }
+  }
+
+  // MARK: - Drag and Drop
+
+  /// Handle dropped image files
+  private func handleDrop(providers: [NSItemProvider]) -> Bool {
+    for provider in providers {
+      // Try file URL first
+      if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
+        provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier) { item, error in
+          guard error == nil,
+                let data = item as? Data,
+                let url = URL(dataRepresentation: data, relativeTo: nil) else {
+            Task { @MainActor in
+              showError("Failed to load file")
+            }
+            return
+          }
+
+          // Validate file type
+          guard Self.isValidImageFile(url: url) else {
+            Task { @MainActor in
+              showError("Unsupported format. Use PNG, JPG, GIF, TIFF, BMP, or HEIC")
+            }
+            return
+          }
+
+          Task { @MainActor in
+            state.loadImage(from: url)
+          }
+        }
+        return true
+      }
+
+      // Try loading image data directly
+      for imageType in Self.supportedImageTypes {
+        if provider.hasItemConformingToTypeIdentifier(imageType.identifier) {
+          provider.loadDataRepresentation(forTypeIdentifier: imageType.identifier) { data, error in
+            guard let data = data,
+                  let image = NSImage(data: data) else {
+              Task { @MainActor in
+                showError("Failed to load image data")
+              }
+              return
+            }
+
+            Task { @MainActor in
+              state.loadImage(image, url: nil)
+            }
+          }
+          return true
+        }
+      }
+    }
+
+    // No valid provider found
+    showError("Unsupported file type")
+    return false
+  }
+
+  /// Validate file is a supported image format
+  static func isValidImageFile(url: URL) -> Bool {
+    guard let type = UTType(filenameExtension: url.pathExtension) else {
+      return false
+    }
+    return supportedImageTypes.contains { type.conforms(to: $0) }
   }
 }
 

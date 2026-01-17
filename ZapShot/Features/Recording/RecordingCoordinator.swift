@@ -21,6 +21,8 @@ final class RecordingCoordinator: ObservableObject {
   private var selectedRect: CGRect?
   private let recorder = ScreenRecordingManager.shared
   private var areaSelectionController: AreaSelectionController?
+  private var localEscapeMonitor: Any?
+  private var globalEscapeMonitor: Any?
 
   private init() {}
 
@@ -52,6 +54,38 @@ final class RecordingCoordinator: ObservableObject {
 
     // Show region overlay to highlight recording area
     showRegionOverlay(for: rect)
+
+    // Set up escape key monitoring for cancel during prepare phase
+    setupEscapeMonitors()
+  }
+
+  private func setupEscapeMonitors() {
+    localEscapeMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+      if event.keyCode == 53 {  // Escape key
+        self?.cancel()
+        return nil
+      }
+      return event
+    }
+
+    globalEscapeMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
+      if event.keyCode == 53 {
+        DispatchQueue.main.async {
+          self?.cancel()
+        }
+      }
+    }
+  }
+
+  private func removeEscapeMonitors() {
+    if let monitor = localEscapeMonitor {
+      NSEvent.removeMonitor(monitor)
+      localEscapeMonitor = nil
+    }
+    if let monitor = globalEscapeMonitor {
+      NSEvent.removeMonitor(monitor)
+      globalEscapeMonitor = nil
+    }
   }
 
   func cancel() {
@@ -168,6 +202,9 @@ final class RecordingCoordinator: ObservableObject {
   }
 
   private func cleanup() {
+    // Remove escape monitors
+    removeEscapeMonitors()
+
     // Close region overlay windows
     for overlay in regionOverlayWindows {
       overlay.close()
@@ -239,5 +276,10 @@ extension RecordingCoordinator: RecordingRegionOverlayDelegate {
 
   func overlayDidFinishMoving(_ overlay: RecordingRegionOverlayWindow) {
     // No additional action needed - rect is already updated
+  }
+
+  func overlay(_ overlay: RecordingRegionOverlayWindow, didReselectWithRect rect: CGRect) {
+    // Update the selected rect in-place without closing windows
+    updateSelectedRect(rect)
   }
 }

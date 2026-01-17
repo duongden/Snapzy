@@ -37,6 +37,12 @@ struct ShortcutConfig: Equatable, Codable {
     modifiers: UInt32(cmdKey | shiftKey)
   )
 
+  /// Cmd + Shift + A
+  static let defaultAnnotate = ShortcutConfig(
+    keyCode: UInt32(kVK_ANSI_A),
+    modifiers: UInt32(cmdKey | shiftKey)
+  )
+
   var displayString: String {
     var parts: [String] = []
 
@@ -139,6 +145,7 @@ enum ShortcutAction {
   case captureFullscreen
   case captureArea
   case recordVideo
+  case openAnnotate
 }
 
 /// Protocol for handling shortcut events
@@ -157,16 +164,19 @@ final class KeyboardShortcutManager {
   private(set) var fullscreenShortcut: ShortcutConfig
   private(set) var areaShortcut: ShortcutConfig
   private(set) var recordingShortcut: ShortcutConfig
+  private(set) var annotateShortcut: ShortcutConfig
   private(set) var isEnabled: Bool = false
 
   private var fullscreenHotkeyRef: EventHotKeyRef?
   private var areaHotkeyRef: EventHotKeyRef?
   private var recordingHotkeyRef: EventHotKeyRef?
+  private var annotateHotkeyRef: EventHotKeyRef?
 
   // Hotkey IDs
   private let fullscreenHotkeyID = EventHotKeyID(signature: OSType(0x5A53_4631), id: 1)  // "ZSF1"
   private let areaHotkeyID = EventHotKeyID(signature: OSType(0x5A53_4632), id: 2)  // "ZSF2"
   private let recordingHotkeyID = EventHotKeyID(signature: OSType(0x5A53_4633), id: 3)  // "ZSF3"
+  private let annotateHotkeyID = EventHotKeyID(signature: OSType(0x5A53_4634), id: 4)  // "ZSF4"
 
   private var eventHandler: EventHandlerRef?
 
@@ -174,12 +184,14 @@ final class KeyboardShortcutManager {
   private let fullscreenShortcutKey = "fullscreenShortcut"
   private let areaShortcutKey = "areaShortcut"
   private let recordingShortcutKey = "recordingShortcut"
+  private let annotateShortcutKey = "annotateShortcut"
   private let shortcutsEnabledKey = "shortcutsEnabled"
 
   private init() {
     fullscreenShortcut = .defaultFullscreen
     areaShortcut = .defaultArea
     recordingShortcut = .defaultRecording
+    annotateShortcut = .defaultAnnotate
     loadShortcuts()
     setupEventHandler()
 
@@ -247,6 +259,9 @@ final class KeyboardShortcutManager {
     if let recordingData = try? encoder.encode(recordingShortcut) {
       UserDefaults.standard.set(recordingData, forKey: recordingShortcutKey)
     }
+    if let annotateData = try? encoder.encode(annotateShortcut) {
+      UserDefaults.standard.set(annotateData, forKey: annotateShortcutKey)
+    }
   }
 
   private func loadShortcuts() {
@@ -265,6 +280,11 @@ final class KeyboardShortcutManager {
       let config = try? decoder.decode(ShortcutConfig.self, from: recordingData)
     {
       recordingShortcut = config
+    }
+    if let annotateData = UserDefaults.standard.data(forKey: annotateShortcutKey),
+      let config = try? decoder.decode(ShortcutConfig.self, from: annotateData)
+    {
+      annotateShortcut = config
     }
   }
 
@@ -315,6 +335,8 @@ final class KeyboardShortcutManager {
       delegate?.shortcutTriggered(.captureArea)
     case recordingHotkeyID.id:
       delegate?.shortcutTriggered(.recordVideo)
+    case annotateHotkeyID.id:
+      delegate?.shortcutTriggered(.openAnnotate)
     default:
       break
     }
@@ -353,6 +375,17 @@ final class KeyboardShortcutManager {
       0,
       &recordingHotkeyRef
     )
+
+    // Register annotate shortcut
+    let annotateID = annotateHotkeyID
+    RegisterEventHotKey(
+      annotateShortcut.keyCode,
+      annotateShortcut.modifiers,
+      annotateID,
+      GetApplicationEventTarget(),
+      0,
+      &annotateHotkeyRef
+    )
   }
 
   private func unregisterAllShortcuts() {
@@ -367,6 +400,10 @@ final class KeyboardShortcutManager {
     if let ref = recordingHotkeyRef {
       UnregisterEventHotKey(ref)
       recordingHotkeyRef = nil
+    }
+    if let ref = annotateHotkeyRef {
+      UnregisterEventHotKey(ref)
+      annotateHotkeyRef = nil
     }
   }
 }

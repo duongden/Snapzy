@@ -15,6 +15,7 @@ final class AnnotateManager {
   static let shared = AnnotateManager()
 
   private var windowControllers: [UUID: AnnotateWindowController] = [:]
+  private var emptyWindowController: AnnotateWindowController?
 
   private init() {}
 
@@ -52,10 +53,40 @@ final class AnnotateManager {
       controller.window?.close()
     }
     windowControllers.removeAll()
+
+    emptyWindowController?.window?.close()
+    emptyWindowController = nil
   }
 
   /// Check if annotation window is open for item
   func isOpen(for itemId: UUID) -> Bool {
     windowControllers[itemId] != nil
+  }
+
+  /// Open empty annotation window for drag-drop workflow
+  func openEmptyAnnotation() {
+    // Reuse existing empty window if open
+    if let existing = emptyWindowController {
+      existing.showWindow()
+      return
+    }
+
+    let controller = AnnotateWindowController()
+    emptyWindowController = controller
+
+    // Clear reference when window closes
+    if let window = controller.window {
+      NotificationCenter.default.addObserver(
+        forName: NSWindow.willCloseNotification,
+        object: window,
+        queue: .main
+      ) { [weak self] _ in
+        Task { @MainActor in
+          self?.emptyWindowController = nil
+        }
+      }
+    }
+
+    controller.showWindow()
   }
 }
