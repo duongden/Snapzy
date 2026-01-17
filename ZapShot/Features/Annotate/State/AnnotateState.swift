@@ -130,6 +130,13 @@ final class AnnotateState: ObservableObject {
 
   @Published var counterValue: Int = 1
 
+  // MARK: - Crop State
+
+  /// Current crop rectangle in image coordinates (nil = no crop, full image)
+  @Published var cropRect: CGRect?
+  /// Whether crop mode is actively being edited
+  @Published var isCropActive: Bool = false
+
   // MARK: - Undo/Redo
 
   @Published var canUndo: Bool = false
@@ -163,6 +170,9 @@ final class AnnotateState: ObservableObject {
     canUndo = false
     canRedo = false
     counterValue = 1
+    // Reset crop for new image
+    cropRect = nil
+    isCropActive = false
   }
 
   /// Load image directly
@@ -176,6 +186,9 @@ final class AnnotateState: ObservableObject {
     canUndo = false
     canRedo = false
     counterValue = 1
+    // Reset crop for new image
+    cropRect = nil
+    isCropActive = false
   }
 
   /// Load image and adjust size for Retina displays
@@ -250,6 +263,64 @@ final class AnnotateState: ObservableObject {
 
   func resetCounter() {
     counterValue = 1
+  }
+
+  // MARK: - Crop Methods
+
+  /// Initialize crop to full image bounds
+  func initializeCrop() {
+    cropRect = CGRect(origin: .zero, size: CGSize(width: imageWidth, height: imageHeight))
+    isCropActive = true
+  }
+
+  /// Apply crop (confirm) - keeps cropRect for export
+  func applyCrop() {
+    isCropActive = false
+  }
+
+  /// Cancel crop and reset
+  func cancelCrop() {
+    cropRect = nil
+    isCropActive = false
+    selectedTool = .selection
+  }
+
+  /// Reset crop to nil
+  func resetCrop() {
+    cropRect = nil
+    isCropActive = false
+  }
+
+  /// Update crop rect with bounds constraint
+  func updateCropRect(_ newRect: CGRect) {
+    cropRect = constrainCropToImageBounds(newRect)
+  }
+
+  /// Constrain crop rect to image bounds with minimum size
+  private func constrainCropToImageBounds(_ rect: CGRect) -> CGRect {
+    var constrained = rect
+
+    // Enforce minimum size
+    let minSize: CGFloat = 20
+    if constrained.width < minSize { constrained.size.width = minSize }
+    if constrained.height < minSize { constrained.size.height = minSize }
+
+    // Constrain to image bounds
+    constrained.origin.x = max(0, constrained.origin.x)
+    constrained.origin.y = max(0, constrained.origin.y)
+
+    if constrained.maxX > imageWidth {
+      constrained.origin.x = imageWidth - constrained.width
+    }
+    if constrained.maxY > imageHeight {
+      constrained.origin.y = imageHeight - constrained.height
+    }
+
+    // Final clamp for edge cases
+    constrained.origin.x = max(0, constrained.origin.x)
+    constrained.origin.y = max(0, constrained.origin.y)
+
+    return constrained
   }
 
   // MARK: - Annotation Selection

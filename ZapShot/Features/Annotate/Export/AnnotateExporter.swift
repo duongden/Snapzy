@@ -74,11 +74,19 @@ final class AnnotateExporter {
 
   private static func renderFinalImage(state: AnnotateState) -> NSImage? {
     guard let sourceImage = state.sourceImage else { return nil }
-    let imageSize = sourceImage.size
+
+    // Determine effective bounds (crop or full image)
+    let effectiveBounds: CGRect
+    if let cropRect = state.cropRect {
+      effectiveBounds = cropRect
+    } else {
+      effectiveBounds = CGRect(origin: .zero, size: sourceImage.size)
+    }
+
     let padding = state.backgroundStyle != .none ? state.padding : 0
     let totalSize = NSSize(
-      width: imageSize.width + padding * 2,
-      height: imageSize.height + padding * 2
+      width: effectiveBounds.width + padding * 2,
+      height: effectiveBounds.height + padding * 2
     )
 
     let image = NSImage(size: totalSize)
@@ -92,34 +100,90 @@ final class AnnotateExporter {
     // Draw background
     drawBackground(state: state, in: context, size: totalSize)
 
-    // Draw source image
-    let imageRect = NSRect(
+    // Draw cropped portion of source image
+    let destRect = NSRect(
       x: padding,
       y: padding,
-      width: imageSize.width,
-      height: imageSize.height
+      width: effectiveBounds.width,
+      height: effectiveBounds.height
+    )
+
+    // Source rect in image coordinates (flip Y for NSImage drawing)
+    let sourceRect = NSRect(
+      x: effectiveBounds.origin.x,
+      y: sourceImage.size.height - effectiveBounds.origin.y - effectiveBounds.height,
+      width: effectiveBounds.width,
+      height: effectiveBounds.height
     )
 
     if state.cornerRadius > 0 {
-      let path = NSBezierPath(roundedRect: imageRect, xRadius: state.cornerRadius, yRadius: state.cornerRadius)
+      let path = NSBezierPath(roundedRect: destRect, xRadius: state.cornerRadius, yRadius: state.cornerRadius)
       path.addClip()
     }
 
-    sourceImage.draw(in: imageRect)
+    sourceImage.draw(in: destRect, from: sourceRect, operation: .sourceOver, fraction: 1.0)
 
     // Reset clip
     context.resetClip()
 
-    // Draw annotations
+    // Draw annotations (offset by crop origin and padding)
     let renderer = AnnotationRenderer(context: context)
     for annotation in state.annotations {
-      // Offset annotations by padding
-      let offsetAnnotation = offsetAnnotation(annotation, by: padding)
+      // Only include annotations that intersect with crop bounds
+      if let cropRect = state.cropRect {
+        guard annotation.bounds.intersects(cropRect) else { continue }
+      }
+      let offsetAnnotation = offsetAnnotationForCrop(
+        annotation,
+        cropOrigin: effectiveBounds.origin,
+        padding: padding
+      )
       renderer.draw(offsetAnnotation)
     }
 
     image.unlockFocus()
     return image
+  }
+
+  /// Offset annotation for crop, accounting for crop origin and padding
+  private static func offsetAnnotationForCrop(
+    _ annotation: AnnotationItem,
+    cropOrigin: CGPoint,
+    padding: CGFloat
+  ) -> AnnotationItem {
+    var result = annotation
+    result.bounds = CGRect(
+      x: annotation.bounds.origin.x - cropOrigin.x + padding,
+      y: annotation.bounds.origin.y - cropOrigin.y + padding,
+      width: annotation.bounds.width,
+      height: annotation.bounds.height
+    )
+
+    // Offset internal points for types that store coordinates
+    switch annotation.type {
+    case .arrow(let start, let end):
+      result.type = .arrow(
+        start: CGPoint(x: start.x - cropOrigin.x + padding, y: start.y - cropOrigin.y + padding),
+        end: CGPoint(x: end.x - cropOrigin.x + padding, y: end.y - cropOrigin.y + padding)
+      )
+    case .line(let start, let end):
+      result.type = .line(
+        start: CGPoint(x: start.x - cropOrigin.x + padding, y: start.y - cropOrigin.y + padding),
+        end: CGPoint(x: end.x - cropOrigin.x + padding, y: end.y - cropOrigin.y + padding)
+      )
+    case .path(let points):
+      result.type = .path(points.map {
+        CGPoint(x: $0.x - cropOrigin.x + padding, y: $0.y - cropOrigin.y + padding)
+      })
+    case .highlight(let points):
+      result.type = .highlight(points.map {
+        CGPoint(x: $0.x - cropOrigin.x + padding, y: $0.y - cropOrigin.y + padding)
+      })
+    default:
+      break
+    }
+
+    return result
   }
 
   /// Offset an annotation by padding, including internal points for lines/arrows

@@ -56,6 +56,10 @@ struct AnnotateToolbarView: View {
         isSelected: state.selectedTool == .crop
       ) {
         state.selectedTool = .crop
+        // Initialize crop immediately when tool is selected
+        if state.cropRect == nil && state.hasImage {
+          state.initializeCrop()
+        }
       }
 
       ToolbarButton(

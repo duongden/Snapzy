@@ -47,6 +47,12 @@ final class DrawingCanvasNSView: NSView {
   private var dragOffset: CGPoint = .zero
   private var originalBounds: CGRect = .zero
 
+  // Crop interaction state
+  private var isCropDragging = false
+  private var isCropResizing = false
+  private var activeCropHandle: CropHandle?
+  private var originalCropRect: CGRect = .zero
+
   private let handleSize: CGFloat = 8
 
   init(state: AnnotateState) {
@@ -92,10 +98,28 @@ final class DrawingCanvasNSView: NSView {
       }
 
     case 53: // Escape
+      // Cancel crop if active
+      if state.selectedTool == .crop && state.isCropActive {
+        Task { @MainActor in
+          state.cancelCrop()
+        }
+        needsDisplay = true
+        return
+      }
       Task { @MainActor in
         state.deselectAnnotation()
       }
       needsDisplay = true
+
+    case 36: // Enter - confirm crop
+      if state.selectedTool == .crop && state.isCropActive {
+        Task { @MainActor in
+          state.applyCrop()
+          state.selectedTool = .selection
+        }
+        needsDisplay = true
+        return
+      }
 
     case 126: // Arrow Up
       if state.selectedAnnotationId != nil && state.editingTextAnnotationId == nil {
@@ -262,6 +286,12 @@ final class DrawingCanvasNSView: NSView {
       }
     }
 
+    // Handle crop tool
+    if state.selectedTool == .crop {
+      handleCropMouseDown(at: imagePoint)
+      return
+    }
+
     // Selection uses image coordinates
     if state.selectedTool == .selection {
       if let annotation = state.selectAnnotation(at: imagePoint) {
@@ -316,6 +346,20 @@ final class DrawingCanvasNSView: NSView {
       return
     }
 
+    // Handle crop resizing
+    if isCropResizing, let handle = activeCropHandle {
+      handleCropResize(handle: handle, currentPoint: imagePoint)
+      needsDisplay = true
+      return
+    }
+
+    // Handle crop dragging
+    if isCropDragging {
+      handleCropDrag(to: imagePoint)
+      needsDisplay = true
+      return
+    }
+
     // Handle dragging annotation (in image coordinates)
     if isDraggingAnnotation, let selectedId = state.selectedAnnotationId {
       let newOrigin = CGPoint(
@@ -354,6 +398,15 @@ final class DrawingCanvasNSView: NSView {
       }
       isResizingAnnotation = false
       activeResizeHandle = nil
+      needsDisplay = true
+      return
+    }
+
+    // Finish crop resizing or dragging
+    if isCropResizing || isCropDragging {
+      isCropResizing = false
+      isCropDragging = false
+      activeCropHandle = nil
       needsDisplay = true
       return
     }
@@ -541,6 +594,19 @@ final class DrawingCanvasNSView: NSView {
       }
     }
 
+    // Check crop handles when crop tool is active
+    if state.selectedTool == .crop, let cropRect = state.cropRect {
+      if let handle = hitTestCropHandle(at: imagePoint, for: cropRect) {
+        setCursorForCropHandle(handle)
+        return
+      }
+      // Check if over crop body
+      if cropRect.contains(imagePoint) {
+        NSCursor.openHand.set()
+        return
+      }
+    }
+
     // Default cursor
     NSCursor.arrow.set()
   }
@@ -555,6 +621,160 @@ final class DrawingCanvasNSView: NSView {
       NSCursor.resizeUpDown.set()
     case .left, .right:
       NSCursor.resizeLeftRight.set()
+    }
+  }
+
+  private func setCursorForCropHandle(_ handle: CropHandle) {
+    switch handle {
+    case .topLeft, .bottomRight:
+      // Diagonal resize NW-SE
+      NSCursor.crosshair.set()
+    case .topRight, .bottomLeft:
+      // Diagonal resize NE-SW
+      NSCursor.crosshair.set()
+    case .top, .bottom:
+      NSCursor.resizeUpDown.set()
+    case .left, .right:
+      NSCursor.resizeLeftRight.set()
+    case .body:
+      NSCursor.openHand.set()
+    }
+  }
+
+  // MARK: - Crop Handling
+
+  private func handleCropMouseDown(at imagePoint: CGPoint) {
+    // Initialize crop if not set
+    if state.cropRect == nil {
+      Task { @MainActor in
+        state.initializeCrop()
+      }
+      return
+    }
+
+    guard let cropRect = state.cropRect else { return }
+
+    // Check for handle hit
+    if let handle = hitTestCropHandle(at: imagePoint, for: cropRect) {
+      if handle == .body {
+        isCropDragging = true
+        dragOffset = CGPoint(
+          x: imagePoint.x - cropRect.origin.x,
+          y: imagePoint.y - cropRect.origin.y
+        )
+      } else {
+        isCropResizing = true
+        activeCropHandle = handle
+      }
+      originalCropRect = cropRect
+    } else if cropRect.contains(imagePoint) {
+      // Clicked inside crop area - start dragging
+      isCropDragging = true
+      dragOffset = CGPoint(
+        x: imagePoint.x - cropRect.origin.x,
+        y: imagePoint.y - cropRect.origin.y
+      )
+      originalCropRect = cropRect
+    }
+  }
+
+  private func hitTestCropHandle(at point: CGPoint, for cropRect: CGRect) -> CropHandle? {
+    // Use a fixed handle radius in image coordinates (not scaled)
+    let handleRadius: CGFloat = max(15, 12 / displayScale)
+
+    // In image coordinates: origin is bottom-left, Y increases upward
+    let handles: [(CropHandle, CGPoint)] = [
+      (.topLeft, CGPoint(x: cropRect.minX, y: cropRect.maxY)),
+      (.top, CGPoint(x: cropRect.midX, y: cropRect.maxY)),
+      (.topRight, CGPoint(x: cropRect.maxX, y: cropRect.maxY)),
+      (.left, CGPoint(x: cropRect.minX, y: cropRect.midY)),
+      (.right, CGPoint(x: cropRect.maxX, y: cropRect.midY)),
+      (.bottomLeft, CGPoint(x: cropRect.minX, y: cropRect.minY)),
+      (.bottom, CGPoint(x: cropRect.midX, y: cropRect.minY)),
+      (.bottomRight, CGPoint(x: cropRect.maxX, y: cropRect.minY)),
+    ]
+
+    for (handle, center) in handles {
+      let distance = hypot(point.x - center.x, point.y - center.y)
+      if distance <= handleRadius {
+        return handle
+      }
+    }
+
+    return nil
+  }
+
+  private func handleCropResize(handle: CropHandle, currentPoint: CGPoint) {
+    var newRect = originalCropRect
+
+    // Clamp current point to image boundaries
+    let imageWidth = state.imageWidth
+    let imageHeight = state.imageHeight
+    let clampedPoint = CGPoint(
+      x: max(0, min(currentPoint.x, imageWidth)),
+      y: max(0, min(currentPoint.y, imageHeight))
+    )
+
+    let minSize: CGFloat = 20
+
+    switch handle {
+    case .topLeft:
+      let maxX = originalCropRect.maxX - minSize
+      let minY = originalCropRect.minY + minSize
+      newRect.origin.x = min(clampedPoint.x, maxX)
+      newRect.size.width = originalCropRect.maxX - newRect.origin.x
+      newRect.size.height = max(clampedPoint.y, minY) - originalCropRect.minY
+    case .top:
+      let minY = originalCropRect.minY + minSize
+      newRect.size.height = max(clampedPoint.y, minY) - originalCropRect.minY
+    case .topRight:
+      let minX = originalCropRect.minX + minSize
+      let minY = originalCropRect.minY + minSize
+      newRect.size.width = max(clampedPoint.x, minX) - originalCropRect.minX
+      newRect.size.height = max(clampedPoint.y, minY) - originalCropRect.minY
+    case .left:
+      let maxX = originalCropRect.maxX - minSize
+      newRect.origin.x = min(clampedPoint.x, maxX)
+      newRect.size.width = originalCropRect.maxX - newRect.origin.x
+    case .right:
+      let minX = originalCropRect.minX + minSize
+      newRect.size.width = max(clampedPoint.x, minX) - originalCropRect.minX
+    case .bottomLeft:
+      let maxX = originalCropRect.maxX - minSize
+      let maxY = originalCropRect.maxY - minSize
+      newRect.origin.x = min(clampedPoint.x, maxX)
+      newRect.origin.y = min(clampedPoint.y, maxY)
+      newRect.size.width = originalCropRect.maxX - newRect.origin.x
+      newRect.size.height = originalCropRect.maxY - newRect.origin.y
+    case .bottom:
+      let maxY = originalCropRect.maxY - minSize
+      newRect.origin.y = min(clampedPoint.y, maxY)
+      newRect.size.height = originalCropRect.maxY - newRect.origin.y
+    case .bottomRight:
+      let minX = originalCropRect.minX + minSize
+      let maxY = originalCropRect.maxY - minSize
+      newRect.origin.y = min(clampedPoint.y, maxY)
+      newRect.size.width = max(clampedPoint.x, minX) - originalCropRect.minX
+      newRect.size.height = originalCropRect.maxY - newRect.origin.y
+    case .body:
+      break
+    }
+
+    Task { @MainActor in
+      state.updateCropRect(newRect)
+    }
+  }
+
+  private func handleCropDrag(to point: CGPoint) {
+    let newOrigin = CGPoint(
+      x: point.x - dragOffset.x,
+      y: point.y - dragOffset.y
+    )
+    var newRect = originalCropRect
+    newRect.origin = newOrigin
+
+    Task { @MainActor in
+      state.updateCropRect(newRect)
     }
   }
 }

@@ -132,6 +132,17 @@ struct AnnotateCanvasView: View {
         .frame(width: imgWidth, height: imgHeight)
         .offset(x: offset.x, y: offset.y)
       }
+
+      // Crop overlay (when crop tool is selected or crop is active)
+      if state.selectedTool == .crop || state.cropRect != nil {
+        CropOverlayView(
+          state: state,
+          scale: scale,
+          imageSize: CGSize(width: state.imageWidth, height: state.imageHeight)
+        )
+        .frame(width: imgWidth, height: imgHeight)
+        .offset(x: offset.x, y: offset.y)
+      }
     }
     .scaleEffect(state.zoomLevel)
   }
