@@ -193,8 +193,8 @@ final class RecordingCoordinator: ObservableObject {
         // Play sound
         NSSound(named: "Glass")?.play()
 
-        // Show in Finder
-        NSWorkspace.shared.activateFileViewerSelecting([url])
+        // Add to QuickAccess stack
+        await QuickAccessManager.shared.addVideo(url: url)
       }
 
       cleanup()

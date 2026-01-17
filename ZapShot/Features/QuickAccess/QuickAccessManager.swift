@@ -128,7 +128,8 @@ final class QuickAccessManager: ObservableObject {
   /// Add a new screenshot to the quick access stack
   func addScreenshot(url: URL) async {
     guard isEnabled else { return }
-    guard let thumbnail = await ThumbnailGenerator.generate(from: url) else { return }
+    let result = await ThumbnailGenerator.generate(from: url)
+    guard let thumbnail = result.thumbnail else { return }
 
     let item = QuickAccessItem(url: url, thumbnail: thumbnail)
 
@@ -153,8 +154,35 @@ final class QuickAccessManager: ObservableObject {
     }
   }
 
-  /// Remove a screenshot from the stack
-  func removeScreenshot(id: UUID) {
+  /// Add a new video recording to the quick access stack
+  func addVideo(url: URL) async {
+    guard isEnabled else { return }
+    let result = await ThumbnailGenerator.generate(from: url)
+    guard let thumbnail = result.thumbnail else { return }
+
+    // Use actual duration or nil (will show no badge if duration unavailable)
+    let item = QuickAccessItem(url: url, thumbnail: thumbnail, duration: result.duration ?? 0)
+
+    if items.count >= maxVisibleItems {
+      if let oldestId = items.last?.id {
+        removeItem(id: oldestId)
+      }
+    }
+
+    let wasEmpty = items.isEmpty
+    items.insert(item, at: 0)
+
+    if wasEmpty {
+      showPanel()
+    }
+
+    if autoDismissEnabled {
+      startDismissTimer(for: item.id)
+    }
+  }
+
+  /// Remove an item (screenshot or video) from the stack
+  func removeItem(id: UUID) {
     cancelDismissTimer(for: id)
     withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
       items.removeAll { $0.id == id }
@@ -163,6 +191,11 @@ final class QuickAccessManager: ObservableObject {
     if items.isEmpty {
       panelController.hide()
     }
+  }
+
+  /// Remove a screenshot from the stack (backward compatible alias)
+  func removeScreenshot(id: UUID) {
+    removeItem(id: id)
   }
 
   /// Dismiss all screenshots
@@ -174,23 +207,27 @@ final class QuickAccessManager: ObservableObject {
     panelController.hide()
   }
 
-  /// Copy screenshot to clipboard
+  /// Copy item to clipboard (image or video file URL)
   func copyToClipboard(id: UUID) {
     guard let item = items.first(where: { $0.id == id }) else { return }
 
-    // Capture URL before removal
     let url = item.url
+    let isVideo = item.isVideo
 
-    // Remove immediately - animation starts now
     removeScreenshot(id: id)
 
-    // Async copy operation
     Task.detached(priority: .userInitiated) {
-      guard let image = NSImage(contentsOf: url) else { return }
       await MainActor.run {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
-        pasteboard.writeObjects([image])
+
+        if isVideo {
+          pasteboard.writeObjects([url as NSURL])
+        } else {
+          if let image = NSImage(contentsOf: url) {
+            pasteboard.writeObjects([image])
+          }
+        }
         NSSound(named: "Pop")?.play()
       }
     }

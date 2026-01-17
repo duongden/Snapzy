@@ -2,12 +2,12 @@
 //  QuickAccessCardView.swift
 //  ZapShot
 //
-//  Single quick access screenshot card with hover interactions
+//  Single quick access card (screenshot or video) with hover interactions
 //
 
 import SwiftUI
 
-/// Displays a single screenshot preview with hover-activated actions
+/// Displays a single item preview with hover-activated actions
 struct QuickAccessCardView: View {
   let item: QuickAccessItem
   let manager: QuickAccessManager
@@ -28,6 +28,11 @@ struct QuickAccessCardView: View {
         .clipped()
         .blur(radius: isHovering ? 2 : 0)
         .cornerRadius(cornerRadius)
+
+      // Duration badge (videos only, bottom-right)
+      if let duration = item.formattedDuration {
+        durationBadge(duration)
+      }
 
       // Hover overlay with buttons
       if isHovering {
@@ -57,6 +62,14 @@ struct QuickAccessCardView: View {
       }
     }
     .onTapGesture(count: 2) {
+      handleDoubleClick()
+    }
+  }
+
+  private func handleDoubleClick() {
+    if item.isVideo {
+      openVideoEditor()
+    } else {
       openAnnotation()
     }
   }
@@ -64,6 +77,31 @@ struct QuickAccessCardView: View {
   private func openAnnotation() {
     Task { @MainActor in
       AnnotateManager.shared.openAnnotation(for: item)
+    }
+  }
+
+  private func openVideoEditor() {
+    Task { @MainActor in
+      VideoEditorManager.shared.openEditor(for: item)
+    }
+  }
+
+  private func durationBadge(_ duration: String) -> some View {
+    VStack {
+      Spacer()
+      HStack {
+        Spacer()
+        Text(duration)
+          .font(.system(size: 10, weight: .semibold, design: .monospaced))
+          .foregroundColor(.white)
+          .padding(.horizontal, 6)
+          .padding(.vertical, 2)
+          .background(
+            RoundedRectangle(cornerRadius: 4)
+              .fill(Color.black.opacity(0.7))
+          )
+          .padding(6)
+      }
     }
   }
 
