@@ -17,6 +17,7 @@ final class RecordingCoordinator: ObservableObject {
   @Published private(set) var isActive = false
 
   private var toolbarWindow: RecordingToolbarWindow?
+  private var regionOverlayWindows: [RecordingRegionOverlayWindow] = []
   private var selectedRect: CGRect?
   private let recorder = ScreenRecordingManager.shared
 
@@ -47,6 +48,9 @@ final class RecordingCoordinator: ObservableObject {
     {
       toolbarWindow?.selectedFormat = format
     }
+
+    // Show region overlay to highlight recording area
+    showRegionOverlay(for: rect)
   }
 
   func cancel() {
@@ -57,6 +61,14 @@ final class RecordingCoordinator: ObservableObject {
   }
 
   // MARK: - Private
+
+  private func showRegionOverlay(for rect: CGRect) {
+    for screen in NSScreen.screens {
+      let overlay = RecordingRegionOverlayWindow(screen: screen, highlightRect: rect)
+      overlay.orderFrontRegardless()
+      regionOverlayWindows.append(overlay)
+    }
+  }
 
   private func startRecording() {
     guard let rect = selectedRect, let window = toolbarWindow else { return }
@@ -107,6 +119,11 @@ final class RecordingCoordinator: ObservableObject {
 
         try await recorder.startRecording()
 
+        // Hide border on overlay (would appear in video)
+        for overlay in regionOverlayWindows {
+          overlay.hideBorder()
+        }
+
         // Switch to status bar
         window.showRecordingStatusBar(recorder: recorder)
 
@@ -146,6 +163,12 @@ final class RecordingCoordinator: ObservableObject {
   }
 
   private func cleanup() {
+    // Close region overlay windows
+    for overlay in regionOverlayWindows {
+      overlay.close()
+    }
+    regionOverlayWindows.removeAll()
+
     toolbarWindow?.close()
     toolbarWindow = nil
     selectedRect = nil
