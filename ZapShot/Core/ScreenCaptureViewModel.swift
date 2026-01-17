@@ -55,6 +55,7 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
   // Shortcut bindings for UI
   @Published var fullscreenShortcut: ShortcutConfig
   @Published var areaShortcut: ShortcutConfig
+  @Published var recordingShortcut: ShortcutConfig
 
   init() {
     // Default save directory: Desktop/ZapShot
@@ -64,6 +65,7 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
     // Initialize shortcuts from manager
     fullscreenShortcut = KeyboardShortcutManager.shared.fullscreenShortcut
     areaShortcut = KeyboardShortcutManager.shared.areaShortcut
+    recordingShortcut = KeyboardShortcutManager.shared.recordingShortcut
 
     // Set up shortcut delegate
     shortcutManager.delegate = self
@@ -119,6 +121,11 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
     areaShortcut = config
   }
 
+  func updateRecordingShortcut(_ config: ShortcutConfig) {
+    shortcutManager.setRecordingShortcut(config)
+    recordingShortcut = config
+  }
+
   // MARK: - KeyboardShortcutDelegate
 
   func shortcutTriggered(_ action: ShortcutAction) {
@@ -127,6 +134,8 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
       captureFullscreen()
     case .captureArea:
       captureArea()
+    case .recordVideo:
+      startRecordingFlow()
     }
   }
 
@@ -230,6 +239,47 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
 
     if panel.runModal() == .OK, let url = panel.url {
       saveDirectory = url
+    }
+  }
+
+  // MARK: - Recording
+
+  func startRecordingFlow() {
+    guard hasPermission else {
+      requestPermission()
+      return
+    }
+
+    // Check if already recording
+    guard !RecordingCoordinator.shared.isActive else { return }
+
+    // Prevent multiple area selections
+    guard areaSelectionController == nil else { return }
+
+    // Hide main window
+    NSApp.hide(nil)
+
+    // Small delay to ensure window is hidden
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+      guard let self = self else { return }
+
+      // Store as instance variable to prevent ARC deallocation
+      self.areaSelectionController = AreaSelectionController()
+      self.areaSelectionController?.startSelection(mode: .recording) { [weak self] rect, mode in
+        guard let self = self else { return }
+
+        NSApp.unhide(nil)
+        NSApp.activate(ignoringOtherApps: true)
+
+        // Cleanup controller
+        self.areaSelectionController = nil
+
+        guard let rect = rect else { return }
+
+        Task { @MainActor in
+          RecordingCoordinator.shared.showToolbar(for: rect)
+        }
+      }
     }
   }
 

@@ -30,7 +30,7 @@ struct ShortcutsView: View {
         .vsHeading()
 
       // Subtitle
-      Text("Do you want to assign ⇧⌘3 and ⇧⌘4 shortcuts to ZapShot?")
+      Text("Assign ⇧⌘3, ⇧⌘4 for screenshots and ⇧⌘5 for screen recording to ZapShot?")
         .vsBody()
         .multilineTextAlignment(.center)
         .frame(maxWidth: 320)

@@ -113,6 +113,17 @@ struct MenuBarContentView: View {
 
       Divider()
 
+      // Recording
+      Button {
+        viewModel.startRecordingFlow()
+      } label: {
+        Label("Record Screen", systemImage: "record.circle")
+      }
+      .keyboardShortcut("5", modifiers: [.command, .shift])
+      .disabled(!viewModel.hasPermission)
+
+      Divider()
+
       // Permission Status (if not granted)
       if !viewModel.hasPermission {
         Button {

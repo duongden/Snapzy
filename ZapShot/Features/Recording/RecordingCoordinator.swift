@@ -1,0 +1,154 @@
+//
+//  RecordingCoordinator.swift
+//  ZapShot
+//
+//  Coordinates the recording flow between UI components and recording manager
+//
+
+import AppKit
+import Combine
+import SwiftUI
+
+@MainActor
+final class RecordingCoordinator: ObservableObject {
+
+  static let shared = RecordingCoordinator()
+
+  @Published private(set) var isActive = false
+
+  private var toolbarWindow: RecordingToolbarWindow?
+  private var selectedRect: CGRect?
+  private let recorder = ScreenRecordingManager.shared
+
+  private init() {}
+
+  // MARK: - Public API
+
+  /// Start recording flow after area selection
+  func showToolbar(for rect: CGRect) {
+    guard !isActive else { return }
+    isActive = true
+    selectedRect = rect
+
+    toolbarWindow = RecordingToolbarWindow(anchorRect: rect)
+    toolbarWindow?.onRecord = { [weak self] in
+      self?.startRecording()
+    }
+    toolbarWindow?.onCancel = { [weak self] in
+      self?.cancel()
+    }
+    toolbarWindow?.onStop = { [weak self] in
+      self?.stopRecording()
+    }
+
+    // Load format from preferences
+    if let formatString = UserDefaults.standard.string(forKey: PreferencesKeys.recordingFormat),
+      let format = VideoFormat(rawValue: formatString)
+    {
+      toolbarWindow?.selectedFormat = format
+    }
+  }
+
+  func cancel() {
+    Task {
+      await recorder.cancelRecording()
+    }
+    cleanup()
+  }
+
+  // MARK: - Private
+
+  private func startRecording() {
+    guard let rect = selectedRect, let window = toolbarWindow else { return }
+
+    let format = window.selectedFormat
+
+    // Get FPS from preferences (default 30)
+    var fps = UserDefaults.standard.integer(forKey: PreferencesKeys.recordingFPS)
+    if fps == 0 { fps = 30 }
+
+    // Get quality from preferences (default high)
+    let qualityString = UserDefaults.standard.string(forKey: PreferencesKeys.recordingQuality) ?? "high"
+    let quality = VideoQuality(rawValue: qualityString) ?? .high
+
+    // Get audio setting (default true)
+    let captureAudio: Bool
+    if UserDefaults.standard.object(forKey: PreferencesKeys.recordingCaptureAudio) != nil {
+      captureAudio = UserDefaults.standard.bool(forKey: PreferencesKeys.recordingCaptureAudio)
+    } else {
+      captureAudio = true
+    }
+
+    // Get save directory
+    let saveDirectory: URL
+    if let path = UserDefaults.standard.string(forKey: PreferencesKeys.exportLocation),
+      !path.isEmpty
+    {
+      saveDirectory = URL(fileURLWithPath: path)
+    } else {
+      saveDirectory =
+        FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first!
+        .appendingPathComponent("ZapShot")
+    }
+
+    // Save selected format to preferences
+    UserDefaults.standard.set(format.rawValue, forKey: PreferencesKeys.recordingFormat)
+
+    Task {
+      do {
+        try await recorder.prepareRecording(
+          rect: rect,
+          format: format,
+          quality: quality,
+          fps: fps,
+          captureAudio: captureAudio,
+          saveDirectory: saveDirectory
+        )
+
+        try await recorder.startRecording()
+
+        // Switch to status bar
+        window.showRecordingStatusBar(recorder: recorder)
+
+      } catch let error as RecordingError {
+        showErrorAlert(error)
+        cancel()
+      } catch {
+        showErrorAlert(.setupFailed(error.localizedDescription))
+        cancel()
+      }
+    }
+  }
+
+  private func showErrorAlert(_ error: RecordingError) {
+    let alert = NSAlert()
+    alert.messageText = "Recording Failed"
+    alert.informativeText = error.localizedDescription
+    alert.alertStyle = .warning
+    alert.addButton(withTitle: "OK")
+    alert.runModal()
+  }
+
+  private func stopRecording() {
+    Task {
+      let url = await recorder.stopRecording()
+
+      if let url = url {
+        // Play sound
+        NSSound(named: "Glass")?.play()
+
+        // Show in Finder
+        NSWorkspace.shared.activateFileViewerSelecting([url])
+      }
+
+      cleanup()
+    }
+  }
+
+  private func cleanup() {
+    toolbarWindow?.close()
+    toolbarWindow = nil
+    selectedRect = nil
+    isActive = false
+  }
+}

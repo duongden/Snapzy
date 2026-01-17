@@ -22,7 +22,7 @@ struct PreferencesView: View {
       QuickAccessSettingsView()
         .tabItem { Label("Quick Access", systemImage: "square.stack") }
 
-      PlaceholderSettingsView.recording
+      RecordingSettingsView()
         .tabItem { Label("Recording", systemImage: "video") }
 
 //      PlaceholderSettingsView.cloud

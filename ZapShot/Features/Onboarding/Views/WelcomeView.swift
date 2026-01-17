@@ -29,7 +29,7 @@ struct WelcomeView: View {
         .vsHeading()
 
       // Subtitle
-      Text("Let's walk you through a quick configuration and tailor ZapShot to your needs.")
+      Text("Capture screenshots and record screen videos with powerful annotation tools.")
         .vsBody()
         .multilineTextAlignment(.center)
         .frame(maxWidth: 300)

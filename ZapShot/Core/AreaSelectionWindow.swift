@@ -11,20 +11,42 @@ import Foundation
 /// Callback type for when area selection is completed
 typealias AreaSelectionCompletion = (CGRect?) -> Void
 
+/// Mode for area selection
+enum SelectionMode {
+  case screenshot
+  case recording
+}
+
+/// Callback type with mode
+typealias AreaSelectionCompletionWithMode = (CGRect?, SelectionMode) -> Void
+
 /// Controller for managing area selection overlay across all screens
 @MainActor
 final class AreaSelectionController: NSObject {
 
   private var overlayWindows: [AreaSelectionWindow] = []
   private var completion: AreaSelectionCompletion?
+  private var completionWithMode: AreaSelectionCompletionWithMode?
+  private var selectionMode: SelectionMode = .screenshot
   private var activeWindow: AreaSelectionWindow?
   private var localEscapeMonitor: Any?
   private var globalEscapeMonitor: Any?
 
-  /// Start area selection mode
+  /// Start area selection mode (legacy - for screenshots)
   /// - Parameter completion: Called with the selected rect, or nil if cancelled
   func startSelection(completion: @escaping AreaSelectionCompletion) {
-    self.completion = completion
+    startSelection(mode: .screenshot) { rect, _ in
+      completion(rect)
+    }
+  }
+
+  /// Start area selection with mode
+  /// - Parameters:
+  ///   - mode: The selection mode (screenshot or recording)
+  ///   - completion: Called with the selected rect and mode, or nil if cancelled
+  func startSelection(mode: SelectionMode, completion: @escaping AreaSelectionCompletionWithMode) {
+    self.selectionMode = mode
+    self.completionWithMode = completion
 
     // Create overlay window for each screen
     for screen in NSScreen.screens {
@@ -58,6 +80,8 @@ final class AreaSelectionController: NSObject {
     closeAllWindows()
     completion?(nil)
     completion = nil
+    completionWithMode?(nil, selectionMode)
+    completionWithMode = nil
   }
 
   /// Complete selection with the given rect
@@ -65,6 +89,8 @@ final class AreaSelectionController: NSObject {
     closeAllWindows()
     completion?(rect)
     completion = nil
+    completionWithMode?(rect, selectionMode)
+    completionWithMode = nil
   }
 
   private func closeAllWindows() {
