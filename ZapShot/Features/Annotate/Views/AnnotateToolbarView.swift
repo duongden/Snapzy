@@ -148,9 +148,60 @@ struct AnnotateToolbarView: View {
   }
 
   private func done() {
-    // Save to original file and close
-    AnnotateExporter.saveToOriginal(state: state)
-    NSApp.keyWindow?.close()
+    // If we have a source URL, show confirmation to replace or save copy
+    if let sourceURL = state.sourceURL {
+      showSaveConfirmation(for: sourceURL)
+    } else {
+      // No source URL (dropped image without file path) - show save panel
+      AnnotateExporter.saveAs(state: state, closeWindow: true)
+    }
+  }
+
+  private func showSaveConfirmation(for sourceURL: URL) {
+    let alert = NSAlert()
+    alert.messageText = "Save Changes"
+    alert.informativeText = "How would you like to save your changes to \"\(sourceURL.lastPathComponent)\"?"
+    alert.alertStyle = .informational
+
+    alert.addButton(withTitle: "Replace Original")
+    alert.addButton(withTitle: "Save as Copy")
+    alert.addButton(withTitle: "Cancel")
+
+    let response = alert.runModal()
+
+    switch response {
+    case .alertFirstButtonReturn:
+      // Replace original
+      AnnotateExporter.saveToOriginal(state: state)
+      NSApp.keyWindow?.close()
+
+    case .alertSecondButtonReturn:
+      // Save as copy - generate copy filename in same directory
+      let copyURL = generateCopyURL(from: sourceURL)
+      AnnotateExporter.save(state: state, to: copyURL)
+      NSApp.keyWindow?.close()
+
+    default:
+      // Cancel - do nothing
+      break
+    }
+  }
+
+  private func generateCopyURL(from originalURL: URL) -> URL {
+    let directory = originalURL.deletingLastPathComponent()
+    let baseName = originalURL.deletingPathExtension().lastPathComponent
+    let ext = originalURL.pathExtension
+
+    // Try to find a unique filename
+    var copyNumber = 1
+    var newURL = directory.appendingPathComponent("\(baseName)_copy.\(ext)")
+
+    while FileManager.default.fileExists(atPath: newURL.path) {
+      copyNumber += 1
+      newURL = directory.appendingPathComponent("\(baseName)_copy\(copyNumber).\(ext)")
+    }
+
+    return newURL
   }
 }
 
