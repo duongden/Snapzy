@@ -158,6 +158,18 @@ final class DrawingCanvasNSView: NSView {
         state.selectedTool = .selection
       }
 
+    case 6: // Z key - Undo/Redo
+      if event.modifierFlags.contains(.command) {
+        Task { @MainActor in
+          if event.modifierFlags.contains(.shift) {
+            state.redo()
+          } else {
+            state.undo()
+          }
+        }
+        needsDisplay = true
+      }
+
     default:
       super.keyDown(with: event)
     }
@@ -425,9 +437,12 @@ final class DrawingCanvasNSView: NSView {
     // Finish drawing (already in image coords)
     guard isDrawing, let start = dragStart else { return }
 
+    // Capture path before clearing to avoid race condition
+    let pathToSave = currentPath
+
     Task { @MainActor in
       state.saveState()
-      createAnnotation(from: start, to: imagePoint)
+      createAnnotation(from: start, to: imagePoint, path: pathToSave)
     }
 
     isDrawing = false
@@ -469,12 +484,12 @@ final class DrawingCanvasNSView: NSView {
 
   // MARK: - Annotation Creation
 
-  private func createAnnotation(from start: CGPoint, to end: CGPoint) {
+  private func createAnnotation(from start: CGPoint, to end: CGPoint, path: [CGPoint]) {
     let item = AnnotationFactory.createAnnotation(
       tool: state.selectedTool,
       from: start,
       to: end,
-      path: currentPath,
+      path: path,
       state: state
     )
     if let item = item {
