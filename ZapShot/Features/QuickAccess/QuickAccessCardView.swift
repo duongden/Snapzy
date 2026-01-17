@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Displays a single item preview with hover-activated actions
 struct QuickAccessCardView: View {
@@ -63,6 +64,13 @@ struct QuickAccessCardView: View {
     }
     .onTapGesture(count: 2) {
       handleDoubleClick()
+    }
+    .if(manager.dragDropEnabled) { view in
+      view.onDrag {
+        item.dragItemProvider()
+      } preview: {
+        dragPreview
+      }
     }
   }
 
@@ -142,6 +150,51 @@ struct QuickAccessCardView: View {
         .padding(6)
       }
       Spacer()
+    }
+  }
+
+  /// Creates drag preview for the card
+  private var dragPreview: some View {
+    Image(nsImage: item.thumbnail)
+      .resizable()
+      .aspectRatio(contentMode: .fill)
+      .frame(width: cardWidth * 0.8, height: cardHeight * 0.8)
+      .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
+      .shadow(color: Color.black.opacity(0.3), radius: 4, x: 0, y: 2)
+  }
+}
+
+// MARK: - QuickAccessItem Drag Support
+
+extension QuickAccessItem {
+  /// Creates NSItemProvider for drag & drop to external apps
+  func dragItemProvider() -> NSItemProvider {
+    // Capture URL value before creating provider to ensure thread safety
+    let fileURL = self.url
+
+    // Use NSItemProvider with the file URL directly - simplest and most reliable approach
+    let provider = NSItemProvider(contentsOf: fileURL) ?? NSItemProvider()
+
+    // Set suggested name for the dragged file
+    provider.suggestedName = fileURL.lastPathComponent
+
+    return provider
+  }
+}
+
+// MARK: - Conditional View Extension
+
+extension View {
+  /// Conditionally applies a transformation to the view
+  @ViewBuilder
+  func `if`<Transform: View>(
+    _ condition: Bool,
+    transform: (Self) -> Transform
+  ) -> some View {
+    if condition {
+      transform(self)
+    } else {
+      self
     }
   }
 }
