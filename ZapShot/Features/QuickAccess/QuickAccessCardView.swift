@@ -1,16 +1,16 @@
 //
-//  FloatingCardView.swift
+//  QuickAccessCardView.swift
 //  ZapShot
 //
-//  Single floating screenshot card with hover interactions
+//  Single quick access screenshot card with hover interactions
 //
 
 import SwiftUI
 
 /// Displays a single screenshot preview with hover-activated actions
-struct FloatingCardView: View {
-  let item: ScreenshotItem
-  let manager: FloatingScreenshotManager
+struct QuickAccessCardView: View {
+  let item: QuickAccessItem
+  let manager: QuickAccessManager
 
   @State private var isHovering = false
 
@@ -75,11 +75,11 @@ struct FloatingCardView: View {
 
       // Action buttons (vertical, centered) - Copy and Save only
       VStack(spacing: 8) {
-        CardTextButton(label: "Copy") {
+        QuickAccessTextButton(label: "Copy") {
           manager.copyToClipboard(id: item.id)
         }
 
-        CardTextButton(label: "Save") {
+        QuickAccessTextButton(label: "Save") {
           manager.openInFinder(id: item.id)
         }
       }

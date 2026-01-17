@@ -1,15 +1,15 @@
 //
-//  FloatingPosition.swift
+//  QuickAccessPosition.swift
 //  ZapShot
 //
-//  Screen corner positions for floating panel placement
+//  Screen corner positions for quick access panel placement
 //
 
 import AppKit
 import Foundation
 
-/// Screen corner positions for floating screenshot panel
-enum FloatingPosition: String, CaseIterable, Codable {
+/// Screen corner positions for quick access screenshot panel
+enum QuickAccessPosition: String, CaseIterable, Codable {
   case topLeft
   case topRight
   case bottomLeft
@@ -47,7 +47,7 @@ enum FloatingPosition: String, CaseIterable, Codable {
   }
 
   /// Create position from side preference
-  static func fromSide(_ isLeft: Bool, preferTop: Bool = false) -> FloatingPosition {
+  static func fromSide(_ isLeft: Bool, preferTop: Bool = false) -> QuickAccessPosition {
     if isLeft {
       return preferTop ? .topLeft : .bottomLeft
     } else {

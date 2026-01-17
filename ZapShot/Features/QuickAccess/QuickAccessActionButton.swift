@@ -1,14 +1,14 @@
 //
-//  CardActionButton.swift
+//  QuickAccessActionButton.swift
 //  ZapShot
 //
-//  Reusable action button for floating screenshot cards
+//  Reusable action button for quick access screenshot cards
 //
 
 import SwiftUI
 
 /// Circular action button with hover effect for card overlays
-struct CardActionButton: View {
+struct QuickAccessActionButton: View {
   let icon: String
   let tooltip: String
   let action: () -> Void

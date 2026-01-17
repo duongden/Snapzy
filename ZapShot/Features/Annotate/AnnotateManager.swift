@@ -19,8 +19,8 @@ final class AnnotateManager {
 
   private init() {}
 
-  /// Open annotation window for a screenshot item
-  func openAnnotation(for item: ScreenshotItem) {
+  /// Open annotation window for a quick access item
+  func openAnnotation(for item: QuickAccessItem) {
     // Check if already open for this item
     if let existing = windowControllers[item.id] {
       existing.showWindow()

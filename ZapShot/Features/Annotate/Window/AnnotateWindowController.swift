@@ -16,7 +16,7 @@ final class AnnotateWindowController: NSWindowController {
   private let state: AnnotateState
   private var cancellables = Set<AnyCancellable>()
 
-  init(item: ScreenshotItem) {
+  init(item: QuickAccessItem) {
     // Load full image from URL and adjust for Retina scaling
     let image = Self.loadImageWithCorrectScale(from: item.url) ?? item.thumbnail
 

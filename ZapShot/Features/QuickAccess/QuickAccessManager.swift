@@ -1,8 +1,8 @@
 //
-//  FloatingScreenshotManager.swift
+//  QuickAccessManager.swift
 //  ZapShot
 //
-//  State management for floating screenshot stack
+//  State management for quick access screenshot stack
 //
 
 import AppKit
@@ -10,16 +10,16 @@ import Combine
 import Foundation
 import SwiftUI
 
-/// Manages the floating screenshot preview stack
+/// Manages the quick access screenshot preview stack
 @MainActor
-final class FloatingScreenshotManager: ObservableObject {
+final class QuickAccessManager: ObservableObject {
 
-  static let shared = FloatingScreenshotManager()
+  static let shared = QuickAccessManager()
 
   // MARK: - Published State
 
-  @Published private(set) var items: [ScreenshotItem] = []
-  @Published var position: FloatingPosition = .bottomRight {
+  @Published private(set) var items: [QuickAccessItem] = []
+  @Published var position: QuickAccessPosition = .bottomRight {
     didSet {
       UserDefaults.standard.set(position.rawValue, forKey: Keys.position)
       panelController.updatePosition(position)
@@ -69,11 +69,11 @@ final class FloatingScreenshotManager: ObservableObject {
 
   // MARK: - Private
 
-  private let panelController = FloatingPanelController()
+  private let panelController = QuickAccessPanelController()
   private var dismissTimers: [UUID: Task<Void, Never>] = [:]
   private var cancellables = Set<AnyCancellable>()
 
-  // MARK: - UserDefaults Keys
+  // MARK: - UserDefaults Keys (preserved for backward compatibility)
 
   private enum Keys {
     static let enabled = "floatingScreenshot.enabled"
@@ -96,7 +96,7 @@ final class FloatingScreenshotManager: ObservableObject {
     isEnabled = UserDefaults.standard.object(forKey: Keys.enabled) as? Bool ?? true
 
     if let positionRaw = UserDefaults.standard.string(forKey: Keys.position),
-      let savedPosition = FloatingPosition(rawValue: positionRaw)
+      let savedPosition = QuickAccessPosition(rawValue: positionRaw)
     {
       position = savedPosition
     }
@@ -125,12 +125,12 @@ final class FloatingScreenshotManager: ObservableObject {
 
   // MARK: - Public Methods
 
-  /// Add a new screenshot to the floating stack
+  /// Add a new screenshot to the quick access stack
   func addScreenshot(url: URL) async {
     guard isEnabled else { return }
     guard let thumbnail = await ThumbnailGenerator.generate(from: url) else { return }
 
-    let item = ScreenshotItem(url: url, thumbnail: thumbnail)
+    let item = QuickAccessItem(url: url, thumbnail: thumbnail)
 
     // Remove oldest if at max capacity (oldest is now at the end)
     if items.count >= maxVisibleItems {
@@ -215,14 +215,14 @@ final class FloatingScreenshotManager: ObservableObject {
   }
 
   /// Update position setting
-  func setPosition(_ newPosition: FloatingPosition) {
+  func setPosition(_ newPosition: QuickAccessPosition) {
     position = newPosition
   }
 
   // MARK: - Private Methods
 
   private func showPanel() {
-    let stackView = FloatingStackView(manager: self)
+    let stackView = QuickAccessStackView(manager: self)
     let size = calculatePanelSize()
     panelController.show(stackView, size: size)
   }

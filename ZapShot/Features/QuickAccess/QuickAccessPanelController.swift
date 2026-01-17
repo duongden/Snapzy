@@ -1,20 +1,20 @@
 //
-//  FloatingPanelController.swift
+//  QuickAccessPanelController.swift
 //  ZapShot
 //
-//  Controller for managing floating panel lifecycle and positioning
+//  Controller for managing quick access panel lifecycle and positioning
 //
 
 import AppKit
 import Foundation
 import SwiftUI
 
-/// Manages floating panel for screenshot previews
+/// Manages quick access panel for screenshot previews
 @MainActor
-final class FloatingPanelController {
+final class QuickAccessPanelController {
 
-  private var panel: FloatingPanel?
-  private var position: FloatingPosition = .bottomRight
+  private var panel: QuickAccessPanel?
+  private var position: QuickAccessPosition = .bottomRight
   private let padding: CGFloat = 20
 
   /// Show SwiftUI content in floating panel
@@ -23,7 +23,7 @@ final class FloatingPanelController {
     let origin = position.calculateOrigin(for: size, on: screen, padding: padding)
     let frame = NSRect(origin: origin, size: size)
 
-    let panel = FloatingPanel(contentRect: frame)
+    let panel = QuickAccessPanel(contentRect: frame)
     let hostingView = NSHostingView(rootView: content)
     hostingView.frame = NSRect(origin: .zero, size: size)
     panel.contentView = hostingView
@@ -41,7 +41,7 @@ final class FloatingPanelController {
   }
 
   /// Update panel position on screen
-  func updatePosition(_ newPosition: FloatingPosition) {
+  func updatePosition(_ newPosition: QuickAccessPosition) {
     position = newPosition
     repositionPanel()
   }

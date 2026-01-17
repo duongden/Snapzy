@@ -48,7 +48,7 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
 
   private let captureManager = ScreenCaptureManager.shared
   private let shortcutManager = KeyboardShortcutManager.shared
-  private let floatingManager = FloatingScreenshotManager.shared
+  private let quickAccessManager = QuickAccessManager.shared
   private var areaSelectionController: AreaSelectionController?
   private var cancellables = Set<AnyCancellable>()
 
@@ -70,13 +70,13 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
     // Set up shortcut delegate
     shortcutManager.delegate = self
 
-    // Subscribe to capture completions for floating preview
+    // Subscribe to capture completions for quick access preview
     captureManager.captureCompletedPublisher
       .receive(on: DispatchQueue.main)
       .sink { [weak self] url in
-        guard self?.floatingManager.isEnabled == true else { return }
+        guard self?.quickAccessManager.isEnabled == true else { return }
         Task {
-          await self?.floatingManager.addScreenshot(url: url)
+          await self?.quickAccessManager.addScreenshot(url: url)
         }
       }
       .store(in: &cancellables)
@@ -87,26 +87,26 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
     }
   }
 
-  // MARK: - Floating Screenshot Settings
+  // MARK: - Quick Access Settings
 
-  var floatingEnabled: Bool {
-    get { floatingManager.isEnabled }
-    set { floatingManager.isEnabled = newValue }
+  var quickAccessEnabled: Bool {
+    get { quickAccessManager.isEnabled }
+    set { quickAccessManager.isEnabled = newValue }
   }
 
-  var floatingPosition: FloatingPosition {
-    get { floatingManager.position }
-    set { floatingManager.setPosition(newValue) }
+  var quickAccessPosition: QuickAccessPosition {
+    get { quickAccessManager.position }
+    set { quickAccessManager.setPosition(newValue) }
   }
 
-  var floatingAutoDismiss: Bool {
-    get { floatingManager.autoDismissEnabled }
-    set { floatingManager.autoDismissEnabled = newValue }
+  var quickAccessAutoDismiss: Bool {
+    get { quickAccessManager.autoDismissEnabled }
+    set { quickAccessManager.autoDismissEnabled = newValue }
   }
 
-  var floatingAutoDismissDelay: TimeInterval {
-    get { floatingManager.autoDismissDelay }
-    set { floatingManager.autoDismissDelay = newValue }
+  var quickAccessAutoDismissDelay: TimeInterval {
+    get { quickAccessManager.autoDismissDelay }
+    set { quickAccessManager.autoDismissDelay = newValue }
   }
 
   // MARK: - Shortcut Management

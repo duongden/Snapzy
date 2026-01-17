@@ -1,14 +1,14 @@
 //
-//  CardTextButton.swift
+//  QuickAccessTextButton.swift
 //  ZapShot
 //
-//  Text-based action button for floating screenshot cards
+//  Text-based action button for quick access screenshot cards
 //
 
 import SwiftUI
 
 /// Text-based action button with hover effect for card overlays
-struct CardTextButton: View {
+struct QuickAccessTextButton: View {
   let label: String
   let action: () -> Void
 

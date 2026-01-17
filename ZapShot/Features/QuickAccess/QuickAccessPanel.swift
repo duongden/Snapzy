@@ -1,15 +1,15 @@
 //
-//  FloatingPanel.swift
+//  QuickAccessPanel.swift
 //  ZapShot
 //
-//  NSPanel subclass for floating screenshot overlay
+//  NSPanel subclass for quick access screenshot overlay
 //
 
 import AppKit
 import Foundation
 
 /// Non-activating floating panel for screenshot previews
-final class FloatingPanel: NSPanel {
+final class QuickAccessPanel: NSPanel {
 
   init(contentRect: NSRect) {
     super.init(

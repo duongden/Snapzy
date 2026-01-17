@@ -1,15 +1,15 @@
 //
-//  ScreenshotItem.swift
+//  QuickAccessItem.swift
 //  ZapShot
 //
-//  Data model for a captured screenshot in the floating stack
+//  Data model for a captured screenshot in the quick access stack
 //
 
 import AppKit
 import Foundation
 
-/// Represents a single screenshot in the floating preview stack
-struct ScreenshotItem: Identifiable, Equatable {
+/// Represents a single screenshot in the quick access preview stack
+struct QuickAccessItem: Identifiable, Equatable {
   let id: UUID
   let url: URL
   let thumbnail: NSImage
@@ -22,7 +22,7 @@ struct ScreenshotItem: Identifiable, Equatable {
     self.capturedAt = Date()
   }
 
-  static func == (lhs: ScreenshotItem, rhs: ScreenshotItem) -> Bool {
+  static func == (lhs: QuickAccessItem, rhs: QuickAccessItem) -> Bool {
     lhs.id == rhs.id
   }
 }

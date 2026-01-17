@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct QuickAccessSettingsView: View {
-  @ObservedObject private var manager = FloatingScreenshotManager.shared
+  @ObservedObject private var manager = QuickAccessManager.shared
   
   @State private var positionIsLeft: Bool = false
   

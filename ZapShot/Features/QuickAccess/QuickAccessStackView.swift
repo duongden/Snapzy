@@ -1,15 +1,15 @@
 //
-//  FloatingStackView.swift
+//  QuickAccessStackView.swift
 //  ZapShot
 //
-//  Container view for stacked floating screenshot cards
+//  Container view for stacked quick access screenshot cards
 //
 
 import SwiftUI
 
-/// Displays a vertical stack of floating screenshot cards
-struct FloatingStackView: View {
-  @ObservedObject var manager: FloatingScreenshotManager
+/// Displays a vertical stack of quick access screenshot cards
+struct QuickAccessStackView: View {
+  @ObservedObject var manager: QuickAccessManager
 
   private let spacing: CGFloat = 8
   private let padding: CGFloat = 10
@@ -17,7 +17,7 @@ struct FloatingStackView: View {
   var body: some View {
     VStack(spacing: spacing) {
       ForEach(manager.items) { item in
-        FloatingCardView(item: item, manager: manager)
+        QuickAccessCardView(item: item, manager: manager)
           .id(item.id)
           .transition(
             .asymmetric(
