@@ -20,6 +20,12 @@ enum VideoEditorExporter {
     to outputURL: URL,
     progress: @escaping (Float) -> Void
   ) async throws {
+    // If muted, export without audio
+    if state.isMuted {
+      try await exportVideoOnly(state: state, to: outputURL, progress: progress)
+      return
+    }
+
     let timeRange = CMTimeRange(start: state.trimStart, end: state.trimEnd)
 
     guard let exportSession = AVAssetExportSession(
@@ -41,6 +47,60 @@ enum VideoEditorExporter {
       while !Task.isCancelled && exportSession.status == .exporting {
         progress(exportSession.progress)
         try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
+      }
+    }
+
+    await exportSession.export()
+    progressTask.cancel()
+
+    guard exportSession.status == .completed else {
+      throw exportSession.error ?? ExportError.exportFailed
+    }
+  }
+
+  /// Export video without audio track
+  private static func exportVideoOnly(
+    state: VideoEditorState,
+    to outputURL: URL,
+    progress: @escaping (Float) -> Void
+  ) async throws {
+    let timeRange = CMTimeRange(start: state.trimStart, end: state.trimEnd)
+    let composition = AVMutableComposition()
+
+    // Add only video track
+    guard let videoTrack = try await state.asset.loadTracks(withMediaType: .video).first else {
+      throw ExportError.exportFailed
+    }
+
+    guard let compositionVideoTrack = composition.addMutableTrack(
+      withMediaType: .video,
+      preferredTrackID: kCMPersistentTrackID_Invalid
+    ) else {
+      throw ExportError.exportFailed
+    }
+
+    try compositionVideoTrack.insertTimeRange(timeRange, of: videoTrack, at: .zero)
+
+    // Copy video track transform
+    let transform = try await videoTrack.load(.preferredTransform)
+    compositionVideoTrack.preferredTransform = transform
+
+    // Export composition
+    guard let exportSession = AVAssetExportSession(
+      asset: composition,
+      presetName: AVAssetExportPresetHighestQuality
+    ) else {
+      throw ExportError.sessionCreationFailed
+    }
+
+    try? FileManager.default.removeItem(at: outputURL)
+    exportSession.outputURL = outputURL
+    exportSession.outputFileType = outputFileType(for: state.fileExtension)
+
+    let progressTask = Task {
+      while !Task.isCancelled && exportSession.status == .exporting {
+        progress(exportSession.progress)
+        try? await Task.sleep(nanoseconds: 100_000_000)
       }
     }
 

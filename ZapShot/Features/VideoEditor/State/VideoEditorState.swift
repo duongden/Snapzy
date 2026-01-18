@@ -32,6 +32,15 @@ final class VideoEditorState: ObservableObject {
   @Published var trimEnd: CMTime = .zero
   @Published private(set) var isScrubbing: Bool = false
 
+  // MARK: - Audio Control
+
+  @Published var isMuted: Bool = false {
+    didSet {
+      player.isMuted = isMuted
+    }
+  }
+  private var initialIsMuted: Bool = false
+
   // MARK: - Frame Thumbnails
 
   @Published private(set) var frameThumbnails: [NSImage] = []
@@ -89,7 +98,7 @@ final class VideoEditorState: ObservableObject {
 
     setupTimeObserver()
     setupEndObserver()
-    setupTrimChangeTracking()
+    setupChangeTracking()
   }
 
   deinit {
@@ -146,6 +155,10 @@ final class VideoEditorState: ObservableObject {
     } else {
       play()
     }
+  }
+
+  func toggleMute() {
+    isMuted.toggle()
   }
 
   func seek(to time: CMTime) {
@@ -236,6 +249,7 @@ final class VideoEditorState: ObservableObject {
     hasUnsavedChanges = false
     initialTrimStart = trimStart
     initialTrimEnd = trimEnd
+    initialIsMuted = isMuted
   }
 
   // MARK: - Private Methods
@@ -272,14 +286,15 @@ final class VideoEditorState: ObservableObject {
     }
   }
 
-  private func setupTrimChangeTracking() {
-    Publishers.CombineLatest($trimStart, $trimEnd)
+  private func setupChangeTracking() {
+    Publishers.CombineLatest3($trimStart, $trimEnd, $isMuted)
       .dropFirst()
-      .sink { [weak self] start, end in
+      .sink { [weak self] start, end, muted in
         guard let self = self else { return }
         let startChanged = CMTimeCompare(start, self.initialTrimStart) != 0
         let endChanged = CMTimeCompare(end, self.initialTrimEnd) != 0
-        self.hasUnsavedChanges = startChanged || endChanged
+        let muteChanged = muted != self.initialIsMuted
+        self.hasUnsavedChanges = startChanged || endChanged || muteChanged
       }
       .store(in: &cancellables)
   }
