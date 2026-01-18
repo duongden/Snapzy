@@ -173,26 +173,39 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
       throw RecordingError.permissionDenied
     }
 
-    // Find display containing rect
-    guard
-      let display = content.displays.first(where: { display in
-        let frame = CGRect(
-          x: display.frame.origin.x,
-          y: display.frame.origin.y,
-          width: CGFloat(display.width),
-          height: CGFloat(display.height)
-        )
-        return frame.intersects(rect)
-      }) ?? content.displays.first
+    // Find the display containing the rect using NSScreen (same coordinate system as input rect)
+    // Then get the matching SCDisplay by displayID
+    var targetScreen: NSScreen?
+    for screen in NSScreen.screens {
+      if screen.frame.intersects(rect) {
+        targetScreen = screen
+        break
+      }
+    }
+
+    // Get the display ID from NSScreen
+    let targetDisplayID: CGDirectDisplayID
+    if let screen = targetScreen,
+       let displayID = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID {
+      targetDisplayID = displayID
+    } else {
+      targetDisplayID = CGMainDisplayID()
+    }
+
+    // Find matching SCDisplay
+    guard let display = content.displays.first(where: { $0.displayID == Int(targetDisplayID) })
+            ?? content.displays.first
     else {
       state = .idle
       self.error = .noDisplayFound
       throw RecordingError.noDisplayFound
     }
 
-    // Get scale factor for Retina
+    // Get scale factor for Retina from the matching NSScreen
     let scaleFactor: CGFloat
-    if let screen = NSScreen.screens.first(where: {
+    if let screen = targetScreen {
+      scaleFactor = screen.backingScaleFactor
+    } else if let screen = NSScreen.screens.first(where: {
       Int($0.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID ?? 0)
         == display.displayID
     }) {
@@ -393,21 +406,47 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
     config.pixelFormat = kCVPixelFormatType_32BGRA
     config.showsCursor = true
 
-    // Convert rect to sourceRect (top-left origin)
-    let displayFrame = display.frame
+    // Get the NSScreen frame for coordinate conversion (Cocoa coordinates)
+    // This ensures we use the same coordinate system as the input rect
+    guard let matchingScreen = NSScreen.screens.first(where: {
+      Int($0.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID ?? 0)
+        == display.displayID
+    }) else {
+      throw RecordingError.noDisplayFound
+    }
+
+    let screenFrame = matchingScreen.frame
+
+    // Calculate relative rect within the screen (in Cocoa coordinates)
     let relativeRect = CGRect(
-      x: rect.origin.x - displayFrame.origin.x,
-      y: rect.origin.y - displayFrame.origin.y,
+      x: rect.origin.x - screenFrame.origin.x,
+      y: rect.origin.y - screenFrame.origin.y,
       width: rect.width,
       height: rect.height
     )
-    let flippedY = displayFrame.height - relativeRect.origin.y - relativeRect.height
+
+    // Clamp to screen bounds
+    let screenBounds = CGRect(x: 0, y: 0, width: screenFrame.width, height: screenFrame.height)
+    let clampedRect = relativeRect.intersection(screenBounds)
+
+    // Guard against empty intersection
+    guard !clampedRect.isEmpty else {
+      throw RecordingError.setupFailed("Selection area is outside display bounds")
+    }
+
+    // ScreenCaptureKit uses top-left origin for sourceRect
+    // Convert from bottom-left (Cocoa) to top-left coordinate system
+    let flippedY = screenFrame.height - clampedRect.origin.y - clampedRect.height
     config.sourceRect = CGRect(
-      x: relativeRect.origin.x,
+      x: clampedRect.origin.x,
       y: flippedY,
-      width: relativeRect.width,
-      height: relativeRect.height
+      width: clampedRect.width,
+      height: clampedRect.height
     )
+
+    // Update dimensions to use clamped rect
+    config.width = Int(ceil(clampedRect.width * scaleFactor))
+    config.height = Int(ceil(clampedRect.height * scaleFactor))
 
     // Audio configuration
     if captureAudio {
