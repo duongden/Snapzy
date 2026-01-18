@@ -187,17 +187,40 @@ final class ScreenCaptureManager: ObservableObject {
     do {
       let content = try await SCShareableContent.current
 
-      // Find the display containing the rect using actual display frames
-      guard
-        let display = content.displays.first(where: { display in
-          let displayFrame = CGRect(
-            x: CGFloat(display.frame.origin.x),
-            y: CGFloat(display.frame.origin.y),
-            width: CGFloat(display.width),
-            height: CGFloat(display.height)
-          )
-          return displayFrame.intersects(rect)
-        }) ?? content.displays.first
+      // Get total screen height for coordinate conversion (Cocoa uses bottom-left, CG uses top-left)
+      let totalScreenHeight = NSScreen.screens.map { $0.frame.maxY }.max() ?? 0
+      let totalScreenMinY = NSScreen.screens.map { $0.frame.minY }.min() ?? 0
+
+      // Convert input rect from Cocoa coordinates (bottom-left origin) to CG coordinates (top-left origin)
+      let cgRect = CGRect(
+        x: rect.origin.x,
+        y: totalScreenHeight - rect.origin.y - rect.height,
+        width: rect.width,
+        height: rect.height
+      )
+
+      // Find the display containing the rect using NSScreen frames (same coordinate system as input)
+      // Then get the matching SCDisplay
+      var targetScreen: NSScreen?
+      for screen in NSScreen.screens {
+        if screen.frame.intersects(rect) {
+          targetScreen = screen
+          break
+        }
+      }
+
+      // Get the display ID from NSScreen
+      let targetDisplayID: CGDirectDisplayID
+      if let screen = targetScreen,
+         let displayID = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID {
+        targetDisplayID = displayID
+      } else {
+        targetDisplayID = CGMainDisplayID()
+      }
+
+      // Find matching SCDisplay
+      guard let display = content.displays.first(where: { $0.displayID == Int(targetDisplayID) })
+              ?? content.displays.first
       else {
         return .failure(.noDisplayFound)
       }
@@ -210,44 +233,58 @@ final class ScreenCaptureManager: ObservableObject {
 
       // Get the display's backing scale factor (2.0 for Retina displays)
       let scaleFactor: CGFloat
-      if let screen = NSScreen.screens.first(where: {
-        Int(
-          $0.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID ?? 0)
+      if let screen = targetScreen {
+        scaleFactor = screen.backingScaleFactor
+      } else if let screen = NSScreen.screens.first(where: {
+        Int($0.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID ?? 0)
           == display.displayID
       }) {
         scaleFactor = screen.backingScaleFactor
       } else {
-        // Fallback: calculate from display dimensions
         scaleFactor = display.frame.width > 0 ? CGFloat(display.width) / display.frame.width : 2.0
       }
 
-      // Convert rect from global screen coordinates to display-relative coordinates
-      let displayFrame = display.frame
-      let displayOrigin = displayFrame.origin
+      // Get the NSScreen frame for coordinate conversion (Cocoa coordinates)
+      guard let matchingScreen = targetScreen ?? NSScreen.screens.first(where: {
+        Int($0.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID ?? 0)
+          == display.displayID
+      }) else {
+        return .failure(.noDisplayFound)
+      }
 
-      // Calculate relative rect in points (display-local coordinates)
+      let screenFrame = matchingScreen.frame
+
+      // Calculate relative rect within the screen (in Cocoa coordinates)
       let relativeRect = CGRect(
-        x: rect.origin.x - displayOrigin.x,
-        y: rect.origin.y - displayOrigin.y,
+        x: rect.origin.x - screenFrame.origin.x,
+        y: rect.origin.y - screenFrame.origin.y,
         width: rect.width,
         height: rect.height
       )
 
-      // ScreenCaptureKit uses top-left origin for sourceRect
-      // Convert from bottom-left (macOS) to top-left coordinate system
-      let flippedY = displayFrame.height - relativeRect.origin.y - relativeRect.height
-      let sourceRect = CGRect(
-        x: relativeRect.origin.x,
-        y: flippedY,
-        width: relativeRect.width,
-        height: relativeRect.height
-      )
+      // Clamp to screen bounds
+      let screenBounds = CGRect(x: 0, y: 0, width: screenFrame.width, height: screenFrame.height)
+      let clampedRect = relativeRect.intersection(screenBounds)
 
+      // Guard against empty intersection
+      guard !clampedRect.isEmpty else {
+        return .failure(.captureFailed("Selection area is outside display bounds"))
+      }
+
+      // ScreenCaptureKit uses top-left origin for sourceRect
+      // Convert from bottom-left (Cocoa) to top-left coordinate system
+      let flippedY = screenFrame.height - clampedRect.origin.y - clampedRect.height
+      let sourceRect = CGRect(
+        x: clampedRect.origin.x,
+        y: flippedY,
+        width: clampedRect.width,
+        height: clampedRect.height
+      )
       config.sourceRect = sourceRect
 
-      // Output dimensions in pixels (Retina resolution)
-      config.width = Int(ceil(rect.width * scaleFactor))
-      config.height = Int(ceil(rect.height * scaleFactor))
+      // Output dimensions in pixels (Retina resolution) - use clamped rect
+      config.width = Int(ceil(clampedRect.width * scaleFactor))
+      config.height = Int(ceil(clampedRect.height * scaleFactor))
 
       // Capture the image
       let image = try await SCScreenshotManager.captureImage(

@@ -15,9 +15,12 @@ import UniformTypeIdentifiers
 final class AnnotateWindowController: NSWindowController, NSWindowDelegate {
 
   private let state: AnnotateState
+  private let quickAccessItemId: UUID?
   private var cancellables = Set<AnyCancellable>()
 
   init(item: QuickAccessItem) {
+    self.quickAccessItemId = item.id
+
     // Load full image from URL and adjust for Retina scaling
     let image = Self.loadImageWithCorrectScale(from: item.url) ?? item.thumbnail
 
@@ -52,6 +55,7 @@ final class AnnotateWindowController: NSWindowController, NSWindowDelegate {
 
   /// Empty initializer for drag-drop workflow
   init() {
+    self.quickAccessItemId = nil
     self.state = AnnotateState()
 
     // Default window size for empty canvas
@@ -246,6 +250,12 @@ final class AnnotateWindowController: NSWindowController, NSWindowDelegate {
 
   private func forceClose() {
     state.hasUnsavedChanges = false
+
+    // Remove associated QuickAccess card if opened from QuickAccess
+    if let itemId = quickAccessItemId {
+      QuickAccessManager.shared.removeItem(id: itemId)
+    }
+
     window?.close()
   }
 
