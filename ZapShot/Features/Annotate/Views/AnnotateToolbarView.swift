@@ -173,35 +173,20 @@ struct AnnotateToolbarView: View {
     case .alertFirstButtonReturn:
       // Replace original
       AnnotateExporter.saveToOriginal(state: state)
+      state.markAsSaved()
       NSApp.keyWindow?.close()
 
     case .alertSecondButtonReturn:
       // Save as copy - generate copy filename in same directory
-      let copyURL = generateCopyURL(from: sourceURL)
+      let copyURL = AnnotateExporter.generateCopyURL(from: sourceURL)
       AnnotateExporter.save(state: state, to: copyURL)
+      state.markAsSaved()
       NSApp.keyWindow?.close()
 
     default:
       // Cancel - do nothing
       break
     }
-  }
-
-  private func generateCopyURL(from originalURL: URL) -> URL {
-    let directory = originalURL.deletingLastPathComponent()
-    let baseName = originalURL.deletingPathExtension().lastPathComponent
-    let ext = originalURL.pathExtension
-
-    // Try to find a unique filename
-    var copyNumber = 1
-    var newURL = directory.appendingPathComponent("\(baseName)_copy.\(ext)")
-
-    while FileManager.default.fileExists(atPath: newURL.path) {
-      copyNumber += 1
-      newURL = directory.appendingPathComponent("\(baseName)_copy\(copyNumber).\(ext)")
-    }
-
-    return newURL
   }
 }
 

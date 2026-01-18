@@ -72,6 +72,23 @@ final class AnnotateExporter {
     return "\(baseName)_annotated"
   }
 
+  /// Generate unique copy URL from original file path
+  static func generateCopyURL(from originalURL: URL) -> URL {
+    let directory = originalURL.deletingLastPathComponent()
+    let baseName = originalURL.deletingPathExtension().lastPathComponent
+    let ext = originalURL.pathExtension
+
+    var copyNumber = 1
+    var newURL = directory.appendingPathComponent("\(baseName)_copy.\(ext)")
+
+    while FileManager.default.fileExists(atPath: newURL.path) {
+      copyNumber += 1
+      newURL = directory.appendingPathComponent("\(baseName)_copy\(copyNumber).\(ext)")
+    }
+
+    return newURL
+  }
+
   private static func renderFinalImage(state: AnnotateState) -> NSImage? {
     guard let sourceImage = state.sourceImage else { return nil }
 

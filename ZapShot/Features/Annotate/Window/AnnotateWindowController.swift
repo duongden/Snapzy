@@ -8,10 +8,11 @@
 import AppKit
 import Combine
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Manages annotation window lifecycle and content
 @MainActor
-final class AnnotateWindowController: NSWindowController {
+final class AnnotateWindowController: NSWindowController, NSWindowDelegate {
 
   private let state: AnnotateState
   private var cancellables = Set<AnyCancellable>()
@@ -44,7 +45,9 @@ final class AnnotateWindowController: NSWindowController {
 
     super.init(window: window)
 
+    window.delegate = self
     setupContent()
+    setupKeyboardShortcutObservers()
   }
 
   /// Empty initializer for drag-drop workflow
@@ -67,8 +70,10 @@ final class AnnotateWindowController: NSWindowController {
 
     super.init(window: window)
 
+    window.delegate = self
     setupContent()
     setupImageObserver()
+    setupKeyboardShortcutObservers()
   }
 
   @available(*, unavailable)
@@ -159,5 +164,147 @@ final class AnnotateWindowController: NSWindowController {
     )
 
     return image
+  }
+
+  // MARK: - NSWindowDelegate
+
+  func windowShouldClose(_ sender: NSWindow) -> Bool {
+    guard state.hasUnsavedChanges else {
+      return true
+    }
+
+    showUnsavedChangesAlert(for: sender)
+    return false
+  }
+
+  private func showUnsavedChangesAlert(for window: NSWindow) {
+    let alert = NSAlert()
+    alert.messageText = "Unsaved Changes"
+    alert.informativeText = "You have unsaved changes. Do you want to save before closing?"
+    alert.alertStyle = .warning
+
+    alert.addButton(withTitle: "Save")
+    alert.addButton(withTitle: "Don't Save")
+    alert.addButton(withTitle: "Cancel")
+
+    alert.beginSheetModal(for: window) { [weak self] response in
+      guard let self = self else { return }
+
+      switch response {
+      case .alertFirstButtonReturn:
+        self.performSaveAndClose()
+
+      case .alertSecondButtonReturn:
+        self.forceClose()
+
+      default:
+        break
+      }
+    }
+  }
+
+  private func performSaveAndClose() {
+    if let sourceURL = state.sourceURL {
+      showSaveConfirmation(for: sourceURL)
+    } else {
+      AnnotateExporter.saveAs(state: state, closeWindow: true)
+    }
+  }
+
+  private func showSaveConfirmation(for sourceURL: URL) {
+    guard let window = self.window else { return }
+
+    let alert = NSAlert()
+    alert.messageText = "Save Changes"
+    alert.informativeText = "How would you like to save your changes to \"\(sourceURL.lastPathComponent)\"?"
+    alert.alertStyle = .informational
+
+    alert.addButton(withTitle: "Replace Original")
+    alert.addButton(withTitle: "Save as Copy")
+    alert.addButton(withTitle: "Cancel")
+
+    alert.beginSheetModal(for: window) { [weak self] response in
+      guard let self = self else { return }
+
+      switch response {
+      case .alertFirstButtonReturn:
+        AnnotateExporter.saveToOriginal(state: self.state)
+        self.state.markAsSaved()
+        self.forceClose()
+
+      case .alertSecondButtonReturn:
+        let copyURL = AnnotateExporter.generateCopyURL(from: sourceURL)
+        AnnotateExporter.save(state: self.state, to: copyURL)
+        self.state.markAsSaved()
+        self.forceClose()
+
+      default:
+        break
+      }
+    }
+  }
+
+  private func forceClose() {
+    state.hasUnsavedChanges = false
+    window?.close()
+  }
+
+  // MARK: - Keyboard Shortcuts
+
+  private func setupKeyboardShortcutObservers() {
+    guard let window = self.window else { return }
+
+    NotificationCenter.default.addObserver(
+      forName: .annotateSave,
+      object: window,
+      queue: .main
+    ) { [weak self] _ in
+      Task { @MainActor in
+        self?.performSave()
+      }
+    }
+
+    NotificationCenter.default.addObserver(
+      forName: .annotateSaveAs,
+      object: window,
+      queue: .main
+    ) { [weak self] _ in
+      Task { @MainActor in
+        self?.performSaveAs()
+      }
+    }
+  }
+
+  private func performSave() {
+    guard state.hasImage else { return }
+
+    if let sourceURL = state.sourceURL {
+      showSaveConfirmation(for: sourceURL)
+    } else {
+      performSaveAs()
+    }
+  }
+
+  private func performSaveAs() {
+    guard state.hasImage else { return }
+
+    let panel = NSSavePanel()
+    panel.allowedContentTypes = [.png, .jpeg]
+    panel.nameFieldStringValue = generateFileName()
+    panel.canCreateDirectories = true
+
+    guard let window = self.window else { return }
+
+    panel.beginSheetModal(for: window) { [weak self] response in
+      guard let self = self, response == .OK, let url = panel.url else { return }
+      AnnotateExporter.save(state: self.state, to: url)
+      self.state.markAsSaved()
+    }
+  }
+
+  private func generateFileName() -> String {
+    guard let url = state.sourceURL else { return "annotated_image" }
+    let baseName = url.deletingPathExtension().lastPathComponent
+    return "\(baseName)_annotated"
   }
 }

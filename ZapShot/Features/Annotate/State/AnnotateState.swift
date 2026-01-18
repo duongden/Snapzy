@@ -137,6 +137,11 @@ final class AnnotateState: ObservableObject {
   /// Whether crop mode is actively being edited
   @Published var isCropActive: Bool = false
 
+  // MARK: - Unsaved Changes Tracking
+
+  /// Whether canvas has modifications not yet saved to disk
+  @Published var hasUnsavedChanges: Bool = false
+
   // MARK: - Undo/Redo
 
   @Published var canUndo: Bool = false
@@ -173,6 +178,7 @@ final class AnnotateState: ObservableObject {
     // Reset crop for new image
     cropRect = nil
     isCropActive = false
+    hasUnsavedChanges = false
   }
 
   /// Load image directly
@@ -189,6 +195,7 @@ final class AnnotateState: ObservableObject {
     // Reset crop for new image
     cropRect = nil
     isCropActive = false
+    hasUnsavedChanges = false
   }
 
   /// Load image and adjust size for Retina displays
@@ -235,6 +242,7 @@ final class AnnotateState: ObservableObject {
     redoStack.removeAll()
     canUndo = true
     canRedo = false
+    hasUnsavedChanges = true
   }
 
   func undo() {
@@ -276,6 +284,12 @@ final class AnnotateState: ObservableObject {
   /// Apply crop (confirm) - keeps cropRect for export
   func applyCrop() {
     isCropActive = false
+    hasUnsavedChanges = true
+  }
+
+  /// Reset unsaved changes flag after successful save
+  func markAsSaved() {
+    hasUnsavedChanges = false
   }
 
   /// Cancel crop and reset

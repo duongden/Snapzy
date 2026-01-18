@@ -7,6 +7,13 @@
 
 import AppKit
 
+// MARK: - Notifications
+
+extension Notification.Name {
+  static let annotateSave = Notification.Name("annotateSave")
+  static let annotateSaveAs = Notification.Name("annotateSaveAs")
+}
+
 /// Custom NSWindow for annotation editing with dark mode appearance
 final class AnnotateWindow: NSWindow {
 
@@ -32,4 +39,26 @@ final class AnnotateWindow: NSWindow {
 
   override var canBecomeKey: Bool { true }
   override var canBecomeMain: Bool { true }
+
+  override func performKeyEquivalent(with event: NSEvent) -> Bool {
+    guard event.type == .keyDown else {
+      return super.performKeyEquivalent(with: event)
+    }
+
+    let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+
+    // Cmd+S - Save (Done action)
+    if event.keyCode == 1 && flags == .command {
+      NotificationCenter.default.post(name: .annotateSave, object: self)
+      return true
+    }
+
+    // Cmd+Shift+S - Save As
+    if event.keyCode == 1 && flags == [.command, .shift] {
+      NotificationCenter.default.post(name: .annotateSaveAs, object: self)
+      return true
+    }
+
+    return super.performKeyEquivalent(with: event)
+  }
 }
