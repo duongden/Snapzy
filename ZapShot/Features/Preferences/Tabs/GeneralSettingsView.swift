@@ -12,6 +12,7 @@ struct GeneralSettingsView: View {
   @AppStorage(PreferencesKeys.playSounds) private var playSounds = true
   @AppStorage(PreferencesKeys.exportLocation) private var exportLocation = ""
   @Environment(\.openWindow) private var openWindow
+  @ObservedObject private var themeManager = ThemeManager.shared
 
   @State private var startAtLogin = LoginItemManager.isEnabled
 
@@ -35,6 +36,11 @@ struct GeneralSettingsView: View {
           }
 
         Toggle("Play sounds", isOn: $playSounds)
+      }
+
+      Section("Appearance") {
+        AppearanceModePicker(selection: $themeManager.preferredAppearance)
+          .frame(maxWidth: .infinity, alignment: .center)
       }
 
       Section("Storage") {

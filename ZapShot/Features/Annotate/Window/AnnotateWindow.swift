@@ -28,13 +28,28 @@ final class AnnotateWindow: NSWindow {
   }
 
   private func configure() {
-    appearance = NSAppearance(named: .darkAqua)
+    applyTheme()
     titlebarAppearsTransparent = true
     titleVisibility = .hidden
-    backgroundColor = NSColor(white: 0.12, alpha: 1)
     minSize = NSSize(width: 800, height: 600)
     isReleasedWhenClosed = false
     center()
+  }
+
+  /// Apply current theme from ThemeManager
+  func applyTheme() {
+    let themeManager = ThemeManager.shared
+    appearance = themeManager.nsAppearance
+
+    // Dynamic background based on appearance
+    if themeManager.preferredAppearance == .light {
+      backgroundColor = NSColor(white: 0.95, alpha: 1)
+    } else if themeManager.preferredAppearance == .dark {
+      backgroundColor = NSColor(white: 0.12, alpha: 1)
+    } else {
+      // System: use semantic color
+      backgroundColor = NSColor.windowBackgroundColor
+    }
   }
 
   override var canBecomeKey: Bool { true }

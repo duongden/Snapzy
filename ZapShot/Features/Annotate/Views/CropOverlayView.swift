@@ -31,14 +31,14 @@ struct CropOverlayView: View {
 
           // Crop border
           Rectangle()
-            .stroke(Color.white, lineWidth: 2)
+            .stroke(Color.primary, lineWidth: 2)
             .frame(width: scaledCrop.width, height: scaledCrop.height)
             .position(x: scaledCrop.midX, y: scaledCrop.midY)
             .allowsHitTesting(false)
 
           // Dashed inner border
           Rectangle()
-            .stroke(Color.black.opacity(0.5), style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
+            .stroke(Color.secondary.opacity(0.8), style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
             .frame(width: scaledCrop.width, height: scaledCrop.height)
             .position(x: scaledCrop.midX, y: scaledCrop.midY)
             .allowsHitTesting(false)
@@ -146,7 +146,7 @@ struct CropHandleView: View {
     ZStack {
       // White fill
       RoundedRectangle(cornerRadius: 2)
-        .fill(Color.white)
+        .fill(Color(nsColor: .controlBackgroundColor))
         .frame(width: size, height: size)
 
       // Blue border

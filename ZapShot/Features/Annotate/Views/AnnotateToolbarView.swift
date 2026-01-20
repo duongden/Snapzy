@@ -44,7 +44,7 @@ struct AnnotateToolbarView: View {
     }
     .padding(.horizontal, 12)
     .padding(.vertical, 8)
-    .background(Color(white: 0.15))
+    .background(Color(nsColor: .controlBackgroundColor))
   }
 
   // MARK: - Tool Groups
@@ -195,7 +195,7 @@ struct AnnotateToolbarView: View {
 struct ToolbarButton: View {
   let icon: String
   let isSelected: Bool
-  var highlightColor: Color = .white
+  var highlightColor: Color = .primary
 
   let action: () -> Void
 
@@ -205,7 +205,7 @@ struct ToolbarButton: View {
     Button(action: action) {
       Image(systemName: icon)
         .font(.system(size: 14, weight: .medium))
-        .foregroundColor(isSelected ? highlightColor : .white)
+        .foregroundColor(isSelected ? highlightColor : .primary)
         .frame(width: 28, height: 28)
         .background(
           RoundedRectangle(cornerRadius: 6)
@@ -220,7 +220,7 @@ struct ToolbarButton: View {
     if isSelected {
       return highlightColor.opacity(0.3)
     } else if isHovering {
-      return Color.white.opacity(0.1)
+      return Color.primary.opacity(0.1)
     }
     return Color.clear
   }
@@ -229,7 +229,7 @@ struct ToolbarButton: View {
 struct ToolbarDivider: View {
   var body: some View {
     Rectangle()
-      .fill(Color.white.opacity(0.2))
+      .fill(Color(nsColor: .separatorColor))
       .frame(width: 1, height: 20)
       .padding(.horizontal, 4)
   }

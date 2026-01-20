@@ -22,7 +22,7 @@ struct AnnotateSidebarView: View {
         // Compact color section
         colorSection
         
-        Divider().background(Color.white.opacity(0.1))
+        Divider().background(Color(nsColor: .separatorColor))
         
         // Sliders section
         slidersSection
@@ -35,12 +35,12 @@ struct AnnotateSidebarView: View {
 
         // Text styling section (shown when text annotation is selected)
         if state.selectedTextAnnotation != nil {
-          Divider().background(Color.white.opacity(0.1))
+          Divider().background(Color(nsColor: .separatorColor))
           TextStylingSection(state: state)
         }
         // General annotation properties (non-text selected)
         else if state.selectedAnnotation != nil {
-          Divider().background(Color.white.opacity(0.1))
+          Divider().background(Color(nsColor: .separatorColor))
           AnnotationPropertiesSection(state: state)
         }
 
@@ -49,7 +49,7 @@ struct AnnotateSidebarView: View {
       .padding(12)
     }
     .frame(maxHeight: .infinity)
-    .background(Color(white: 0.1))
+    .background(Color(nsColor: .controlBackgroundColor))
   }
   
   // MARK: - None Button
@@ -62,12 +62,12 @@ struct AnnotateSidebarView: View {
     } label: {
       Text("None")
         .font(.system(size: 11, weight: .medium))
-        .foregroundColor(.white)
+        .foregroundColor(.primary)
         .frame(maxWidth: .infinity)
         .padding(.vertical, 6)
         .background(
           RoundedRectangle(cornerRadius: 6)
-            .fill(state.backgroundStyle == .none ? Color.blue.opacity(0.3) : Color.white.opacity(0.1))
+            .fill(state.backgroundStyle == .none ? Color.blue.opacity(0.3) : Color.primary.opacity(0.1))
         )
     }
     .buttonStyle(.plain)
@@ -183,7 +183,7 @@ struct CompactColorSwatchGrid: View {
             .frame(width: 28, height: 28)
             .overlay(
               Circle()
-                .stroke(selectedColor == color ? Color.white : Color.white.opacity(0.2), lineWidth: selectedColor == color ? 2 : 1)
+                .stroke(selectedColor == color ? Color.accentColor : Color.secondary.opacity(0.5), lineWidth: selectedColor == color ? 2 : 1)
             )
         }
         .buttonStyle(.plain)
@@ -202,11 +202,11 @@ struct CompactSliderRow: View {
       HStack {
         Text(label)
           .font(.system(size: 10))
-          .foregroundColor(.white.opacity(0.6))
+          .foregroundColor(.secondary)
         Spacer()
         Text(String(format: "%.0f", value))
           .font(.system(size: 10))
-          .foregroundColor(.white.opacity(0.4))
+          .foregroundColor(.secondary.opacity(0.7))
       }
       Slider(value: $value, in: range)
         .controlSize(.small)

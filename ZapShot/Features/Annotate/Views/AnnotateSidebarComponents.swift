@@ -15,7 +15,7 @@ struct SidebarSectionHeader: View {
   var body: some View {
     Text(title)
       .font(.system(size: 11, weight: .semibold))
-      .foregroundColor(.white.opacity(0.6))
+      .foregroundColor(.secondary)
       .textCase(.uppercase)
   }
 }
@@ -34,7 +34,7 @@ struct GradientPresetButton: View {
         .frame(width: 44, height: 44)
         .overlay(
           RoundedRectangle(cornerRadius: 6)
-            .stroke(isSelected ? Color.white : Color.clear, lineWidth: 2)
+            .stroke(isSelected ? Color.accentColor : Color.clear, lineWidth: 2)
         )
     }
     .buttonStyle(.plain)
@@ -100,7 +100,7 @@ struct ColorSwatch: View {
         .frame(width: 24, height: 24)
         .overlay(
           Circle()
-            .stroke(isSelected ? Color.white : Color.white.opacity(0.2), lineWidth: isSelected ? 2 : 1)
+            .stroke(isSelected ? Color.accentColor : Color.secondary.opacity(0.5), lineWidth: isSelected ? 2 : 1)
         )
     }
     .buttonStyle(.plain)
@@ -118,7 +118,7 @@ struct SliderRow: View {
     VStack(alignment: .leading, spacing: 4) {
       Text(label)
         .font(.system(size: 11))
-        .foregroundColor(.white.opacity(0.6))
+        .foregroundColor(.secondary)
 
       Slider(value: $value, in: range)
         .controlSize(.small)
@@ -153,7 +153,7 @@ struct AlignmentGrid: View {
       }
     }
     .padding(4)
-    .background(Color.white.opacity(0.05))
+    .background(Color.secondary.opacity(0.1))
     .cornerRadius(6)
   }
 }
@@ -166,7 +166,7 @@ struct AlignmentCell: View {
   var body: some View {
     Button(action: action) {
       Rectangle()
-        .fill(isSelected ? Color.blue : Color.white.opacity(0.2))
+        .fill(isSelected ? Color.blue : Color.secondary.opacity(0.3))
         .frame(width: 20, height: 20)
         .cornerRadius(3)
     }

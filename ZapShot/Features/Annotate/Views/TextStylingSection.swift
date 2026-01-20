@@ -35,11 +35,11 @@ struct TextStylingSection: View {
       HStack {
         Text("Size")
           .font(.system(size: 10))
-          .foregroundColor(.white.opacity(0.6))
+          .foregroundColor(.secondary)
         Spacer()
         Text("\(Int(annotation.properties.fontSize))pt")
           .font(.system(size: 10))
-          .foregroundColor(.white.opacity(0.4))
+          .foregroundColor(.secondary.opacity(0.7))
       }
       Slider(
         value: Binding(
@@ -59,7 +59,7 @@ struct TextStylingSection: View {
     VStack(alignment: .leading, spacing: 6) {
       Text("Text Color")
         .font(.system(size: 10))
-        .foregroundColor(.white.opacity(0.6))
+        .foregroundColor(.secondary)
 
       HStack(spacing: 4) {
         ForEach(textColors, id: \.self) { color in
@@ -72,7 +72,7 @@ struct TextStylingSection: View {
               .overlay(
                 Circle()
                   .stroke(
-                    colorsMatch(annotation.properties.strokeColor, color) ? Color.white : Color.white.opacity(0.2),
+                    colorsMatch(annotation.properties.strokeColor, color) ? Color.accentColor : Color.secondary.opacity(0.5),
                     lineWidth: colorsMatch(annotation.properties.strokeColor, color) ? 2 : 1
                   )
               )
@@ -89,7 +89,7 @@ struct TextStylingSection: View {
     VStack(alignment: .leading, spacing: 6) {
       Text("Background")
         .font(.system(size: 10))
-        .foregroundColor(.white.opacity(0.6))
+        .foregroundColor(.secondary)
 
       HStack(spacing: 4) {
         // None/transparent button
@@ -98,11 +98,11 @@ struct TextStylingSection: View {
         } label: {
           Text("None")
             .font(.system(size: 9))
-            .foregroundColor(.white)
+            .foregroundColor(.primary)
             .frame(width: 36, height: 24)
             .background(
               RoundedRectangle(cornerRadius: 4)
-                .fill(annotation.properties.fillColor == .clear ? Color.blue.opacity(0.3) : Color.white.opacity(0.1))
+                .fill(annotation.properties.fillColor == .clear ? Color.blue.opacity(0.3) : Color.primary.opacity(0.1))
             )
         }
         .buttonStyle(.plain)
@@ -118,7 +118,7 @@ struct TextStylingSection: View {
               .overlay(
                 Circle()
                   .stroke(
-                    colorsMatch(annotation.properties.fillColor, color) ? Color.white : Color.white.opacity(0.2),
+                    colorsMatch(annotation.properties.fillColor, color) ? Color.accentColor : Color.secondary.opacity(0.5),
                     lineWidth: colorsMatch(annotation.properties.fillColor, color) ? 2 : 1
                   )
               )

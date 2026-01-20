@@ -114,7 +114,8 @@ final class RecordingToolbarWindow: NSWindow {
   }
 
   private func setContent(_ view: AnyView) {
-    let hosting = NSHostingView(rootView: view)
+    let themedView = view.preferredColorScheme(ThemeManager.shared.systemAppearance)
+    let hosting = NSHostingView(rootView: AnyView(themedView))
     hosting.frame = CGRect(origin: .zero, size: hosting.fittingSize)
     contentView = hosting
     hostingView = hosting

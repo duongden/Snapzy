@@ -14,6 +14,9 @@ enum PreferencesKeys {
   static let showMenuBarIcon = "showMenuBarIcon"
   static let exportLocation = "exportLocation"
 
+  // Appearance
+  static let appearanceMode = "appearanceMode"
+
   // Shortcuts
   static let shortcutsEnabled = "shortcutsEnabled"
   static let fullscreenShortcut = "fullscreenShortcut"

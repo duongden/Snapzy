@@ -28,7 +28,7 @@ struct AnnotateBottomBarView: View {
     }
     .padding(.horizontal, 16)
     .padding(.vertical, 10)
-    .background(Color(white: 0.15))
+    .background(Color(nsColor: .controlBackgroundColor))
   }
 
   // MARK: - Zoom Picker
@@ -44,14 +44,14 @@ struct AnnotateBottomBarView: View {
       HStack(spacing: 4) {
         Text("\(Int(state.zoomLevel * 100))%")
           .font(.system(size: 12, weight: .medium))
-          .foregroundColor(.white)
+          .foregroundColor(.primary)
         Image(systemName: "chevron.down")
           .font(.system(size: 8))
-          .foregroundColor(.white.opacity(0.6))
+          .foregroundColor(.secondary)
       }
       .padding(.horizontal, 10)
       .padding(.vertical, 6)
-      .background(Color.white.opacity(0.1))
+      .background(Color.primary.opacity(0.1))
       .cornerRadius(6)
     }
     .menuStyle(.borderlessButton)
@@ -62,10 +62,10 @@ struct AnnotateBottomBarView: View {
   private var dragHandle: some View {
     Text("Drag me")
       .font(.system(size: 12, weight: .medium))
-      .foregroundColor(.white.opacity(0.6))
+      .foregroundColor(.secondary)
       .padding(.horizontal, 16)
       .padding(.vertical, 6)
-      .background(Color.white.opacity(0.05))
+      .background(Color.primary.opacity(0.05))
       .cornerRadius(6)
   }
 
@@ -128,11 +128,11 @@ struct BottomBarButton: View {
     Button(action: action) {
       Image(systemName: icon)
         .font(.system(size: 14))
-        .foregroundColor(.white)
+        .foregroundColor(.primary)
         .frame(width: 28, height: 28)
         .background(
           RoundedRectangle(cornerRadius: 6)
-            .fill(isHovering ? Color.white.opacity(0.15) : Color.clear)
+            .fill(isHovering ? Color.primary.opacity(0.15) : Color.clear)
         )
     }
     .buttonStyle(.plain)

@@ -19,6 +19,7 @@ struct ZapShotApp: App {
   @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
   @StateObject private var viewModel = ScreenCaptureViewModel()
   @State private var showOnboarding = !OnboardingFlowView.hasCompletedOnboarding
+  @ObservedObject private var themeManager = ThemeManager.shared
 
   // Sparkle updater controller
   private let updaterController: SPUStandardUpdaterController
@@ -35,6 +36,7 @@ struct ZapShotApp: App {
     // Menu Bar
     MenuBarExtra("ZapShot", systemImage: "camera.aperture") {
       MenuBarContentView(viewModel: viewModel, updater: updaterController.updater)
+        .preferredColorScheme(themeManager.systemAppearance)
     }
 
     // Onboarding Window (shown only when needed)
@@ -47,6 +49,7 @@ struct ZapShotApp: App {
           .forEach { $0.close() }
       })
       .frame(width: 500, height: 450)
+      .preferredColorScheme(themeManager.systemAppearance)
     }
     .windowStyle(.hiddenTitleBar)
     .windowResizability(.contentSize)
@@ -55,6 +58,7 @@ struct ZapShotApp: App {
     // Settings Window
     Settings {
       PreferencesView()
+        .preferredColorScheme(themeManager.systemAppearance)
     }
   }
 }

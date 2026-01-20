@@ -56,7 +56,7 @@ struct AnnotationPropertiesSection: View {
     VStack(alignment: .leading, spacing: 4) {
       Text("Color")
         .font(.system(size: 10))
-        .foregroundColor(.white.opacity(0.6))
+        .foregroundColor(.secondary)
 
       ColorPickerRow(
         selectedColor: strokeColorBinding,
@@ -77,7 +77,7 @@ struct AnnotationPropertiesSection: View {
     VStack(alignment: .leading, spacing: 4) {
       Text("Fill")
         .font(.system(size: 10))
-        .foregroundColor(.white.opacity(0.6))
+        .foregroundColor(.secondary)
 
       ColorPickerRow(
         selectedColor: fillColorBinding,
@@ -143,11 +143,11 @@ struct ColorPickerRow: View {
       if color == .clear {
         // Show "none" indicator for clear
         Circle()
-          .stroke(Color.white.opacity(0.3), lineWidth: 1)
+          .stroke(Color.secondary.opacity(0.5), lineWidth: 1)
           .frame(width: 20, height: 20)
         Image(systemName: "xmark")
           .font(.system(size: 8))
-          .foregroundColor(.white.opacity(0.5))
+          .foregroundColor(.secondary)
       } else {
         Circle()
           .fill(color)
@@ -155,7 +155,7 @@ struct ColorPickerRow: View {
           .overlay(
             Circle()
               .stroke(
-                selectedColor == color ? Color.white : Color.white.opacity(0.2),
+                selectedColor == color ? Color.accentColor : Color.secondary.opacity(0.5),
                 lineWidth: selectedColor == color ? 2 : 1
               )
           )

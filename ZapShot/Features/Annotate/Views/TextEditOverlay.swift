@@ -48,7 +48,7 @@ struct TextEditOverlay: View {
               .stroke(Color.accentColor.opacity(0.6), lineWidth: 1)
               .background(
                 RoundedRectangle(cornerRadius: 2)
-                  .fill(Color.white.opacity(0.1))
+                  .fill(Color.primary.opacity(0.05))
               )
           )
           .focused($isFocused)

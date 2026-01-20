@@ -16,7 +16,7 @@ struct AnnotateMainView: View {
       AnnotateToolbarView(state: state)
 
       Divider()
-        .background(Color.white.opacity(0.1))
+        .background(Color(nsColor: .separatorColor))
 
       HStack(spacing: 0) {
         if state.showSidebar {
@@ -33,11 +33,10 @@ struct AnnotateMainView: View {
       }
 
       Divider()
-        .background(Color.white.opacity(0.1))
+        .background(Color(nsColor: .separatorColor))
 
       AnnotateBottomBarView(state: state)
     }
-    .background(Color(white: 0.12))
-    .preferredColorScheme(.dark)
+    .background(Color(nsColor: .windowBackgroundColor))
   }
 }

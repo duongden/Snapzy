@@ -24,7 +24,7 @@ struct AnnotateCanvasView: View {
     GeometryReader { geometry in
       ZStack {
         // Background
-        Color(white: 0.08)
+        Color(nsColor: .textBackgroundColor)
 
         if state.hasImage {
           // Centered, scaled canvas
