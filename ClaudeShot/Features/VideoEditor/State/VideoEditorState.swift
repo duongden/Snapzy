@@ -9,13 +9,27 @@ import AVFoundation
 import AppKit
 import Combine
 
+// MARK: - Editor Action (Undo/Redo Support)
+
+/// Represents an undoable editor action
+enum EditorAction: Equatable {
+  case trimStart(old: CMTime, new: CMTime)
+  case trimEnd(old: CMTime, new: CMTime)
+  case addZoom(segment: ZoomSegment)
+  case removeZoom(segment: ZoomSegment)
+  case updateZoom(old: ZoomSegment, new: ZoomSegment)
+  case toggleMute(old: Bool, new: Bool)
+}
+
 /// Observable state for video editor window
 @MainActor
 final class VideoEditorState: ObservableObject {
 
   // MARK: - Video Source
 
-  let sourceURL: URL
+  private(set) var sourceURL: URL
+  /// Original file URL to replace (used for "Replace Original" functionality)
+  private(set) var originalURL: URL
   let asset: AVAsset
   let player: AVPlayer
 
@@ -65,6 +79,19 @@ final class VideoEditorState: ObservableObject {
   private var initialTrimEnd: CMTime = .zero
   private var initialZoomSegments: [ZoomSegment] = []
 
+  // MARK: - Undo/Redo
+
+  @Published private(set) var canUndo: Bool = false
+  @Published private(set) var canRedo: Bool = false
+  private var undoStack: [EditorAction] = []
+  private var redoStack: [EditorAction] = []
+  private let maxUndoStackSize = 50
+  private var isUndoingOrRedoing: Bool = false
+
+  // MARK: - Rename State
+
+  @Published var isRenamingFile: Bool = false
+
   // MARK: - Private
 
   private var timeObserver: Any?
@@ -104,8 +131,9 @@ final class VideoEditorState: ObservableObject {
 
   // MARK: - Initialization
 
-  init(url: URL) {
+  init(url: URL, originalURL: URL? = nil) {
     self.sourceURL = url
+    self.originalURL = originalURL ?? url
     self.asset = AVAsset(url: url)
     self.player = AVPlayer(playerItem: AVPlayerItem(asset: asset))
 
@@ -171,7 +199,9 @@ final class VideoEditorState: ObservableObject {
   }
 
   func toggleMute() {
+    let oldValue = isMuted
     isMuted.toggle()
+    recordAction(.toggleMute(old: oldValue, new: isMuted))
   }
 
   func seek(to time: CMTime) {
@@ -198,7 +228,8 @@ final class VideoEditorState: ObservableObject {
 
   // MARK: - Trim Control
 
-  func setTrimStart(_ time: CMTime) {
+  func setTrimStart(_ time: CMTime, recordUndo: Bool = true) {
+    let oldValue = trimStart
     let minDuration = CMTime(seconds: 1.0, preferredTimescale: 600)
     let maxStart = CMTimeSubtract(trimEnd, minDuration)
     let clampedStart = CMTimeClampToRange(time, range: CMTimeRange(start: .zero, end: maxStart))
@@ -208,9 +239,14 @@ final class VideoEditorState: ObservableObject {
     if CMTimeCompare(currentTime, trimStart) < 0 {
       seek(to: trimStart)
     }
+
+    if recordUndo && CMTimeCompare(oldValue, clampedStart) != 0 {
+      recordAction(.trimStart(old: oldValue, new: clampedStart))
+    }
   }
 
-  func setTrimEnd(_ time: CMTime) {
+  func setTrimEnd(_ time: CMTime, recordUndo: Bool = true) {
+    let oldValue = trimEnd
     let minDuration = CMTime(seconds: 1.0, preferredTimescale: 600)
     let minEnd = CMTimeAdd(trimStart, minDuration)
     let clampedEnd = CMTimeClampToRange(time, range: CMTimeRange(start: minEnd, end: duration))
@@ -219,6 +255,10 @@ final class VideoEditorState: ObservableObject {
     // If current time is after new end, seek to end
     if CMTimeCompare(currentTime, trimEnd) > 0 {
       seek(to: trimEnd)
+    }
+
+    if recordUndo && CMTimeCompare(oldValue, clampedEnd) != 0 {
+      recordAction(.trimEnd(old: oldValue, new: clampedEnd))
     }
   }
 
@@ -264,6 +304,139 @@ final class VideoEditorState: ObservableObject {
     initialTrimEnd = trimEnd
     initialIsMuted = isMuted
     initialZoomSegments = zoomSegments
+    clearUndoHistory()
+  }
+
+  // MARK: - Undo/Redo Actions
+
+  /// Record an action for undo support
+  private func recordAction(_ action: EditorAction) {
+    guard !isUndoingOrRedoing else { return }
+    undoStack.append(action)
+    if undoStack.count > maxUndoStackSize {
+      undoStack.removeFirst()
+    }
+    redoStack.removeAll()
+    updateUndoRedoState()
+  }
+
+  /// Undo the last action
+  func undo() {
+    guard let action = undoStack.popLast() else { return }
+    isUndoingOrRedoing = true
+    defer {
+      isUndoingOrRedoing = false
+      updateUndoRedoState()
+    }
+
+    switch action {
+    case .trimStart(let old, let new):
+      trimStart = old
+      redoStack.append(.trimStart(old: new, new: old))
+
+    case .trimEnd(let old, let new):
+      trimEnd = old
+      redoStack.append(.trimEnd(old: new, new: old))
+
+    case .addZoom(let segment):
+      zoomSegments.removeAll { $0.id == segment.id }
+      if selectedZoomId == segment.id { selectedZoomId = nil }
+      redoStack.append(.removeZoom(segment: segment))
+
+    case .removeZoom(let segment):
+      zoomSegments.append(segment)
+      redoStack.append(.addZoom(segment: segment))
+
+    case .updateZoom(let old, let new):
+      if let index = zoomSegments.firstIndex(where: { $0.id == new.id }) {
+        zoomSegments[index] = old
+      }
+      redoStack.append(.updateZoom(old: new, new: old))
+
+    case .toggleMute(let old, _):
+      isMuted = old
+      redoStack.append(.toggleMute(old: !old, new: old))
+    }
+  }
+
+  /// Redo the last undone action
+  func redo() {
+    guard let action = redoStack.popLast() else { return }
+    isUndoingOrRedoing = true
+    defer {
+      isUndoingOrRedoing = false
+      updateUndoRedoState()
+    }
+
+    switch action {
+    case .trimStart(let old, let new):
+      trimStart = old
+      undoStack.append(.trimStart(old: new, new: old))
+
+    case .trimEnd(let old, let new):
+      trimEnd = old
+      undoStack.append(.trimEnd(old: new, new: old))
+
+    case .addZoom(let segment):
+      zoomSegments.removeAll { $0.id == segment.id }
+      if selectedZoomId == segment.id { selectedZoomId = nil }
+      undoStack.append(.removeZoom(segment: segment))
+
+    case .removeZoom(let segment):
+      zoomSegments.append(segment)
+      undoStack.append(.addZoom(segment: segment))
+
+    case .updateZoom(let old, let new):
+      if let index = zoomSegments.firstIndex(where: { $0.id == new.id }) {
+        zoomSegments[index] = old
+      }
+      undoStack.append(.updateZoom(old: new, new: old))
+
+    case .toggleMute(let old, _):
+      isMuted = old
+      undoStack.append(.toggleMute(old: !old, new: old))
+    }
+  }
+
+  private func updateUndoRedoState() {
+    canUndo = !undoStack.isEmpty
+    canRedo = !redoStack.isEmpty
+  }
+
+  private func clearUndoHistory() {
+    undoStack.removeAll()
+    redoStack.removeAll()
+    updateUndoRedoState()
+  }
+
+  // MARK: - File Operations
+
+  /// Open the source file location in Finder
+  func openInFinder() {
+    NSWorkspace.shared.activateFileViewerSelecting([sourceURL])
+  }
+
+  /// Rename the source file
+  func renameFile(to newName: String) throws {
+    let directory = sourceURL.deletingLastPathComponent()
+    let ext = sourceURL.pathExtension
+    let sanitizedName = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+
+    guard !sanitizedName.isEmpty else {
+      throw NSError(domain: "VideoEditor", code: 1, userInfo: [NSLocalizedDescriptionKey: "Filename cannot be empty"])
+    }
+
+    let newURL = directory.appendingPathComponent(sanitizedName).appendingPathExtension(ext)
+
+    guard newURL != sourceURL else { return }
+
+    guard !FileManager.default.fileExists(atPath: newURL.path) else {
+      throw NSError(domain: "VideoEditor", code: 2, userInfo: [NSLocalizedDescriptionKey: "A file with this name already exists"])
+    }
+
+    try FileManager.default.moveItem(at: sourceURL, to: newURL)
+    sourceURL = newURL
+    originalURL = newURL
   }
 
   // MARK: - Zoom Management
@@ -282,15 +455,18 @@ final class VideoEditorState: ObservableObject {
 
     zoomSegments.append(segment)
     selectedZoomId = segment.id
+    recordAction(.addZoom(segment: segment))
     return segment.id
   }
 
   /// Remove a zoom segment by ID
   func removeZoom(id: UUID) {
+    guard let segment = zoomSegments.first(where: { $0.id == id }) else { return }
     zoomSegments.removeAll { $0.id == id }
     if selectedZoomId == id {
       selectedZoomId = nil
     }
+    recordAction(.removeZoom(segment: segment))
   }
 
   /// Update zoom segment properties

@@ -12,8 +12,6 @@ import SwiftUI
 struct VideoEditorMainView: View {
   @ObservedObject var state: VideoEditorState
   var onSave: (() -> Void)?
-  var onSaveAs: (() -> Void)?
-  var onCancel: (() -> Void)?
 
   // Computed property for current frame preview
   private var currentFrameImage: NSImage? {
@@ -27,61 +25,59 @@ struct VideoEditorMainView: View {
   }
 
   var body: some View {
-    HStack(spacing: 0) {
-      // Main editor content
-      VStack(spacing: 0) {
-        // Add safe area spacer for traffic lights
-        Color.clear
-          .frame(height: 28) // Standard macOS title bar height
+    VStack(spacing: 0) {
+      // NEW: Full-width toolbar at top
+      VideoEditorToolbarView(
+        state: state,
+        onSave: { onSave?() }
+      )
 
-        // Video player with zoom preview
-        ZoomableVideoPlayerSection(state: state)
-          .frame(minHeight: 200)
+      Divider()
 
-        // Timeline with frame previews and trim handles
-        VideoTimelineView(state: state)
-          .padding(.horizontal, 16)
-          .padding(.top, 12)
+      // Content area with optional sidebar
+      HStack(spacing: 0) {
+        // Main editor content
+        VStack(spacing: 0) {
+          // Video player with zoom preview
+          ZoomableVideoPlayerSection(state: state)
+            .frame(minHeight: 200)
 
-        // Playback controls
-        VideoControlsView(state: state)
-          .padding(.horizontal, 16)
-          .padding(.top, 8)
+          // MOVED UP: Playback controls now under video
+          VideoControlsView(state: state)
+            .padding(.horizontal, 16)
+            .padding(.top, 8)
 
-        // Info panel
-        VideoInfoPanel(state: state)
-          .padding(.horizontal, 16)
-          .padding(.top, 12)
+          // Timeline with frame previews and trim handles
+          VideoTimelineView(state: state)
+            .padding(.horizontal, 16)
+            .padding(.top, 12)
 
-        Spacer(minLength: 0)
+          // Info panel
+          VideoInfoPanel(state: state)
+            .padding(.horizontal, 16)
+            .padding(.top, 12)
 
-        // Divider
-        Divider()
+          Spacer(minLength: 0)
 
-        // Footer actions
-        VideoEditorActionsView(
-          state: state,
-          onSave: { onSave?() },
-          onSaveAs: { onSaveAs?() },
-          onCancel: { onCancel?() }
-        )
-      }
-      .frame(maxWidth: .infinity, maxHeight: .infinity)
+          // REMOVED: VideoEditorActionsView (moved to toolbar)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-      // Zoom settings sidebar (appears when zoom selected)
-      if state.selectedZoomId != nil {
-        Divider()
+        // Zoom settings sidebar (appears when zoom selected)
+        if state.selectedZoomId != nil {
+          Divider()
 
-        ZoomSettingsPopover(
-          state: state,
-          previewImage: currentFrameImage
-        )
-        .frame(width: 220)
-        .background(Color(NSColor.controlBackgroundColor))
+          ZoomSettingsPopover(
+            state: state,
+            previewImage: currentFrameImage
+          )
+          .frame(width: 220, alignment: .topLeading)
+          .frame(maxHeight: .infinity, alignment: .top)
+          .background(Color(NSColor.controlBackgroundColor))
+        }
       }
     }
     .background(Color(NSColor.windowBackgroundColor))
-    .ignoresSafeArea(.all, edges: .top) // Extend background behind title bar
     .overlay {
       // Export progress overlay
       if state.isExporting {

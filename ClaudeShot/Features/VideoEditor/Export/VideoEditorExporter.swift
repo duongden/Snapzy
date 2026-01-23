@@ -46,6 +46,10 @@ enum VideoEditorExporter {
   ) async throws {
     let timeRange = CMTimeRange(start: state.trimStart, end: state.trimEnd)
 
+    print("📹 [Export] Standard export starting")
+    print("📹 [Export] Trim range: \(CMTimeGetSeconds(state.trimStart))s - \(CMTimeGetSeconds(state.trimEnd))s")
+    print("📹 [Export] Output URL: \(outputURL)")
+
     guard let exportSession = AVAssetExportSession(
       asset: state.asset,
       presetName: AVAssetExportPresetHighestQuality
@@ -71,9 +75,18 @@ enum VideoEditorExporter {
     await exportSession.export()
     progressTask.cancel()
 
+    print("📹 [Export] Export status: \(exportSession.status.rawValue)")
+    if let error = exportSession.error {
+      print("📹 [Export] Export error: \(error)")
+    }
+
     guard exportSession.status == .completed else {
       throw exportSession.error ?? ExportError.exportFailed
     }
+
+    // Verify exported file exists
+    let fileExists = FileManager.default.fileExists(atPath: outputURL.path)
+    print("📹 [Export] Exported file exists: \(fileExists)")
   }
 
   /// Export with zoom effects applied
@@ -85,13 +98,21 @@ enum VideoEditorExporter {
     print("🔍 [ZoomExport] Starting export with zooms")
     print("🔍 [ZoomExport] Output URL: \(outputURL)")
     print("🔍 [ZoomExport] Video duration: \(CMTimeGetSeconds(state.duration))s")
-    print("🔍 [ZoomExport] Trim range: \(CMTimeGetSeconds(state.trimStart))s - \(CMTimeGetSeconds(state.trimEnd))s")
+    print("🔍 [ZoomExport] Trim START: \(CMTimeGetSeconds(state.trimStart))s")
+    print("🔍 [ZoomExport] Trim END: \(CMTimeGetSeconds(state.trimEnd))s")
     print("🔍 [ZoomExport] Trimmed duration: \(CMTimeGetSeconds(state.trimmedDuration))s")
     print("🔍 [ZoomExport] Natural size: \(state.naturalSize)")
     print("🔍 [ZoomExport] Total zoom segments: \(state.zoomSegments.count)")
 
-    let timeRange = CMTimeRange(start: state.trimStart, end: state.trimEnd)
+    // Validate trim range
     let trimStartSeconds = CMTimeGetSeconds(state.trimStart)
+    let trimEndSeconds = CMTimeGetSeconds(state.trimEnd)
+    let fullDuration = CMTimeGetSeconds(state.duration)
+
+    let hasTrimChanges = trimStartSeconds > 0.1 || (fullDuration - trimEndSeconds) > 0.1
+    print("🔍 [ZoomExport] Has trim changes: \(hasTrimChanges)")
+
+    let timeRange = CMTimeRange(start: state.trimStart, end: state.trimEnd)
 
     // Adjust zoom times relative to trim start
     let adjustedZooms = state.zoomSegments.map { segment -> ZoomSegment in
@@ -127,7 +148,7 @@ enum VideoEditorExporter {
 
     do {
       try compositionVideoTrack.insertTimeRange(timeRange, of: sourceVideoTrack, at: .zero)
-      print("🔍 [ZoomExport] Inserted video time range successfully")
+      print("🔍 [ZoomExport] Inserted video time range: \(CMTimeGetSeconds(timeRange.start))s - \(CMTimeGetSeconds(timeRange.end))s (duration: \(CMTimeGetSeconds(timeRange.duration))s)")
     } catch {
       print("❌ [ZoomExport] ERROR inserting video time range: \(error)")
       throw error
@@ -154,6 +175,16 @@ enum VideoEditorExporter {
     } else {
       print("🔍 [ZoomExport] Audio muted, skipping audio track")
     }
+
+    // Verify composition duration
+    print("🔍 [ZoomExport] Composition duration: \(CMTimeGetSeconds(composition.duration))s")
+
+    // Verify composition has video tracks before proceeding
+    guard let composedVideoTrack = composition.tracks(withMediaType: .video).first else {
+      print("❌ [ZoomExport] ERROR: Composition has no video tracks after insertion")
+      throw ExportError.exportFailed
+    }
+    print("🔍 [ZoomExport] Verified composed video track ID: \(composedVideoTrack.trackID)")
 
     // Create zoom compositor
     print("🔍 [ZoomExport] Creating ZoomCompositor with renderSize: \(state.naturalSize)")
@@ -288,12 +319,60 @@ enum VideoEditorExporter {
       .appendingPathComponent(UUID().uuidString)
       .appendingPathExtension(state.fileExtension)
 
+    print("📹 [ReplaceOriginal] Temp URL: \(tempURL)")
+    print("📹 [ReplaceOriginal] Source URL: \(state.sourceURL)")
+    print("📹 [ReplaceOriginal] Original URL (target): \(state.originalURL)")
+
     try await exportTrimmed(state: state, to: tempURL, progress: progress)
 
-    // Replace original with temp file
-    let originalURL = state.sourceURL
-    try FileManager.default.removeItem(at: originalURL)
-    try FileManager.default.moveItem(at: tempURL, to: originalURL)
+    // Verify temp file was created
+    guard FileManager.default.fileExists(atPath: tempURL.path) else {
+      print("❌ [ReplaceOriginal] Temp file not found after export!")
+      throw ExportError.exportFailed
+    }
+
+    // Get temp file size for verification
+    let tempAttributes = try? FileManager.default.attributesOfItem(atPath: tempURL.path)
+    let tempSize = tempAttributes?[.size] as? Int64 ?? 0
+    print("📹 [ReplaceOriginal] Temp file size: \(tempSize) bytes")
+
+    // Replace original with temp file - use originalURL for correct target
+    let targetURL = state.originalURL
+
+    // Use replaceItemAt for atomic replacement (safer)
+    let backupURL = targetURL.deletingLastPathComponent()
+      .appendingPathComponent(".\(targetURL.lastPathComponent).backup")
+
+    do {
+      // Remove any existing backup
+      try? FileManager.default.removeItem(at: backupURL)
+
+      // Move original to backup
+      try FileManager.default.moveItem(at: targetURL, to: backupURL)
+      print("📹 [ReplaceOriginal] Moved original to backup")
+
+      // Move temp to original location
+      try FileManager.default.moveItem(at: tempURL, to: targetURL)
+      print("📹 [ReplaceOriginal] Moved temp to original location")
+
+      // Remove backup
+      try? FileManager.default.removeItem(at: backupURL)
+      print("📹 [ReplaceOriginal] Cleanup complete")
+
+    } catch {
+      print("❌ [ReplaceOriginal] Error during replacement: \(error)")
+      // Try to restore from backup if something went wrong
+      if FileManager.default.fileExists(atPath: backupURL.path) {
+        try? FileManager.default.moveItem(at: backupURL, to: targetURL)
+      }
+      throw error
+    }
+
+    // Verify final file
+    let finalAttributes = try? FileManager.default.attributesOfItem(atPath: targetURL.path)
+    let finalSize = finalAttributes?[.size] as? Int64 ?? 0
+    print("📹 [ReplaceOriginal] Final file size: \(finalSize) bytes")
+    print("✅ [ReplaceOriginal] Replacement complete!")
   }
 
   /// Save trimmed video as a copy
@@ -304,6 +383,13 @@ enum VideoEditorExporter {
   }
 
   // MARK: - Helper Methods
+
+  /// Generate copy filename with _trimmed suffix (without directory)
+  static func generateCopyFilename(from originalURL: URL) -> String {
+    let baseName = originalURL.deletingPathExtension().lastPathComponent
+    let ext = originalURL.pathExtension
+    return "\(baseName)_trimmed.\(ext)"
+  }
 
   /// Generate copy URL with _trimmed suffix
   static func generateCopyURL(from originalURL: URL) -> URL {

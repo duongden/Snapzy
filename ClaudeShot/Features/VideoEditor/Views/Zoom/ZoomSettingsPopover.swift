@@ -36,9 +36,12 @@ struct ZoomSettingsPopover: View {
 
       // Actions
       actionsSection
+
+      Spacer(minLength: 0)
     }
     .padding(12)
-    .frame(width: 200)
+    .frame(width: 200, alignment: .topLeading)
+    .frame(maxHeight: .infinity, alignment: .top)
     .onAppear {
       syncLocalState()
     }

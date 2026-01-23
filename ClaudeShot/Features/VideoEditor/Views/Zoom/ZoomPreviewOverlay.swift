@@ -27,7 +27,9 @@ struct ZoomableVideoPlayerSection: View {
         .animation(.easeInOut(duration: animationDuration), value: currentZoomCenter)
         .overlay(alignment: .topTrailing) {
           zoomIndicator
+            .allowsHitTesting(false)
         }
+        .contentShape(Rectangle())
     }
     .onReceive(state.$currentTime) { time in
       updateZoomState(at: CMTimeGetSeconds(time))

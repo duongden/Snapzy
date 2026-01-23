@@ -7,6 +7,7 @@
 
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Manages video editor window lifecycle
 @MainActor
@@ -80,9 +81,7 @@ final class VideoEditorWindowController: NSWindowController, NSWindowDelegate {
 
     let mainView = VideoEditorMainView(
       state: state,
-      onSave: { [weak self] in self?.showSaveConfirmation() },
-      onSaveAs: { [weak self] in self?.performSaveAsCopy() },
-      onCancel: { [weak self] in self?.handleCancel() }
+      onSave: { [weak self] in self?.showSaveConfirmation() }
     )
     window?.contentView = NSHostingView(rootView: mainView)
   }
@@ -200,6 +199,24 @@ final class VideoEditorWindowController: NSWindowController, NSWindowDelegate {
   }
 
   private func performSaveAsCopy() {
+    guard let state = state, let window = self.window else { return }
+
+    // Show save panel to let user choose destination
+    let savePanel = NSSavePanel()
+    savePanel.title = "Save Video Copy"
+    savePanel.message = "Choose where to save the trimmed video"
+    savePanel.nameFieldLabel = "File Name:"
+    savePanel.nameFieldStringValue = VideoEditorExporter.generateCopyFilename(from: state.sourceURL)
+    savePanel.allowedContentTypes = [.movie, .mpeg4Movie, .quickTimeMovie]
+    savePanel.canCreateDirectories = true
+
+    savePanel.beginSheetModal(for: window) { [weak self] response in
+      guard response == .OK, let outputURL = savePanel.url else { return }
+      self?.exportToCopy(outputURL: outputURL)
+    }
+  }
+
+  private func exportToCopy(outputURL: URL) {
     guard let state = state else { return }
 
     state.isExporting = true
@@ -208,7 +225,7 @@ final class VideoEditorWindowController: NSWindowController, NSWindowDelegate {
 
     Task {
       do {
-        _ = try await VideoEditorExporter.saveAsCopy(state: state) { [weak self] progress in
+        try await VideoEditorExporter.exportTrimmed(state: state, to: outputURL) { [weak self] progress in
           Task { @MainActor in
             self?.state?.exportProgress = progress
             self?.state?.exportStatusMessage = self?.progressMessage(for: progress) ?? "Exporting..."
@@ -216,7 +233,9 @@ final class VideoEditorWindowController: NSWindowController, NSWindowDelegate {
         }
         state.isExporting = false
         state.markAsSaved()
-        forceClose()
+
+        // Show exported file in Finder
+        NSWorkspace.shared.activateFileViewerSelecting([outputURL])
       } catch {
         state.isExporting = false
         showExportError(error)

@@ -74,13 +74,16 @@ class ZoomCompositor {
   enum ZoomCompositorError: Error, LocalizedError {
     case noVideoTrack
     case compositionFailed
+    case trackMismatch(expected: CMPersistentTrackID, available: [CMPersistentTrackID])
 
     var errorDescription: String? {
       switch self {
       case .noVideoTrack:
-        return "No video track found in asset"
+        return "Video file format is incompatible or corrupted. Please try re-recording."
       case .compositionFailed:
-        return "Failed to create zoom composition"
+        return "Failed to apply zoom effects. The video may be corrupted or in an unsupported format."
+      case .trackMismatch(let expected, let available):
+        return "Track ID mismatch: expected \(expected), available: \(available). Please try re-exporting."
       }
     }
   }
@@ -180,9 +183,23 @@ class ZoomVideoCompositorClass: NSObject, AVVideoCompositing {
     }
 
     guard let sourceBuffer = request.sourceFrame(byTrackID: instruction.trackID) else {
+      // Try to find any available source frame as fallback
+      let availableTrackIDs = request.sourceTrackIDs.compactMap { ($0 as? NSNumber)?.int32Value }
       print("❌ [Compositor] Frame \(frameCount): No source frame for trackID \(instruction.trackID)")
-      print("❌ [Compositor] Available track IDs: \(request.sourceTrackIDs)")
-      request.finish(with: ZoomCompositor.ZoomCompositorError.compositionFailed)
+      print("❌ [Compositor] Available track IDs: \(availableTrackIDs)")
+
+      // Try fallback: use first available track
+      if let firstTrackID = availableTrackIDs.first,
+         let fallbackBuffer = request.sourceFrame(byTrackID: firstTrackID) {
+        print("🔄 [Compositor] Frame \(frameCount): Using fallback trackID \(firstTrackID)")
+        request.finish(withComposedVideoFrame: fallbackBuffer)
+        return
+      }
+
+      request.finish(with: ZoomCompositor.ZoomCompositorError.trackMismatch(
+        expected: instruction.trackID,
+        available: availableTrackIDs
+      ))
       return
     }
 
