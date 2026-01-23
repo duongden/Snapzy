@@ -10,7 +10,8 @@ import UniformTypeIdentifiers
 
 /// Empty state view displayed when no video is loaded
 struct VideoEditorEmptyStateView: View {
-  var onVideoDropped: (URL) -> Void
+  /// Callback with (workingURL, originalURL) - originalURL is the user's actual file for "Replace Original"
+  var onVideoDropped: (URL, URL?) -> Void
 
   @State private var isTargeted = false
   @State private var showError = false
@@ -108,53 +109,74 @@ struct VideoEditorEmptyStateView: View {
       return false
     }
 
-    print("[VideoEditor Drop] Loading file representation for type: \(videoType.identifier)")
+    print("[VideoEditor Drop] Loading file for type: \(videoType.identifier)")
 
-    // Use loadFileRepresentation - it provides a temp file we need to copy
-    _ = provider.loadFileRepresentation(forTypeIdentifier: videoType.identifier) { tempURL, error in
+    // First, extract the original URL using loadItem (provides actual file URL)
+    provider.loadItem(forTypeIdentifier: videoType.identifier, options: nil) { item, error in
       if let error = error {
-        print("[VideoEditor Drop] loadFileRepresentation error: \(error)")
+        print("[VideoEditor Drop] loadItem error: \(error)")
         DispatchQueue.main.async {
           self.showError(message: "Failed to load file: \(error.localizedDescription)")
         }
         return
       }
 
-      guard let tempURL = tempURL else {
-        print("[VideoEditor Drop] No temp URL received")
-        DispatchQueue.main.async {
-          self.showError(message: "Could not read file")
-        }
-        return
+      // Extract original URL from the item
+      let originalURL: URL?
+      if let url = item as? URL {
+        originalURL = url
+        print("[VideoEditor Drop] Original URL from loadItem: \(url)")
+      } else if let data = item as? Data, let url = URL(dataRepresentation: data, relativeTo: nil) {
+        originalURL = url
+        print("[VideoEditor Drop] Original URL from Data: \(url)")
+      } else {
+        originalURL = nil
+        print("[VideoEditor Drop] Could not extract original URL from item: \(String(describing: item))")
       }
 
-      print("[VideoEditor Drop] Temp URL: \(tempURL)")
-      print("[VideoEditor Drop] Temp file exists: \(FileManager.default.fileExists(atPath: tempURL.path))")
-
-      // Copy temp file to a permanent location before it gets deleted
-      let fileName = tempURL.lastPathComponent
-      let destURL = FileManager.default.temporaryDirectory
-        .appendingPathComponent("VideoEditor_\(UUID().uuidString)")
-        .appendingPathComponent(fileName)
-
-      do {
-        // Create directory if needed
-        try FileManager.default.createDirectory(
-          at: destURL.deletingLastPathComponent(),
-          withIntermediateDirectories: true
-        )
-        // Copy file
-        try FileManager.default.copyItem(at: tempURL, to: destURL)
-        print("[VideoEditor Drop] Copied to: \(destURL)")
-        print("[VideoEditor Drop] Dest file exists: \(FileManager.default.fileExists(atPath: destURL.path))")
-
-        DispatchQueue.main.async {
-          self.validateAndLoad(url: destURL)
+      // Now load file representation to get a working copy
+      _ = provider.loadFileRepresentation(forTypeIdentifier: videoType.identifier) { tempURL, repError in
+        if let repError = repError {
+          print("[VideoEditor Drop] loadFileRepresentation error: \(repError)")
+          DispatchQueue.main.async {
+            self.showError(message: "Failed to load file: \(repError.localizedDescription)")
+          }
+          return
         }
-      } catch {
-        print("[VideoEditor Drop] Copy error: \(error)")
-        DispatchQueue.main.async {
-          self.showError(message: "Failed to prepare file: \(error.localizedDescription)")
+
+        guard let tempURL = tempURL else {
+          print("[VideoEditor Drop] No temp URL received")
+          DispatchQueue.main.async {
+            self.showError(message: "Could not read file")
+          }
+          return
+        }
+
+        print("[VideoEditor Drop] Temp URL: \(tempURL)")
+
+        // Copy temp file to a permanent location before it gets deleted
+        let fileName = tempURL.lastPathComponent
+        let destURL = FileManager.default.temporaryDirectory
+          .appendingPathComponent("VideoEditor_\(UUID().uuidString)")
+          .appendingPathComponent(fileName)
+
+        do {
+          try FileManager.default.createDirectory(
+            at: destURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+          )
+          try FileManager.default.copyItem(at: tempURL, to: destURL)
+          print("[VideoEditor Drop] Copied to: \(destURL)")
+          print("[VideoEditor Drop] Original URL to preserve: \(originalURL?.path ?? "nil")")
+
+          DispatchQueue.main.async {
+            self.validateAndLoad(url: destURL, originalURL: originalURL)
+          }
+        } catch {
+          print("[VideoEditor Drop] Copy error: \(error)")
+          DispatchQueue.main.async {
+            self.showError(message: "Failed to prepare file: \(error.localizedDescription)")
+          }
         }
       }
     }
@@ -171,12 +193,13 @@ struct VideoEditorEmptyStateView: View {
 
     panel.begin { response in
       if response == .OK, let url = panel.url {
-        validateAndLoad(url: url)
+        // Browse uses original file directly - pass same URL as both working and original
+        validateAndLoad(url: url, originalURL: url)
       }
     }
   }
 
-  private func validateAndLoad(url: URL) {
+  private func validateAndLoad(url: URL, originalURL: URL? = nil) {
     // Validate file exists
     guard FileManager.default.fileExists(atPath: url.path) else {
       showError(message: "File not found")
@@ -190,7 +213,7 @@ struct VideoEditorEmptyStateView: View {
       return
     }
 
-    onVideoDropped(url)
+    onVideoDropped(url, originalURL)
   }
 
   private func showError(message: String) {

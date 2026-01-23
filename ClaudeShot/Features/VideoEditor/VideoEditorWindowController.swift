@@ -17,8 +17,8 @@ final class VideoEditorWindowController: NSWindowController, NSWindowDelegate {
   private var state: VideoEditorState?
   private var isEmptyState: Bool = false
 
-  /// Callback when video is loaded in empty state
-  var onVideoLoaded: ((URL) -> Void)?
+  /// Callback when video is loaded in empty state - (workingURL, originalURL)
+  var onVideoLoaded: ((URL, URL?) -> Void)?
 
   /// Initialize with QuickAccessItem (existing behavior)
   init(item: QuickAccessItem) {
@@ -35,6 +35,17 @@ final class VideoEditorWindowController: NSWindowController, NSWindowDelegate {
   init(url: URL) {
     self.sourceURL = url
     self.state = VideoEditorState(url: url)
+    self.isEmptyState = false
+
+    super.init(window: Self.createWindow())
+    window?.delegate = self
+    setupContent()
+  }
+
+  /// Initialize with URL and optional original URL (for drag & drop with temp copy)
+  init(url: URL, originalURL: URL?) {
+    self.sourceURL = url
+    self.state = VideoEditorState(url: url, originalURL: originalURL)
     self.isEmptyState = false
 
     super.init(window: Self.createWindow())
@@ -87,8 +98,8 @@ final class VideoEditorWindowController: NSWindowController, NSWindowDelegate {
   }
 
   private func setupEmptyContent() {
-    let emptyView = VideoEditorEmptyStateView { [weak self] url in
-      self?.onVideoLoaded?(url)
+    let emptyView = VideoEditorEmptyStateView { [weak self] url, originalURL in
+      self?.onVideoLoaded?(url, originalURL)
     }
     window?.contentView = NSHostingView(rootView: emptyView)
   }

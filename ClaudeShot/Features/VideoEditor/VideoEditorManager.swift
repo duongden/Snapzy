@@ -55,7 +55,7 @@ final class VideoEditorManager {
   }
 
   /// Open video editor for a video URL directly
-  func openEditor(for url: URL) {
+  func openEditor(for url: URL, originalURL: URL? = nil) {
     // Validate it's a video file
     guard isVideoFile(url) else { return }
 
@@ -65,7 +65,7 @@ final class VideoEditorManager {
       return
     }
 
-    let controller = VideoEditorWindowController(url: url)
+    let controller = VideoEditorWindowController(url: url, originalURL: originalURL)
     urlWindowControllers[url] = controller
 
     // Remove from tracking when window closes
@@ -94,8 +94,8 @@ final class VideoEditorManager {
     }
 
     let controller = VideoEditorWindowController()
-    controller.onVideoLoaded = { [weak self] url in
-      self?.handleVideoLoaded(url: url, from: controller)
+    controller.onVideoLoaded = { [weak self] url, originalURL in
+      self?.handleVideoLoaded(url: url, originalURL: originalURL, from: controller)
     }
     emptyWindowController = controller
 
@@ -123,11 +123,11 @@ final class VideoEditorManager {
   }
 
   /// Handle video loaded in empty editor
-  private func handleVideoLoaded(url: URL, from controller: VideoEditorWindowController) {
+  private func handleVideoLoaded(url: URL, originalURL: URL?, from controller: VideoEditorWindowController) {
     // Close empty window and open proper editor
     emptyWindowController = nil
     controller.window?.close()
-    openEditor(for: url)
+    openEditor(for: url, originalURL: originalURL)
   }
 
   private func cleanupURLWindow(for url: URL) {
