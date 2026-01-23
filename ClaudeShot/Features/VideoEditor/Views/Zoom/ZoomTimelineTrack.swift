@@ -104,8 +104,8 @@ struct ZoomTimelineTrack: View {
   private func beginDrag(at location: CGPoint) {
     let tappedTime = (location.x / timelineWidth) * videoDuration
 
-    // Find segment at tap location
-    guard let segment = state.activeZoomSegment(at: tappedTime) else {
+    // Find segment at tap location (including disabled segments for interaction)
+    guard let segment = state.zoomSegment(at: tappedTime) else {
       dragMode = .none
       return
     }
@@ -184,8 +184,8 @@ struct ZoomTimelineTrack: View {
     let tappedTime = (location.x / timelineWidth) * videoDuration
     print("🎯 [Tap] location: \(location), time: \(tappedTime)s")
 
-    if let segment = state.activeZoomSegment(at: tappedTime) {
-      print("🎯 [Tap] Selected segment: \(segment.id)")
+    if let segment = state.zoomSegment(at: tappedTime) {
+      print("🎯 [Tap] Selected segment: \(segment.id) (enabled: \(segment.isEnabled))")
       state.selectZoom(id: segment.id)
     } else {
       print("🎯 [Tap] Deselecting (empty area)")

@@ -340,9 +340,14 @@ final class VideoEditorState: ObservableObject {
     zoomSegments[index].isEnabled.toggle()
   }
 
-  /// Get the active zoom segment at a given time
+  /// Get the active zoom segment at a given time (enabled segments only - for playback)
   func activeZoomSegment(at time: TimeInterval) -> ZoomSegment? {
     ZoomCalculator.activeSegment(at: time, in: zoomSegments)
+  }
+
+  /// Get any zoom segment at a given time (including disabled - for UI interaction)
+  func zoomSegment(at time: TimeInterval) -> ZoomSegment? {
+    zoomSegments.filter { $0.contains(time: time) }.last
   }
 
   /// Get the currently selected zoom segment
