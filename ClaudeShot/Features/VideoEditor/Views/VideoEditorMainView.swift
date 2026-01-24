@@ -82,6 +82,28 @@ struct VideoEditorMainView: View {
       .animation(.easeInOut(duration: 0.2), value: state.isVideoInfoSidebarVisible)
     }
     .background(Color(NSColor.windowBackgroundColor))
+    // Keyboard shortcuts for zoom operations
+    .background {
+      // Add zoom at playhead (Z key)
+      Button("") {
+        let currentTime = CMTimeGetSeconds(state.currentTime)
+        state.addZoom(at: currentTime)
+      }
+      .keyboardShortcut("z", modifiers: [])
+      .opacity(0)
+      .frame(width: 0, height: 0)
+
+      // Delete selected zoom (Delete key)
+      Button("") {
+        if let id = state.selectedZoomId {
+          state.removeZoom(id: id)
+        }
+      }
+      .keyboardShortcut(.delete, modifiers: [])
+      .opacity(0)
+      .frame(width: 0, height: 0)
+      .disabled(state.selectedZoomId == nil)
+    }
     .overlay {
       // Export progress overlay
       if state.isExporting {

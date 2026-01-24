@@ -23,6 +23,11 @@ struct ZoomTimelineTrack: View {
   @State private var dragInitialStartTime: TimeInterval = 0
   @State private var dragInitialEndTime: TimeInterval = 0
 
+  // MARK: - Hover State (Placeholder Preview)
+
+  @State private var isHovering: Bool = false
+  @State private var hoverLocation: CGPoint = .zero
+
   private enum DragMode {
     case none
     case position    // Dragging entire segment
@@ -39,6 +44,33 @@ struct ZoomTimelineTrack: View {
   private var pixelsPerSecond: CGFloat {
     guard videoDuration > 0 else { return 1 }
     return timelineWidth / videoDuration
+  }
+
+  // MARK: - Hover Computed Properties
+
+  private var hoverTime: TimeInterval {
+    guard videoDuration > 0 else { return 0 }
+    return (hoverLocation.x / timelineWidth) * videoDuration
+  }
+
+  private var isHoveringOverSegment: Bool {
+    state.zoomSegment(at: hoverTime) != nil
+  }
+
+  private var shouldShowPlaceholder: Bool {
+    isHovering && !isHoveringOverSegment && dragMode == .none
+  }
+
+  private var placeholderWidth: CGFloat {
+    guard videoDuration > 0 else { return 32 }
+    return (ZoomSegment.defaultDuration / videoDuration) * timelineWidth
+  }
+
+  private var placeholderX: CGFloat {
+    // Center placeholder on mouse position
+    let centeredX = hoverLocation.x - (placeholderWidth / 2)
+    // Clamp to track bounds
+    return max(0, min(centeredX, timelineWidth - placeholderWidth))
   }
 
   // MARK: - Body
@@ -73,12 +105,29 @@ struct ZoomTimelineTrack: View {
           videoDuration: videoDuration
         )
       }
+
+      // Placeholder preview for adding new zoom
+      if shouldShowPlaceholder {
+        ZoomPlaceholderView(
+          width: placeholderWidth,
+          xPosition: placeholderX
+        )
+      }
     }
     .frame(height: trackHeight)
     .contentShape(Rectangle())
     .gesture(unifiedDragGesture)
     .onTapGesture { location in
       handleTap(at: location)
+    }
+    .onContinuousHover { phase in
+      switch phase {
+      case .active(let location):
+        isHovering = true
+        hoverLocation = location
+      case .ended:
+        isHovering = false
+      }
     }
     .contextMenu {
       trackContextMenu
@@ -185,11 +234,13 @@ struct ZoomTimelineTrack: View {
     print("🎯 [Tap] location: \(location), time: \(tappedTime)s")
 
     if let segment = state.zoomSegment(at: tappedTime) {
+      // Tapped on existing segment - select it
       print("🎯 [Tap] Selected segment: \(segment.id) (enabled: \(segment.isEnabled))")
       state.selectZoom(id: segment.id)
     } else {
-      print("🎯 [Tap] Deselecting (empty area)")
-      state.selectZoom(id: nil)
+      // Tapped on empty area - add new zoom centered at tap position
+      print("🎯 [Tap] Adding zoom at: \(tappedTime)s")
+      state.addZoom(at: tappedTime)
     }
   }
 
@@ -198,9 +249,11 @@ struct ZoomTimelineTrack: View {
   @ViewBuilder
   private var trackContextMenu: some View {
     Button {
-      addZoomAtPlayhead()
+      // Add at hover position if hovering, otherwise at playhead
+      let addTime = isHovering ? hoverTime : CMTimeGetSeconds(state.currentTime)
+      state.addZoom(at: addTime)
     } label: {
-      Label("Add Zoom at Playhead", systemImage: "plus.magnifyingglass")
+      Label(isHovering ? "Add Zoom Here" : "Add Zoom at Playhead", systemImage: "plus.magnifyingglass")
     }
 
     if state.selectedZoomId != nil {
@@ -339,6 +392,39 @@ private struct ZoomBlockVisual: View {
       return ZoomColors.primaryDark
     }
     return ZoomColors.primary
+  }
+}
+
+// MARK: - Zoom Placeholder View
+
+/// Ghost placeholder showing where new zoom will be added on click
+private struct ZoomPlaceholderView: View {
+  let width: CGFloat
+  let xPosition: CGFloat
+
+  var body: some View {
+    RoundedRectangle(cornerRadius: 6)
+      .fill(ZoomColors.primary.opacity(0.2))
+      .overlay(
+        RoundedRectangle(cornerRadius: 6)
+          .strokeBorder(
+            ZoomColors.primary.opacity(0.5),
+            style: StrokeStyle(lineWidth: 1.5, dash: [6, 4])
+          )
+      )
+      .overlay(
+        HStack(spacing: 4) {
+          Image(systemName: "plus.magnifyingglass")
+            .font(.system(size: 10, weight: .medium))
+          Text("Click to add")
+            .font(.system(size: 9, weight: .medium))
+        }
+        .foregroundColor(ZoomColors.primary.opacity(0.8))
+      )
+      .frame(width: width, height: 28)
+      .offset(x: xPosition)
+      .allowsHitTesting(false)
+      .transition(.opacity.animation(.easeOut(duration: 0.15)))
   }
 }
 
