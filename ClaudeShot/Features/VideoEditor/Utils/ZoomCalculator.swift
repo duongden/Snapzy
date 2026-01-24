@@ -36,8 +36,12 @@ enum ZoomCalculator {
     let maxOriginX = frameSize.width - cropWidth
     let maxOriginY = frameSize.height - cropHeight
 
+    // Flip Y for CoreImage coordinate system (origin at bottom-left, Y increases upward)
+    // SwiftUI uses top-left origin where Y increases downward
+    let flippedCenterY = 1.0 - center.y
+
     let originX = max(0, min((center.x * frameSize.width) - (cropWidth / 2), maxOriginX))
-    let originY = max(0, min((center.y * frameSize.height) - (cropHeight / 2), maxOriginY))
+    let originY = max(0, min((flippedCenterY * frameSize.height) - (cropHeight / 2), maxOriginY))
 
     return CGRect(x: originX, y: originY, width: cropWidth, height: cropHeight)
   }
