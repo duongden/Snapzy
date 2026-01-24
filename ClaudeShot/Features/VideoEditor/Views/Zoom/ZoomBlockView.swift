@@ -10,11 +10,19 @@ import SwiftUI
 // MARK: - Zoom Colors
 
 enum ZoomColors {
-  static let primary = Color(red: 0.35, green: 0.55, blue: 0.95)      // Solid blue
-  static let primaryDark = Color(red: 0.25, green: 0.45, blue: 0.85)  // Darker variant
-  static let disabled = Color(red: 0.45, green: 0.45, blue: 0.50)     // Gray
+  // Primary colors - use system accent for native feel
+  static var primary: Color { Color(NSColor.controlAccentColor) }
+  static var primaryDark: Color { Color(NSColor.controlAccentColor).opacity(0.85) }
+
+  // Semantic colors
+  static let disabled = Color(NSColor.disabledControlTextColor)
   static let selected = Color.white
   static let handleHighlight = Color.white.opacity(0.8)
+
+  // Additional semantic colors for consistency
+  static var background: Color { Color(NSColor.controlBackgroundColor) }
+  static var secondaryLabel: Color { Color(NSColor.secondaryLabelColor) }
+  static var tertiaryLabel: Color { Color(NSColor.tertiaryLabelColor) }
 }
 
 /// Individual zoom block with drag handles for resizing
@@ -39,8 +47,8 @@ struct ZoomBlockView: View {
   @State private var isHoveringLeftHandle = false
   @State private var isHoveringRightHandle = false
 
-  private let handleWidth: CGFloat = 10
-  private let minBlockWidth: CGFloat = 24
+  private let handleWidth: CGFloat = 8
+  private let minBlockWidth: CGFloat = 32
 
   // MARK: - Computed Properties
 
@@ -75,7 +83,7 @@ struct ZoomBlockView: View {
           RoundedRectangle(cornerRadius: 6)
             .strokeBorder(isSelected ? ZoomColors.selected : Color.clear, lineWidth: 2)
         )
-        .shadow(color: isSelected ? ZoomColors.primary.opacity(0.4) : .clear, radius: 4, y: 2)
+        .shadow(color: isSelected ? ZoomColors.primary.opacity(0.35) : .clear, radius: 3, y: 1)
 
       // Content
       HStack(spacing: 4) {

@@ -59,8 +59,8 @@ struct ZoomCenterPicker: View {
     let regionHeight = (pickerSize * 9 / 16) * 0.4
 
     return Rectangle()
-      .strokeBorder(Color.white.opacity(0.5), lineWidth: 1)
-      .background(Color.white.opacity(0.1))
+      .strokeBorder(ZoomColors.primary.opacity(0.6), lineWidth: 1.5)
+      .background(ZoomColors.primary.opacity(0.15))
       .frame(width: regionWidth, height: regionHeight)
       .position(
         x: center.x * pickerSize,

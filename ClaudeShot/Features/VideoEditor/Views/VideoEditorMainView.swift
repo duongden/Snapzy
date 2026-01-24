@@ -72,7 +72,7 @@ struct VideoEditorMainView: View {
             state: state,
             previewImage: currentFrameImage
           )
-          .frame(width: 220, alignment: .topLeading)
+          .frame(width: 320, alignment: .topLeading)
           .frame(maxHeight: .infinity, alignment: .top)
           .background(Color(NSColor.controlBackgroundColor))
         }

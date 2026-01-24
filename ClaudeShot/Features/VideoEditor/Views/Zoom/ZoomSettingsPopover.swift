@@ -40,7 +40,7 @@ struct ZoomSettingsPopover: View {
       Spacer(minLength: 0)
     }
     .padding(12)
-    .frame(width: 220, alignment: .topLeading)
+    .frame(width: 320, alignment: .topLeading)
     .frame(maxHeight: .infinity, alignment: .top)
     .onAppear {
       syncLocalState()
@@ -55,7 +55,7 @@ struct ZoomSettingsPopover: View {
   private var header: some View {
     HStack {
       Image(systemName: "plus.magnifyingglass")
-        .foregroundColor(.purple)
+        .foregroundColor(ZoomColors.primary)
 
       Text("Zoom Settings")
         .font(.system(size: 12, weight: .semibold))
@@ -67,7 +67,7 @@ struct ZoomSettingsPopover: View {
           .font(.system(size: 9, weight: .medium))
           .padding(.horizontal, 6)
           .padding(.vertical, 2)
-          .background(Color.purple.opacity(0.2))
+          .background(ZoomColors.primary.opacity(0.2))
           .cornerRadius(4)
       }
     }
@@ -120,8 +120,8 @@ struct ZoomSettingsPopover: View {
               .padding(.vertical, 3)
               .background(
                 localZoomLevel == level
-                  ? Color.purple.opacity(0.3)
-                  : Color.gray.opacity(0.2)
+                  ? ZoomColors.primary.opacity(0.3)
+                  : Color.white.opacity(0.1)
               )
               .cornerRadius(4)
           }
@@ -157,8 +157,8 @@ struct ZoomSettingsPopover: View {
               .frame(width: 24, height: 24)
               .background(
                 isNearPreset(localCenter, preset.point)
-                  ? Color.purple.opacity(0.3)
-                  : Color.gray.opacity(0.2)
+                  ? ZoomColors.primary.opacity(0.3)
+                  : Color.white.opacity(0.1)
               )
               .cornerRadius(4)
           }
@@ -184,7 +184,7 @@ struct ZoomSettingsPopover: View {
         .font(.system(size: 10))
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
-        .background(Color.gray.opacity(0.2))
+        .background(Color.white.opacity(0.1))
         .cornerRadius(4)
       }
       .buttonStyle(.plain)

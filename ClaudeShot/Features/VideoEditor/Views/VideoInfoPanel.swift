@@ -19,6 +19,21 @@ struct VideoInfoPanel: View {
       InfoItem(label: "Duration", value: state.formattedDuration)
 
       Spacer()
+
+      // Zoom segments count badge
+      if !state.zoomSegments.isEmpty {
+        HStack(spacing: 4) {
+          Image(systemName: "plus.magnifyingglass")
+            .font(.system(size: 10))
+          Text("\(state.zoomSegments.count) zoom\(state.zoomSegments.count > 1 ? "s" : "")")
+            .font(.system(size: 10, weight: .medium))
+        }
+        .foregroundColor(ZoomColors.primary)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(ZoomColors.primary.opacity(0.15))
+        .cornerRadius(4)
+      }
     }
     .padding(.vertical, 8)
     .padding(.horizontal, 12)

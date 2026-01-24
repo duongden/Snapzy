@@ -71,8 +71,8 @@ final class VideoEditorWindowController: NSWindowController, NSWindowDelegate {
 
   private static func createWindow() -> VideoEditorWindow {
     let screen = NSScreen.main ?? NSScreen.screens.first!
-    let windowWidth: CGFloat = 1100
-    let windowHeight: CGFloat = 768
+    let windowWidth: CGFloat = 1200
+    let windowHeight: CGFloat = 800
 
     let origin = NSPoint(
       x: (screen.frame.width - windowWidth) / 2,

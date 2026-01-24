@@ -14,7 +14,7 @@ struct ZoomTimelineTrack: View {
   let timelineWidth: CGFloat
 
   private let trackHeight: CGFloat = 32
-  private let handleWidth: CGFloat = 10
+  private let handleWidth: CGFloat = 8
 
   // MARK: - Drag State (Track-Level)
 
@@ -256,8 +256,8 @@ private struct ZoomBlockVisual: View {
   let timelineWidth: CGFloat
   let videoDuration: TimeInterval
 
-  private let handleWidth: CGFloat = 10
-  private let minBlockWidth: CGFloat = 24
+  private let handleWidth: CGFloat = 8
+  private let minBlockWidth: CGFloat = 32
 
   private var blockX: CGFloat {
     guard videoDuration > 0 else { return 0 }
