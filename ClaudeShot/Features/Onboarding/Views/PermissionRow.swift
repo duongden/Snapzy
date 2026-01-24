@@ -12,6 +12,7 @@ struct PermissionRow: View {
   let title: String
   let description: String
   let isGranted: Bool
+  var isRequired: Bool = true
   let onGrant: () -> Void
 
   var body: some View {
@@ -28,8 +29,28 @@ struct PermissionRow: View {
 
       // Title and Description
       VStack(alignment: .leading, spacing: 4) {
-        Text(title)
-          .font(.system(size: 14, weight: .semibold))
+        HStack(spacing: 6) {
+          Text(title)
+            .font(.system(size: 14, weight: .semibold))
+
+          if isRequired {
+            Text("Required")
+              .font(.caption2)
+              .padding(.horizontal, 6)
+              .padding(.vertical, 2)
+              .background(Color.orange.opacity(0.2))
+              .foregroundColor(.orange)
+              .cornerRadius(4)
+          } else {
+            Text("Optional")
+              .font(.caption2)
+              .padding(.horizontal, 6)
+              .padding(.vertical, 2)
+              .background(Color.gray.opacity(0.2))
+              .foregroundColor(.secondary)
+              .cornerRadius(4)
+          }
+        }
 
         Text(description)
           .font(.system(size: 12))
@@ -40,14 +61,24 @@ struct PermissionRow: View {
 
       // Status
       if isGranted {
-        Image(systemName: "checkmark.circle.fill")
-          .font(.system(size: 24))
-          .foregroundColor(.green)
+        HStack(spacing: 4) {
+          Image(systemName: "checkmark.circle.fill")
+            .font(.system(size: 16))
+            .foregroundColor(.green)
+          Text("Granted")
+            .font(.caption)
+            .foregroundColor(.green)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(Color.green.opacity(0.1))
+        .cornerRadius(6)
       } else {
         Button("Grant Access") {
           onGrant()
         }
         .buttonStyle(VSDesignSystem.PrimaryButtonStyle())
+        .controlSize(.small)
       }
     }
     .padding(16)
@@ -63,15 +94,17 @@ struct PermissionRow: View {
     PermissionRow(
       icon: "rectangle.dashed.badge.record",
       title: "Screen Recording",
-      description: "Required to capture screenshots",
+      description: "Required for screenshots",
       isGranted: false,
+      isRequired: true,
       onGrant: {}
     )
     PermissionRow(
-      icon: "rectangle.dashed.badge.record",
-      title: "Screen Recording",
-      description: "Required to capture screenshots",
+      icon: "mic.fill",
+      title: "Microphone",
+      description: "Optional for voice recording",
       isGranted: true,
+      isRequired: false,
       onGrant: {}
     )
   }

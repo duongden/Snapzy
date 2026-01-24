@@ -53,6 +53,24 @@ struct VSDesignSystem {
         .opacity(configuration.isPressed ? 0.7 : 1.0)
     }
   }
+
+  // MARK: - Success Button Style
+
+  struct SuccessButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+      configuration.label
+        .font(.system(size: 14, weight: .semibold))
+        .foregroundColor(.white)
+        .padding(.vertical, 8)
+        .padding(.horizontal, 20)
+        .background(
+          RoundedRectangle(cornerRadius: 10)
+            .fill(Color.green)
+        )
+        .opacity(configuration.isPressed ? 0.8 : 1.0)
+        .shadow(color: .black.opacity(0.15), radius: 2, x: 0, y: 1)
+    }
+  }
 }
 
 // MARK: - Convenience Extensions

@@ -15,24 +15,27 @@ struct WelcomeView: View {
       Spacer()
 
       // App Icon
-      Image(systemName: "camera.viewfinder")
-        .font(.system(size: 60))
-        .foregroundColor(.blue)
-        .frame(width: 80, height: 80)
-        .background(
-          RoundedRectangle(cornerRadius: 18)
-            .fill(Color.blue.opacity(0.1))
-        )
+      Image(nsImage: NSApp.applicationIconImage)
+        .resizable()
+        .frame(width: 128, height: 128)
 
       // Title
-      Text("Welcome to ClaudeShot")
+      Text("ClaudeShot")
         .vsHeading()
 
       // Subtitle
-      Text("Capture screenshots and record screen videos with powerful annotation tools.")
+      Text("A powerful screenshot & screen recording app for macOS")
         .vsBody()
         .multilineTextAlignment(.center)
-        .frame(maxWidth: 300)
+        .frame(maxWidth: 320)
+
+      // Feature highlights
+      VStack(alignment: .leading, spacing: 12) {
+        FeatureRow(icon: "crop", text: "Capture area or fullscreen screenshots")
+        FeatureRow(icon: "video", text: "Record screen with audio")
+        FeatureRow(icon: "pencil.and.outline", text: "Annotate and edit captures")
+      }
+      .padding(.top, 8)
 
       Spacer()
 
@@ -47,6 +50,26 @@ struct WelcomeView: View {
     }
     .padding(40)
     .frame(maxWidth: .infinity, maxHeight: .infinity)
+  }
+}
+
+// MARK: - Feature Row Component
+
+private struct FeatureRow: View {
+  let icon: String
+  let text: String
+
+  var body: some View {
+    HStack(spacing: 12) {
+      Image(systemName: icon)
+        .font(.system(size: 14))
+        .foregroundColor(.blue)
+        .frame(width: 24)
+
+      Text(text)
+        .font(.system(size: 13))
+        .foregroundColor(.secondary)
+    }
   }
 }
 

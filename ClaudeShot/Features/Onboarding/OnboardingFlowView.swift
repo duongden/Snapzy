@@ -11,6 +11,7 @@ enum OnboardingStep {
   case welcome
   case permissions
   case shortcuts
+  case completion
 }
 
 struct OnboardingFlowView: View {
@@ -47,20 +48,29 @@ struct OnboardingFlowView: View {
       case .shortcuts:
         ShortcutsView(
           onDecline: {
-            completeOnboarding(enableShortcuts: false)
+            withAnimation(.easeInOut(duration: 0.3)) {
+              currentStep = .completion
+            }
           },
           onAccept: {
-            completeOnboarding(enableShortcuts: true)
+            KeyboardShortcutManager.shared.enable()
+            withAnimation(.easeInOut(duration: 0.3)) {
+              currentStep = .completion
+            }
+          }
+        )
+
+      case .completion:
+        CompletionView(
+          onComplete: {
+            completeOnboarding()
           }
         )
       }
     }
   }
 
-  private func completeOnboarding(enableShortcuts: Bool) {
-    if enableShortcuts {
-      KeyboardShortcutManager.shared.enable()
-    }
+  private func completeOnboarding() {
     UserDefaults.standard.set(true, forKey: Self.onboardingCompletedKey)
     onComplete()
   }
@@ -76,5 +86,5 @@ struct OnboardingFlowView: View {
 
 #Preview {
   OnboardingFlowView(onComplete: {})
-    .frame(width: 500, height: 450)
+    .frame(width: 500, height: 500)
 }

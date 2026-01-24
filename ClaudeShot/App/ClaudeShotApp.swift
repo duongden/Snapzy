@@ -48,7 +48,7 @@ struct ClaudeShotApp: App {
           .filter { $0.identifier?.rawValue.contains("onboarding") == true }
           .forEach { $0.close() }
       })
-      .frame(width: 500, height: 450)
+      .frame(width: 700, height: 600)
       .preferredColorScheme(themeManager.systemAppearance)
     }
     .windowStyle(.hiddenTitleBar)
