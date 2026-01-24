@@ -55,7 +55,7 @@ struct VideoBackgroundSidebarView: View {
     VStack(alignment: .leading, spacing: 6) {
       SidebarSectionHeader(title: "Gradients")
 
-      LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 4), spacing: 6) {
+      LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: 5), spacing: 4) {
         ForEach(GradientPreset.allCases) { preset in
           GradientPresetButton(
             preset: preset,

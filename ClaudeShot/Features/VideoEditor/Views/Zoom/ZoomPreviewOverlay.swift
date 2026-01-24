@@ -19,25 +19,36 @@ struct ZoomableVideoPlayerSection: View {
 
   var body: some View {
     GeometryReader { geometry in
+      let scaleFactor = previewScaleFactor(for: geometry.size)
+      let scaledPadding = state.backgroundPadding * scaleFactor
+      let scaledCornerRadius = state.backgroundCornerRadius * scaleFactor
+      let scaledShadowRadius = state.backgroundShadowIntensity * 20 * scaleFactor
+      let scaledShadowY = state.backgroundShadowIntensity * 10 * scaleFactor
+
+      // Calculate the composite frame size (video + padding) maintaining aspect ratio
+      let compositeSize = calculateCompositeSize(containerSize: geometry.size, scaledPadding: scaledPadding)
+
       ZStack {
-        // Background layer
+        // Background layer - fills composite area only, no black gaps
         if state.backgroundStyle != .none {
           backgroundView
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .frame(width: compositeSize.width, height: compositeSize.height)
+            .clipped()
         }
 
-        // Video with effects
+        // Video with effects - use scaled values for WYSIWYG with export
         videoPlayerContent(in: geometry.size)
-          .cornerRadius(state.backgroundCornerRadius)
+          .cornerRadius(scaledCornerRadius)
           .shadow(
             color: .black.opacity(Double(state.backgroundShadowIntensity) * 0.5),
-            radius: state.backgroundShadowIntensity * 20,
+            radius: scaledShadowRadius,
             x: 0,
-            y: state.backgroundShadowIntensity * 10
+            y: scaledShadowY
           )
-          .padding(state.backgroundPadding)
-          .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: alignmentValue)
+          .padding(scaledPadding)
       }
+      .frame(width: compositeSize.width, height: compositeSize.height)
+      .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: alignmentValue)
     }
     .onReceive(state.$currentTime) { time in
       updateZoomState(at: CMTimeGetSeconds(time))
@@ -127,6 +138,73 @@ struct ZoomableVideoPlayerSection: View {
     )
 
     return transform.offset
+  }
+
+  // MARK: - Preview Scale Factor
+
+  /// Calculate scale factor between preview container and video natural size
+  /// This ensures padding/cornerRadius in preview matches export proportionally
+  private func previewScaleFactor(for containerSize: CGSize) -> CGFloat {
+    let naturalSize = state.naturalSize
+    guard naturalSize.width > 0 && naturalSize.height > 0 &&
+          containerSize.width > 0 && containerSize.height > 0 else { return 1.0 }
+
+    // Calculate how the video fits in the container (aspect fit)
+    let containerAspect = containerSize.width / containerSize.height
+    let videoAspect = naturalSize.width / naturalSize.height
+
+    let fittedSize: CGSize
+    if containerAspect > videoAspect {
+      // Container is wider - video height fills container
+      fittedSize = CGSize(
+        width: containerSize.height * videoAspect,
+        height: containerSize.height
+      )
+    } else {
+      // Container is taller - video width fills container
+      fittedSize = CGSize(
+        width: containerSize.width,
+        height: containerSize.width / videoAspect
+      )
+    }
+
+    // Scale factor = preview size / natural size
+    // This converts "pixels" in state to "points" in preview
+    return min(fittedSize.width / naturalSize.width, fittedSize.height / naturalSize.height)
+  }
+
+  // MARK: - Composite Size Calculation
+
+  /// Calculate the size of the composite frame (video + padding) that fits within the container
+  /// This ensures background fills exactly the video+padding area with no black gaps
+  private func calculateCompositeSize(containerSize: CGSize, scaledPadding: CGFloat) -> CGSize {
+    let naturalSize = state.naturalSize
+    guard naturalSize.width > 0 && naturalSize.height > 0 &&
+          containerSize.width > 0 && containerSize.height > 0 else {
+      return containerSize
+    }
+
+    // Calculate the composite aspect ratio (video + padding on all sides)
+    let compositeNaturalWidth = naturalSize.width + (state.backgroundPadding * 2)
+    let compositeNaturalHeight = naturalSize.height + (state.backgroundPadding * 2)
+    let compositeAspect = compositeNaturalWidth / compositeNaturalHeight
+
+    // Fit composite into container maintaining aspect ratio
+    let containerAspect = containerSize.width / containerSize.height
+
+    if containerAspect > compositeAspect {
+      // Container is wider - composite height fills container
+      return CGSize(
+        width: containerSize.height * compositeAspect,
+        height: containerSize.height
+      )
+    } else {
+      // Container is taller - composite width fills container
+      return CGSize(
+        width: containerSize.width,
+        height: containerSize.width / compositeAspect
+      )
+    }
   }
 
   // MARK: - Zoom Indicator

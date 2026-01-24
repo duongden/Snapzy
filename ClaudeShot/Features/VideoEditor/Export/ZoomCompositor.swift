@@ -312,6 +312,15 @@ class ZoomVideoCompositorClass: NSObject, AVVideoCompositing {
     // Apply background if needed
     let hasBackground = instruction.backgroundStyle != .none && instruction.backgroundPadding > 0
     if hasBackground {
+      // Apply corner radius to video frame if specified
+      if instruction.cornerRadius > 0 {
+        processedImage = applyCornerRadius(
+          to: processedImage,
+          cornerRadius: instruction.cornerRadius,
+          size: instruction.renderSize
+        )
+      }
+
       // Position video in center with padding
       let translatedVideo = processedImage.transformed(
         by: CGAffineTransform(translationX: instruction.backgroundPadding, y: instruction.backgroundPadding)
@@ -335,6 +344,61 @@ class ZoomVideoCompositorClass: NSObject, AVVideoCompositing {
     ciContext.render(processedImage, to: outputBuffer)
 
     return outputBuffer
+  }
+
+  /// Apply corner radius mask to a CIImage
+  private func applyCornerRadius(to image: CIImage, cornerRadius: CGFloat, size: CGSize) -> CIImage {
+    let extent = image.extent
+
+    // Create a rounded rectangle mask using CGContext
+    let maskSize = CGSize(width: extent.width, height: extent.height)
+    guard let cgContext = CGContext(
+      data: nil,
+      width: Int(maskSize.width),
+      height: Int(maskSize.height),
+      bitsPerComponent: 8,
+      bytesPerRow: Int(maskSize.width) * 4,
+      space: CGColorSpaceCreateDeviceRGB(),
+      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+    ) else {
+      return image
+    }
+
+    // Scale corner radius proportionally to video size
+    // Use the smaller dimension as reference for consistent appearance
+    let scaleFactor = min(extent.width, extent.height) / min(size.width, size.height)
+    let scaledCornerRadius = cornerRadius * scaleFactor
+
+    // Clamp corner radius to prevent visual artifacts (max = half of smaller dimension)
+    let maxRadius = min(maskSize.width, maskSize.height) / 2
+    let clampedCornerRadius = min(scaledCornerRadius, maxRadius)
+
+    // Draw white rounded rectangle (mask)
+    cgContext.setFillColor(CGColor.white)
+    let maskRect = CGRect(origin: .zero, size: maskSize)
+    let path = CGPath(roundedRect: maskRect, cornerWidth: clampedCornerRadius, cornerHeight: clampedCornerRadius, transform: nil)
+    cgContext.addPath(path)
+    cgContext.fillPath()
+
+    guard let maskCGImage = cgContext.makeImage() else {
+      return image
+    }
+
+    let maskImage = CIImage(cgImage: maskCGImage)
+
+    // Use CIBlendWithAlphaMask to apply the rounded corner mask
+    guard let blendFilter = CIFilter(name: "CIBlendWithAlphaMask") else {
+      return image
+    }
+
+    // Create transparent background for masking
+    let transparentBackground = CIImage(color: .clear).cropped(to: extent)
+
+    blendFilter.setValue(image, forKey: kCIInputImageKey)
+    blendFilter.setValue(transparentBackground, forKey: kCIInputBackgroundImageKey)
+    blendFilter.setValue(maskImage, forKey: kCIInputMaskImageKey)
+
+    return blendFilter.outputImage ?? image
   }
 
   private func createBackgroundImage(style: BackgroundStyle, size: CGSize) -> CIImage {
