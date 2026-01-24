@@ -12,6 +12,7 @@ struct RecordingToolbarView: View {
   @Binding var selectedFormat: VideoFormat
   @Binding var selectedQuality: VideoQuality
   @Binding var captureAudio: Bool
+  @Binding var captureMicrophone: Bool
   let onRecord: () -> Void
   let onCancel: () -> Void
 
@@ -32,6 +33,9 @@ struct RecordingToolbarView: View {
         selectedQuality: $selectedQuality,
         captureAudio: $captureAudio
       )
+
+      // Mic toggle button
+      ToolbarMicToggleButton(isOn: $captureMicrophone)
 
       RecordingToolbarDivider()
 
@@ -62,6 +66,7 @@ struct RecordingToolbarView: View {
     selectedFormat: .constant(.mov),
     selectedQuality: .constant(.high),
     captureAudio: .constant(true),
+    captureMicrophone: .constant(false),
     onRecord: {},
     onCancel: {}
   )

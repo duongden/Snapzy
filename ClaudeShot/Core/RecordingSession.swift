@@ -21,6 +21,7 @@ final class RecordingSession: @unchecked Sendable {
   private var _videoInput: AVAssetWriterInput?
   private var _pixelBufferAdaptor: AVAssetWriterInputPixelBufferAdaptor?
   private var _audioInput: AVAssetWriterInput?
+  private var _microphoneInput: AVAssetWriterInput?
   private var _sessionStarted = false
   private var _isCapturing = false
   private var _firstTimestamp: CMTime?  // Track first timestamp for relative timing
@@ -45,6 +46,11 @@ final class RecordingSession: @unchecked Sendable {
   var audioInput: AVAssetWriterInput? {
     get { lock.withLock { _audioInput } }
     set { lock.withLock { _audioInput = newValue } }
+  }
+
+  var microphoneInput: AVAssetWriterInput? {
+    get { lock.withLock { _microphoneInput } }
+    set { lock.withLock { _microphoneInput = newValue } }
   }
   
   var sessionStarted: Bool {
@@ -184,12 +190,65 @@ final class RecordingSession: @unchecked Sendable {
       }
     }
   }
+
+  /// Thread-safe microphone sample write
+  func appendMicrophoneSample(_ sampleBuffer: CMSampleBuffer) {
+    lock.lock()
+    defer { lock.unlock() }
+
+    guard _isCapturing else { return }
+    guard _assetWriter?.status == .writing else { return }
+    guard _microphoneInput != nil else { return }
+
+    // Skip mic audio until video has started the session
+    guard _sessionStarted, let firstTs = _firstTimestamp else { return }
+
+    // Get mic timestamp
+    let timestamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
+    guard timestamp.isValid else { return }
+
+    // Skip mic samples that arrived before video start
+    guard CMTimeCompare(timestamp, firstTs) >= 0 else { return }
+
+    // Calculate relative timestamp (same as video)
+    let relativeTime = CMTimeSubtract(timestamp, firstTs)
+
+    // Create mic sample buffer with adjusted timestamp
+    var timingInfo = CMSampleTimingInfo(
+      duration: CMSampleBufferGetDuration(sampleBuffer),
+      presentationTimeStamp: relativeTime,
+      decodeTimeStamp: .invalid
+    )
+
+    var adjustedBuffer: CMSampleBuffer?
+    let status = CMSampleBufferCreateCopyWithNewTiming(
+      allocator: kCFAllocatorDefault,
+      sampleBuffer: sampleBuffer,
+      sampleTimingEntryCount: 1,
+      sampleTimingArray: &timingInfo,
+      sampleBufferOut: &adjustedBuffer
+    )
+
+    guard status == noErr, let buffer = adjustedBuffer else {
+      print("[RecordingSession] Failed to adjust microphone timestamp")
+      return
+    }
+
+    // Append adjusted microphone sample
+    if _microphoneInput?.isReadyForMoreMediaData == true {
+      let success = _microphoneInput?.append(buffer) ?? false
+      if !success {
+        print("[RecordingSession] Failed to append microphone sample")
+      }
+    }
+  }
   
   /// Mark inputs as finished
   func finishInputs() {
     lock.withLock {
       _videoInput?.markAsFinished()
       _audioInput?.markAsFinished()
+      _microphoneInput?.markAsFinished()
     }
   }
   
@@ -231,6 +290,7 @@ final class RecordingSession: @unchecked Sendable {
       _videoInput = nil
       _pixelBufferAdaptor = nil
       _audioInput = nil
+      _microphoneInput = nil
       _sessionStarted = false
       _isCapturing = false
       _firstTimestamp = nil

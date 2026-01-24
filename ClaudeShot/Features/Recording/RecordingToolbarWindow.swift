@@ -29,6 +29,7 @@ final class RecordingToolbarWindow: NSWindow {
   var selectedFormat: VideoFormat
   var selectedQuality: VideoQuality
   var captureAudio: Bool
+  var captureMicrophone: Bool
 
   init(anchorRect: CGRect) {
     self.anchorRect = anchorRect
@@ -51,6 +52,9 @@ final class RecordingToolbarWindow: NSWindow {
 
     // Load audio preference (default to true)
     self.captureAudio = UserDefaults.standard.object(forKey: PreferencesKeys.recordingCaptureAudio) as? Bool ?? true
+
+    // Load microphone preference (default to false)
+    self.captureMicrophone = UserDefaults.standard.object(forKey: PreferencesKeys.recordingCaptureMicrophone) as? Bool ?? false
 
     super.init(
       contentRect: .zero,
@@ -88,11 +92,16 @@ final class RecordingToolbarWindow: NSWindow {
       get: { [weak self] in self?.captureAudio ?? true },
       set: { [weak self] in self?.captureAudio = $0 }
     )
+    let micBinding = Binding<Bool>(
+      get: { [weak self] in self?.captureMicrophone ?? false },
+      set: { [weak self] in self?.captureMicrophone = $0 }
+    )
 
     let view = RecordingToolbarView(
       selectedFormat: formatBinding,
       selectedQuality: qualityBinding,
       captureAudio: audioBinding,
+      captureMicrophone: micBinding,
       onRecord: { [weak self] in self?.onRecord?() },
       onCancel: { [weak self] in self?.onCancel?() }
     )

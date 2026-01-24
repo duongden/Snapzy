@@ -121,12 +121,15 @@ final class RecordingCoordinator: ObservableObject {
     let quality = VideoQuality(rawValue: qualityString) ?? .high
 
     // Get audio setting (default true)
-    let captureAudio: Bool
+    let captureSystemAudio: Bool
     if UserDefaults.standard.object(forKey: PreferencesKeys.recordingCaptureAudio) != nil {
-      captureAudio = UserDefaults.standard.bool(forKey: PreferencesKeys.recordingCaptureAudio)
+      captureSystemAudio = UserDefaults.standard.bool(forKey: PreferencesKeys.recordingCaptureAudio)
     } else {
-      captureAudio = true
+      captureSystemAudio = true
     }
+
+    // Get microphone setting from toolbar
+    let captureMicrophone = window.captureMicrophone
 
     // Get save directory
     let saveDirectory: URL
@@ -150,7 +153,8 @@ final class RecordingCoordinator: ObservableObject {
           format: format,
           quality: quality,
           fps: fps,
-          captureAudio: captureAudio,
+          captureSystemAudio: captureSystemAudio,
+          captureMicrophone: captureMicrophone,
           saveDirectory: saveDirectory
         )
 
@@ -181,8 +185,87 @@ final class RecordingCoordinator: ObservableObject {
     alert.messageText = "Recording Failed"
     alert.informativeText = error.localizedDescription
     alert.alertStyle = .warning
-    alert.addButton(withTitle: "OK")
-    alert.runModal()
+
+    // Special handling for microphone permission denied
+    if case .microphonePermissionDenied = error {
+      alert.messageText = "Microphone Access Required"
+      alert.informativeText = "ClaudeShot needs microphone permission to record audio. Please grant access in System Settings."
+      alert.addButton(withTitle: "Open System Settings")
+      alert.addButton(withTitle: "Continue Without Mic")
+      alert.addButton(withTitle: "Cancel")
+
+      let response = alert.runModal()
+      switch response {
+      case .alertFirstButtonReturn:
+        // Open System Settings > Privacy & Security > Microphone
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone") {
+          NSWorkspace.shared.open(url)
+        }
+      case .alertSecondButtonReturn:
+        // Continue recording without microphone
+        startRecordingWithoutMicrophone()
+        return
+      default:
+        break
+      }
+    } else {
+      alert.addButton(withTitle: "OK")
+      alert.runModal()
+    }
+  }
+
+  private func startRecordingWithoutMicrophone() {
+    guard let rect = selectedRect, let window = toolbarWindow else { return }
+
+    // Disable microphone and retry
+    window.captureMicrophone = false
+
+    let format = window.selectedFormat
+    var fps = UserDefaults.standard.integer(forKey: PreferencesKeys.recordingFPS)
+    if fps == 0 { fps = 30 }
+    let qualityString = UserDefaults.standard.string(forKey: PreferencesKeys.recordingQuality) ?? "high"
+    let quality = VideoQuality(rawValue: qualityString) ?? .high
+    let captureSystemAudio: Bool
+    if UserDefaults.standard.object(forKey: PreferencesKeys.recordingCaptureAudio) != nil {
+      captureSystemAudio = UserDefaults.standard.bool(forKey: PreferencesKeys.recordingCaptureAudio)
+    } else {
+      captureSystemAudio = true
+    }
+
+    let saveDirectory: URL
+    if let path = UserDefaults.standard.string(forKey: PreferencesKeys.exportLocation), !path.isEmpty {
+      saveDirectory = URL(fileURLWithPath: path)
+    } else {
+      saveDirectory = FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first!
+        .appendingPathComponent("ClaudeShot")
+    }
+
+    Task {
+      do {
+        try await recorder.prepareRecording(
+          rect: rect,
+          format: format,
+          quality: quality,
+          fps: fps,
+          captureSystemAudio: captureSystemAudio,
+          captureMicrophone: false,
+          saveDirectory: saveDirectory
+        )
+        try await recorder.startRecording()
+
+        for overlay in regionOverlayWindows {
+          overlay.hideBorder()
+          overlay.setInteractionEnabled(false)
+        }
+        window.showRecordingStatusBar(recorder: recorder)
+      } catch let error as RecordingError {
+        showErrorAlert(error)
+        cancel()
+      } catch {
+        showErrorAlert(.setupFailed(error.localizedDescription))
+        cancel()
+      }
+    }
   }
 
   private func stopRecording() {

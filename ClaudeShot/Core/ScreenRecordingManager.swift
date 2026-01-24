@@ -74,6 +74,7 @@ enum RecordingState: Equatable {
 
 enum RecordingError: Error, LocalizedError {
   case permissionDenied
+  case microphonePermissionDenied
   case noDisplayFound
   case setupFailed(String)
   case writeFailed(String)
@@ -82,6 +83,7 @@ enum RecordingError: Error, LocalizedError {
   var errorDescription: String? {
     switch self {
     case .permissionDenied: return "Screen recording permission denied"
+    case .microphonePermissionDenied: return "Microphone permission denied"
     case .noDisplayFound: return "No display found"
     case .setupFailed(let msg): return "Setup failed: \(msg)"
     case .writeFailed(let msg): return "Write failed: \(msg)"
@@ -131,7 +133,8 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
   private var videoFormat: VideoFormat = .mov
   private var videoQuality: VideoQuality = .high
   private var fps: Int = 30
-  private var captureAudio: Bool = true
+  private var captureSystemAudio: Bool = true
+  private var captureMicrophone: Bool = false
   private var outputURL: URL?
 
   // Queue for frame processing
@@ -149,7 +152,8 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
     format: VideoFormat = .mov,
     quality: VideoQuality = .high,
     fps: Int = 30,
-    captureAudio: Bool = true,
+    captureSystemAudio: Bool = true,
+    captureMicrophone: Bool = false,
     saveDirectory: URL
   ) async throws {
     guard state == .idle else { return }
@@ -161,7 +165,8 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
     self.videoFormat = format
     self.videoQuality = quality
     self.fps = fps
-    self.captureAudio = captureAudio
+    self.captureSystemAudio = captureSystemAudio
+    self.captureMicrophone = captureMicrophone
 
     // Check permission
     let content: SCShareableContent
@@ -223,10 +228,10 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
     outputURL = saveDirectory.appendingPathComponent("\(fileName).\(format.fileExtension)")
 
     // Setup AVAssetWriter
-    try setupAssetWriter(width: outputWidth, height: outputHeight)
+    try setupAssetWriter(width: outputWidth, height: outputHeight, captureSystemAudio: captureSystemAudio, captureMicrophone: captureMicrophone)
 
     // Setup SCStream
-    try await setupStream(display: display, rect: rect, scaleFactor: scaleFactor)
+    try await setupStream(display: display, rect: rect, scaleFactor: scaleFactor, captureSystemAudio: captureSystemAudio, captureMicrophone: captureMicrophone)
   }
 
   /// Start the recording
@@ -300,10 +305,12 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
     timer?.invalidate()
     timer = nil
 
-    do {
-      try await stream?.stopCapture()
-    } catch {
-      print("Error stopping capture: \(error)")
+    if let activeStream = stream {
+      do {
+        try await activeStream.stopCapture()
+      } catch {
+        // Ignore error if stream already stopped
+      }
     }
     stream = nil
 
@@ -324,10 +331,12 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
     timer?.invalidate()
     timer = nil
 
-    do {
-      try await stream?.stopCapture()
-    } catch {
-      print("Error stopping capture: \(error)")
+    if let activeStream = stream {
+      do {
+        try await activeStream.stopCapture()
+      } catch {
+        // Ignore error if stream already stopped
+      }
     }
     stream = nil
 
@@ -341,7 +350,7 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
 
   // MARK: - Private Methods
 
-  private func setupAssetWriter(width: Int, height: Int) throws {
+  private func setupAssetWriter(width: Int, height: Int, captureSystemAudio: Bool, captureMicrophone: Bool) throws {
     guard let url = outputURL else {
       throw RecordingError.setupFailed("No output URL")
     }
@@ -381,8 +390,8 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
     )
     session.pixelBufferAdaptor = adaptor
 
-    // Audio settings (AAC) - optional
-    if captureAudio {
+    // Audio settings (AAC) for system audio
+    if captureSystemAudio {
       let audioSettings: [String: Any] = [
         AVFormatIDKey: kAudioFormatMPEG4AAC,
         AVSampleRateKey: 48000,
@@ -394,9 +403,23 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
       session.audioInput = audioIn
       writer.add(audioIn)
     }
+
+    // Microphone audio settings (AAC) - separate track
+    if captureMicrophone {
+      let micSettings: [String: Any] = [
+        AVFormatIDKey: kAudioFormatMPEG4AAC,
+        AVSampleRateKey: 48000,
+        AVNumberOfChannelsKey: 1,  // Mono for microphone
+        AVEncoderBitRateKey: 64000,
+      ]
+      let micIn = AVAssetWriterInput(mediaType: .audio, outputSettings: micSettings)
+      micIn.expectsMediaDataInRealTime = true
+      session.microphoneInput = micIn
+      writer.add(micIn)
+    }
   }
 
-  private func setupStream(display: SCDisplay, rect: CGRect, scaleFactor: CGFloat) async throws {
+  private func setupStream(display: SCDisplay, rect: CGRect, scaleFactor: CGFloat, captureSystemAudio: Bool, captureMicrophone: Bool) async throws {
     let filter = SCContentFilter(display: display, excludingWindows: [])
 
     let config = SCStreamConfiguration()
@@ -448,19 +471,49 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
     config.width = Int(ceil(clampedRect.width * scaleFactor))
     config.height = Int(ceil(clampedRect.height * scaleFactor))
 
-    // Audio configuration
-    if captureAudio {
+    // System audio configuration
+    if captureSystemAudio {
       config.capturesAudio = true
       config.excludesCurrentProcessAudio = true
       config.sampleRate = 48000
       config.channelCount = 2
     }
 
+    // Microphone configuration (requires macOS 15.0+)
+    if captureMicrophone {
+      // Check microphone permission before configuring
+      let micStatus = AVCaptureDevice.authorizationStatus(for: .audio)
+      switch micStatus {
+      case .notDetermined:
+        let granted = await AVCaptureDevice.requestAccess(for: .audio)
+        if !granted {
+          throw RecordingError.microphonePermissionDenied
+        }
+      case .denied, .restricted:
+        throw RecordingError.microphonePermissionDenied
+      case .authorized:
+        break
+      @unknown default:
+        break
+      }
+
+      if #available(macOS 15.0, *) {
+        config.captureMicrophone = true
+        config.microphoneCaptureDeviceID = AVCaptureDevice.default(for: .audio)?.uniqueID
+      }
+    }
+
     stream = SCStream(filter: filter, configuration: config, delegate: nil)
     try stream?.addStreamOutput(self, type: .screen, sampleHandlerQueue: processingQueue)
 
-    if captureAudio {
+    if captureSystemAudio {
       try stream?.addStreamOutput(self, type: .audio, sampleHandlerQueue: processingQueue)
+    }
+
+    if captureMicrophone {
+      if #available(macOS 15.0, *) {
+        try stream?.addStreamOutput(self, type: .microphone, sampleHandlerQueue: processingQueue)
+      }
     }
   }
 
@@ -508,7 +561,7 @@ extension ScreenRecordingManager: SCStreamOutput {
     case .audio:
       session.appendAudioSample(sampleBuffer)
     case .microphone:
-      break
+      session.appendMicrophoneSample(sampleBuffer)
     @unknown default:
       break
     }

@@ -4,6 +4,10 @@
 <dict>
 	<key>CFBundleIconFile</key>
 	<string>ClaudeShotIcon</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>ClaudeShot needs microphone access to record audio with your screen recordings.</string>
+	<key>NSScreenCaptureUsageDescription</key>
+	<string>ClaudeShot needs screen recording permission to capture screenshots and record your screen.</string>
 	<key>SUFeedURL</key>
 	<string>https://raw.githubusercontent.com/user/ClaudeShot/master/appcast.xml</string>
 	<key>SUPublicEDKey</key>

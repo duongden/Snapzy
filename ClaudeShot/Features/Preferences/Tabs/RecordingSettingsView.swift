@@ -5,6 +5,7 @@
 //  Recording preferences tab with format, quality, and audio settings
 //
 
+import AVFoundation
 import SwiftUI
 
 struct RecordingSettingsView: View {
@@ -13,6 +14,16 @@ struct RecordingSettingsView: View {
   @AppStorage(PreferencesKeys.recordingQuality) private var quality = "high"
   @AppStorage(PreferencesKeys.recordingCaptureAudio) private var captureAudio = true
   @AppStorage(PreferencesKeys.recordingCaptureMicrophone) private var captureMicrophone = false
+
+  @State private var showPermissionDeniedAlert = false
+
+  /// Microphone capture via ScreenCaptureKit requires macOS 15.0+
+  private var isMicAvailable: Bool {
+    if #available(macOS 15.0, *) {
+      return true
+    }
+    return false
+  }
 
   var body: some View {
     Form {
@@ -47,12 +58,36 @@ struct RecordingSettingsView: View {
 
       Section("Audio") {
         Toggle("Capture System Audio", isOn: $captureAudio)
-        Toggle("Capture Microphone", isOn: $captureMicrophone)
-          .disabled(!captureAudio)
 
-        Text("System audio captures sounds from apps. Microphone captures your voice.")
-          .font(.caption)
-          .foregroundColor(.secondary)
+        Toggle("Capture Microphone", isOn: Binding(
+          get: { captureMicrophone },
+          set: { newValue in
+            if newValue {
+              handleMicrophoneEnable()
+            } else {
+              captureMicrophone = false
+            }
+          }
+        ))
+        .disabled(!captureAudio || !isMicAvailable)
+
+        if !isMicAvailable {
+          Text("Microphone capture requires macOS 15.0 or later.")
+            .font(.caption)
+            .foregroundColor(.orange)
+        } else {
+          Text("System audio captures sounds from apps. Microphone captures your voice.")
+            .font(.caption)
+            .foregroundColor(.secondary)
+        }
+      }
+      .alert("Microphone Access Required", isPresented: $showPermissionDeniedAlert) {
+        Button("Open System Settings") {
+          openMicrophoneSettings()
+        }
+        Button("Cancel", role: .cancel) {}
+      } message: {
+        Text("ClaudeShot needs microphone permission. Please enable it in System Settings > Privacy & Security > Microphone.")
       }
 
       Section("Save Location") {
@@ -67,6 +102,37 @@ struct RecordingSettingsView: View {
       }
     }
     .formStyle(.grouped)
+  }
+
+  /// Request microphone permission when user enables toggle
+  private func handleMicrophoneEnable() {
+    let status = AVCaptureDevice.authorizationStatus(for: .audio)
+
+    switch status {
+    case .notDetermined:
+      Task {
+        let granted = await AVCaptureDevice.requestAccess(for: .audio)
+        await MainActor.run {
+          if granted {
+            captureMicrophone = true
+          } else {
+            showPermissionDeniedAlert = true
+          }
+        }
+      }
+    case .authorized:
+      captureMicrophone = true
+    case .denied, .restricted:
+      showPermissionDeniedAlert = true
+    @unknown default:
+      captureMicrophone = true
+    }
+  }
+
+  private func openMicrophoneSettings() {
+    if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone") {
+      NSWorkspace.shared.open(url)
+    }
   }
 }
 
