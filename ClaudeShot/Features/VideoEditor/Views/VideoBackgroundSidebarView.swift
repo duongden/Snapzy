@@ -53,11 +53,11 @@ struct VideoBackgroundSidebarView: View {
 
   private var gradientSection: some View {
     VStack(alignment: .leading, spacing: 6) {
-      SidebarSectionHeader(title: "Gradients")
+      VideoSidebarSectionHeader(title: "Gradients")
 
       LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: 5), spacing: 4) {
         ForEach(GradientPreset.allCases) { preset in
-          GradientPresetButton(
+          VideoGradientPresetButton(
             preset: preset,
             isSelected: state.backgroundStyle == .gradient(preset)
           ) {
@@ -75,8 +75,8 @@ struct VideoBackgroundSidebarView: View {
 
   private var colorSection: some View {
     VStack(alignment: .leading, spacing: 6) {
-      SidebarSectionHeader(title: "Colors")
-      CompactColorSwatchGrid(selectedColor: colorBinding)
+      VideoSidebarSectionHeader(title: "Colors")
+      VideoColorSwatchGrid(selectedColor: colorBinding)
     }
   }
 
@@ -103,7 +103,7 @@ struct VideoBackgroundSidebarView: View {
 
   private var slidersSection: some View {
     VStack(alignment: .leading, spacing: 10) {
-      CompactSliderRow(
+      VideoSliderRow(
         label: "Padding",
         value: Binding(
           get: { state.backgroundPadding },
@@ -117,8 +117,8 @@ struct VideoBackgroundSidebarView: View {
         ),
         range: 0...100
       )
-      CompactSliderRow(label: "Shadow", value: $state.backgroundShadowIntensity, range: 0...1)
-      CompactSliderRow(label: "Corners", value: $state.backgroundCornerRadius, range: 0...32)
+      VideoSliderRow(label: "Shadow", value: $state.backgroundShadowIntensity, range: 0...1)
+      VideoSliderRow(label: "Corners", value: $state.backgroundCornerRadius, range: 0...32)
     }
   }
 }
