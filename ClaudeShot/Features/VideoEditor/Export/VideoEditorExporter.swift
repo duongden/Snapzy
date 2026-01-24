@@ -21,9 +21,10 @@ enum VideoEditorExporter {
     progress: @escaping (Float) -> Void
   ) async throws {
     let hasZooms = state.zoomSegments.contains { $0.isEnabled }
+    let hasBackground = state.backgroundStyle != .none && state.backgroundPadding > 0
 
-    // If has zooms, use composition-based export
-    if hasZooms {
+    // If has zooms or background, use composition-based export
+    if hasZooms || hasBackground {
       try await exportWithZooms(state: state, to: outputURL, progress: progress)
       return
     }
@@ -190,7 +191,10 @@ enum VideoEditorExporter {
     print("🔍 [ZoomExport] Creating ZoomCompositor with renderSize: \(state.naturalSize)")
     let zoomCompositor = ZoomCompositor(
       zooms: adjustedZooms,
-      renderSize: state.naturalSize
+      renderSize: state.naturalSize,
+      backgroundStyle: state.backgroundStyle,
+      backgroundPadding: state.backgroundPadding,
+      cornerRadius: state.backgroundCornerRadius
     )
 
     let compositionTimeRange = CMTimeRange(start: .zero, duration: state.trimmedDuration)
@@ -202,6 +206,8 @@ enum VideoEditorExporter {
         for: composition,
         timeRange: compositionTimeRange
       )
+      // Use padded render size if background is applied
+      videoComposition.renderSize = zoomCompositor.paddedRenderSize
       print("🔍 [ZoomExport] Created video composition successfully")
       print("🔍 [ZoomExport] Video composition render size: \(videoComposition.renderSize)")
       print("🔍 [ZoomExport] Video composition frame duration: \(videoComposition.frameDuration)")

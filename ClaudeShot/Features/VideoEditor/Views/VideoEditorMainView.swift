@@ -66,18 +66,13 @@ struct VideoEditorMainView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-        // Zoom settings sidebar (appears when zoom selected)
-        if state.selectedZoomId != nil {
-          Divider()
+        // Right sidebar with tabs (Zoom + Background)
+        Divider()
 
-          ZoomSettingsPopover(
-            state: state,
-            previewImage: currentFrameImage
-          )
-          .frame(width: 320, alignment: .topLeading)
-          .frame(maxHeight: .infinity, alignment: .top)
-          .background(Color(NSColor.controlBackgroundColor))
-        }
+        VideoEditorRightSidebar(
+          state: state,
+          previewImage: currentFrameImage
+        )
       }
       .animation(.easeInOut(duration: 0.2), value: state.isVideoInfoSidebarVisible)
     }

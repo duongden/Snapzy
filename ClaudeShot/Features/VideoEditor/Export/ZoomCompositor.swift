@@ -7,6 +7,7 @@
 
 import AVFoundation
 import CoreImage
+import SwiftUI
 
 /// Compositor that applies zoom effects during video export
 class ZoomCompositor {
@@ -17,16 +18,38 @@ class ZoomCompositor {
   private let renderSize: CGSize
   private let transitionDuration: TimeInterval
 
+  // Background properties
+  private let backgroundStyle: BackgroundStyle
+  private let backgroundPadding: CGFloat
+  private let cornerRadius: CGFloat
+  let paddedRenderSize: CGSize
+
   // MARK: - Initialization
 
   init(
     zooms: [ZoomSegment],
     renderSize: CGSize,
-    transitionDuration: TimeInterval = 0.3
+    transitionDuration: TimeInterval = 0.3,
+    backgroundStyle: BackgroundStyle = .none,
+    backgroundPadding: CGFloat = 0,
+    cornerRadius: CGFloat = 0
   ) {
     self.zooms = zooms.filter { $0.isEnabled }
     self.renderSize = renderSize
     self.transitionDuration = transitionDuration
+    self.backgroundStyle = backgroundStyle
+    self.backgroundPadding = backgroundPadding
+    self.cornerRadius = cornerRadius
+
+    // Calculate padded render size
+    if backgroundStyle != .none && backgroundPadding > 0 {
+      self.paddedRenderSize = CGSize(
+        width: renderSize.width + (backgroundPadding * 2),
+        height: renderSize.height + (backgroundPadding * 2)
+      )
+    } else {
+      self.paddedRenderSize = renderSize
+    }
   }
 
   // MARK: - Video Composition Creation
@@ -58,7 +81,11 @@ class ZoomCompositor {
       zooms: zooms,
       trackID: videoTrack.trackID,
       renderSize: renderSize,
-      transitionDuration: transitionDuration
+      transitionDuration: transitionDuration,
+      backgroundStyle: backgroundStyle,
+      backgroundPadding: backgroundPadding,
+      cornerRadius: cornerRadius,
+      paddedRenderSize: paddedRenderSize
     )
     print("🎬 [ZoomCompositor] Created instruction with trackID: \(videoTrack.trackID)")
 
@@ -97,6 +124,10 @@ class ZoomVideoCompositionInstruction: NSObject, AVVideoCompositionInstructionPr
   let trackID: CMPersistentTrackID
   let renderSize: CGSize
   let transitionDuration: TimeInterval
+  let backgroundStyle: BackgroundStyle
+  let backgroundPadding: CGFloat
+  let cornerRadius: CGFloat
+  let paddedRenderSize: CGSize
 
   var enablePostProcessing: Bool { true }
   var containsTweening: Bool { true }
@@ -112,13 +143,21 @@ class ZoomVideoCompositionInstruction: NSObject, AVVideoCompositionInstructionPr
     zooms: [ZoomSegment],
     trackID: CMPersistentTrackID,
     renderSize: CGSize,
-    transitionDuration: TimeInterval
+    transitionDuration: TimeInterval,
+    backgroundStyle: BackgroundStyle = .none,
+    backgroundPadding: CGFloat = 0,
+    cornerRadius: CGFloat = 0,
+    paddedRenderSize: CGSize? = nil
   ) {
     self.timeRange = timeRange
     self.zooms = zooms
     self.trackID = trackID
     self.renderSize = renderSize
     self.transitionDuration = transitionDuration
+    self.backgroundStyle = backgroundStyle
+    self.backgroundPadding = backgroundPadding
+    self.cornerRadius = cornerRadius
+    self.paddedRenderSize = paddedRenderSize ?? renderSize
     super.init()
   }
 }
@@ -209,43 +248,146 @@ class ZoomVideoCompositorClass: NSObject, AVVideoCompositing {
 
     // Find active zoom at current time
     let activeZoom = instruction.zooms.first { $0.contains(time: currentTime) }
+    let hasBackground = instruction.backgroundStyle != .none && instruction.backgroundPadding > 0
 
-    // If no zoom active, pass through original frame
-    guard let zoom = activeZoom else {
+    // Calculate zoom parameters if zoom is active
+    var zoomLevel: CGFloat = 1.0
+    var zoomCenter = CGPoint(x: 0.5, y: 0.5)
+    if let zoom = activeZoom {
+      let interpolated = ZoomCalculator.interpolateZoom(
+        segment: zoom,
+        currentTime: currentTime,
+        transitionDuration: instruction.transitionDuration
+      )
+      zoomLevel = interpolated.level
+      zoomCenter = interpolated.center
+    }
+
+    // If no zoom and no background, pass through original frame
+    if zoomLevel < 1.01 && !hasBackground {
       request.finish(withComposedVideoFrame: sourceBuffer)
       return
     }
 
-    if frameCount == 1 || frameCount % 30 == 0 {
-      print("🎥 [Compositor] Frame \(frameCount): Applying zoom level \(zoom.zoomLevel)x")
-    }
-
-    // Calculate zoom parameters
-    let interpolated = ZoomCalculator.interpolateZoom(
-      segment: zoom,
-      currentTime: currentTime,
-      transitionDuration: instruction.transitionDuration
-    )
-
-    // If effectively no zoom, pass through
-    if interpolated.level < 1.01 {
-      request.finish(withComposedVideoFrame: sourceBuffer)
-      return
-    }
-
-    // Apply zoom effect
-    guard let outputBuffer = applyZoom(
+    // Apply zoom and/or background effect
+    guard let outputBuffer = applyEffects(
       to: sourceBuffer,
-      zoomLevel: interpolated.level,
-      center: interpolated.center,
-      renderSize: instruction.renderSize
+      zoomLevel: zoomLevel,
+      center: zoomCenter,
+      instruction: instruction
     ) else {
-      print("❌ [Compositor] Frame \(frameCount): applyZoom returned nil, passing through")
+      print("❌ [Compositor] Frame \(frameCount): applyEffects returned nil, passing through")
       request.finish(withComposedVideoFrame: sourceBuffer)
       return
     }
 
     request.finish(withComposedVideoFrame: outputBuffer)
+  }
+
+  private func applyEffects(
+    to sourceBuffer: CVPixelBuffer,
+    zoomLevel: CGFloat,
+    center: CGPoint,
+    instruction: ZoomVideoCompositionInstruction
+  ) -> CVPixelBuffer? {
+    // Create CIImage from source buffer
+    var processedImage = CIImage(cvPixelBuffer: sourceBuffer)
+    let sourceExtent = processedImage.extent
+
+    // Apply zoom if needed
+    if zoomLevel > 1.01 {
+      let cropRect = ZoomCalculator.calculateCropRect(
+        center: center,
+        zoomLevel: zoomLevel,
+        frameSize: CGSize(width: sourceExtent.width, height: sourceExtent.height)
+      )
+      let croppedImage = processedImage.cropped(to: cropRect)
+      let scaleX = sourceExtent.width / cropRect.width
+      let scaleY = sourceExtent.height / cropRect.height
+      processedImage = croppedImage
+        .transformed(by: CGAffineTransform(translationX: -cropRect.origin.x, y: -cropRect.origin.y))
+        .transformed(by: CGAffineTransform(scaleX: scaleX, y: scaleY))
+    }
+
+    // Apply background if needed
+    let hasBackground = instruction.backgroundStyle != .none && instruction.backgroundPadding > 0
+    if hasBackground {
+      // Position video in center with padding
+      let translatedVideo = processedImage.transformed(
+        by: CGAffineTransform(translationX: instruction.backgroundPadding, y: instruction.backgroundPadding)
+      )
+
+      // Create background
+      let background = createBackgroundImage(
+        style: instruction.backgroundStyle,
+        size: instruction.paddedRenderSize
+      )
+
+      // Composite video over background
+      processedImage = translatedVideo.composited(over: background)
+    }
+
+    // Create output buffer
+    guard let renderContext = renderContext else { return nil }
+    guard let outputBuffer = renderContext.newPixelBuffer() else { return nil }
+
+    // Render to output buffer
+    ciContext.render(processedImage, to: outputBuffer)
+
+    return outputBuffer
+  }
+
+  private func createBackgroundImage(style: BackgroundStyle, size: CGSize) -> CIImage {
+    let rect = CGRect(origin: .zero, size: size)
+
+    switch style {
+    case .none:
+      return CIImage(color: .clear).cropped(to: rect)
+
+    case .gradient(let preset):
+      // Create gradient using CILinearGradient filter
+      guard let filter = CIFilter(name: "CILinearGradient") else {
+        return CIImage(color: .black).cropped(to: rect)
+      }
+      filter.setValue(CIVector(x: 0, y: size.height), forKey: "inputPoint0")
+      filter.setValue(CIVector(x: size.width, y: 0), forKey: "inputPoint1")
+
+      // Convert SwiftUI colors to CIColor
+      let color0 = CIColor(color: NSColor(preset.colors[0])) ?? CIColor.black
+      let color1 = CIColor(color: NSColor(preset.colors[1])) ?? CIColor.white
+      filter.setValue(color0, forKey: "inputColor0")
+      filter.setValue(color1, forKey: "inputColor1")
+
+      return filter.outputImage?.cropped(to: rect) ?? CIImage(color: .black).cropped(to: rect)
+
+    case .solidColor(let color):
+      let ciColor = CIColor(color: NSColor(color)) ?? CIColor.white
+      return CIImage(color: ciColor).cropped(to: rect)
+
+    case .wallpaper(let url):
+      guard let image = CIImage(contentsOf: url) else {
+        return CIImage(color: .black).cropped(to: rect)
+      }
+      return scaleToFill(image: image, targetSize: size)
+
+    case .blurred(let url):
+      guard let image = CIImage(contentsOf: url) else {
+        return CIImage(color: .black).cropped(to: rect)
+      }
+      let scaled = scaleToFill(image: image, targetSize: size)
+      return scaled.applyingGaussianBlur(sigma: 20).cropped(to: rect)
+    }
+  }
+
+  private func scaleToFill(image: CIImage, targetSize: CGSize) -> CIImage {
+    let scaleX = targetSize.width / image.extent.width
+    let scaleY = targetSize.height / image.extent.height
+    let scale = max(scaleX, scaleY)
+    let scaled = image.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
+    let offsetX = (scaled.extent.width - targetSize.width) / 2
+    let offsetY = (scaled.extent.height - targetSize.height) / 2
+    return scaled.cropped(to: CGRect(x: offsetX, y: offsetY, width: targetSize.width, height: targetSize.height))
+      .transformed(by: CGAffineTransform(translationX: -offsetX, y: -offsetY))
   }
 
   private func applyZoom(

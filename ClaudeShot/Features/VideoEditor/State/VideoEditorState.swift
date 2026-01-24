@@ -19,6 +19,12 @@ enum EditorAction: Equatable {
   case removeZoom(segment: ZoomSegment)
   case updateZoom(old: ZoomSegment, new: ZoomSegment)
   case toggleMute(old: Bool, new: Bool)
+  case updateBackground(
+    oldStyle: BackgroundStyle, newStyle: BackgroundStyle,
+    oldPadding: CGFloat, newPadding: CGFloat,
+    oldShadow: CGFloat, newShadow: CGFloat,
+    oldCorner: CGFloat, newCorner: CGFloat
+  )
 }
 
 /// Observable state for video editor window
@@ -67,6 +73,16 @@ final class VideoEditorState: ObservableObject {
   @Published var isZoomTrackVisible: Bool = true
   @Published var isVideoInfoSidebarVisible: Bool = false
 
+  // MARK: - Background Settings
+
+  @Published var backgroundStyle: BackgroundStyle = .none
+  @Published var backgroundPadding: CGFloat = 0
+  @Published var backgroundShadowIntensity: CGFloat = 0
+  @Published var backgroundCornerRadius: CGFloat = 0
+  @Published var backgroundAlignment: ImageAlignment = .center
+  @Published var backgroundAspectRatio: AspectRatioOption = .auto
+  @Published var isBackgroundSidebarVisible: Bool = false
+
   // MARK: - Export State
 
   @Published var isExporting: Bool = false
@@ -79,6 +95,10 @@ final class VideoEditorState: ObservableObject {
   private var initialTrimStart: CMTime = .zero
   private var initialTrimEnd: CMTime = .zero
   private var initialZoomSegments: [ZoomSegment] = []
+  private var initialBackgroundStyle: BackgroundStyle = .none
+  private var initialBackgroundPadding: CGFloat = 0
+  private var initialBackgroundShadowIntensity: CGFloat = 0
+  private var initialBackgroundCornerRadius: CGFloat = 0
 
   // MARK: - Undo/Redo
 
@@ -331,6 +351,10 @@ final class VideoEditorState: ObservableObject {
     initialTrimEnd = trimEnd
     initialIsMuted = isMuted
     initialZoomSegments = zoomSegments
+    initialBackgroundStyle = backgroundStyle
+    initialBackgroundPadding = backgroundPadding
+    initialBackgroundShadowIntensity = backgroundShadowIntensity
+    initialBackgroundCornerRadius = backgroundCornerRadius
     clearUndoHistory()
   }
 
@@ -383,6 +407,13 @@ final class VideoEditorState: ObservableObject {
     case .toggleMute(let old, _):
       isMuted = old
       redoStack.append(.toggleMute(old: !old, new: old))
+
+    case .updateBackground(let oldStyle, let newStyle, let oldPadding, let newPadding, let oldShadow, let newShadow, let oldCorner, let newCorner):
+      backgroundStyle = oldStyle
+      backgroundPadding = oldPadding
+      backgroundShadowIntensity = oldShadow
+      backgroundCornerRadius = oldCorner
+      redoStack.append(.updateBackground(oldStyle: newStyle, newStyle: oldStyle, oldPadding: newPadding, newPadding: oldPadding, oldShadow: newShadow, newShadow: oldShadow, oldCorner: newCorner, newCorner: oldCorner))
     }
   }
 
@@ -422,6 +453,13 @@ final class VideoEditorState: ObservableObject {
     case .toggleMute(let old, _):
       isMuted = old
       undoStack.append(.toggleMute(old: !old, new: old))
+
+    case .updateBackground(let oldStyle, let newStyle, let oldPadding, let newPadding, let oldShadow, let newShadow, let oldCorner, let newCorner):
+      backgroundStyle = oldStyle
+      backgroundPadding = oldPadding
+      backgroundShadowIntensity = oldShadow
+      backgroundCornerRadius = oldCorner
+      undoStack.append(.updateBackground(oldStyle: newStyle, newStyle: oldStyle, oldPadding: newPadding, newPadding: oldPadding, oldShadow: newShadow, newShadow: oldShadow, oldCorner: newCorner, newCorner: oldCorner))
     }
   }
 
@@ -569,6 +607,11 @@ final class VideoEditorState: ObservableObject {
     isVideoInfoSidebarVisible.toggle()
   }
 
+  /// Toggle background sidebar visibility
+  func toggleBackgroundSidebar() {
+    isBackgroundSidebarVisible.toggle()
+  }
+
   // MARK: - Private Methods
 
   private func setupTimeObserver() {
@@ -621,6 +664,14 @@ final class VideoEditorState: ObservableObject {
         self.updateHasUnsavedChanges(currentZoomSegments: segments)
       }
       .store(in: &cancellables)
+
+    // Track background changes
+    Publishers.CombineLatest4($backgroundStyle, $backgroundPadding, $backgroundShadowIntensity, $backgroundCornerRadius)
+      .dropFirst(4)
+      .sink { [weak self] _, _, _, _ in
+        self?.updateHasUnsavedChanges()
+      }
+      .store(in: &cancellables)
   }
 
   private func updateHasUnsavedChanges(currentZoomSegments: [ZoomSegment]? = nil) {
@@ -630,8 +681,14 @@ final class VideoEditorState: ObservableObject {
     // Use passed segments if available, otherwise read from self
     let segments = currentZoomSegments ?? zoomSegments
     let zoomsChanged = segments != initialZoomSegments
+    // Background changes
+    let bgStyleChanged = backgroundStyle != initialBackgroundStyle
+    let bgPaddingChanged = backgroundPadding != initialBackgroundPadding
+    let bgShadowChanged = backgroundShadowIntensity != initialBackgroundShadowIntensity
+    let bgCornerChanged = backgroundCornerRadius != initialBackgroundCornerRadius
+    let backgroundChanged = bgStyleChanged || bgPaddingChanged || bgShadowChanged || bgCornerChanged
 
-    hasUnsavedChanges = startChanged || endChanged || muteChanged || zoomsChanged
+    hasUnsavedChanges = startChanged || endChanged || muteChanged || zoomsChanged || backgroundChanged
   }
 
   private func clampTime(_ time: CMTime) -> CMTime {

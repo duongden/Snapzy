@@ -8,7 +8,7 @@
 import AVFoundation
 import SwiftUI
 
-/// Wrapper view that applies zoom transforms to the video player
+/// Wrapper view that applies zoom transforms and background to the video player
 struct ZoomableVideoPlayerSection: View {
   @ObservedObject var state: VideoEditorState
 
@@ -19,23 +19,99 @@ struct ZoomableVideoPlayerSection: View {
 
   var body: some View {
     GeometryReader { geometry in
-      VideoPlayerSection(player: state.player)
-        .scaleEffect(currentZoomLevel)
-        .offset(zoomOffset(in: geometry.size))
-        .clipped()
-        .animation(.easeInOut(duration: animationDuration), value: currentZoomLevel)
-        .animation(.easeInOut(duration: animationDuration), value: currentZoomCenter)
-        .overlay(alignment: .topTrailing) {
-          zoomIndicator
-            .allowsHitTesting(false)
+      ZStack {
+        // Background layer
+        if state.backgroundStyle != .none {
+          backgroundView
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .contentShape(Rectangle())
+
+        // Video with effects
+        videoPlayerContent(in: geometry.size)
+          .cornerRadius(state.backgroundCornerRadius)
+          .shadow(
+            color: .black.opacity(Double(state.backgroundShadowIntensity) * 0.5),
+            radius: state.backgroundShadowIntensity * 20,
+            x: 0,
+            y: state.backgroundShadowIntensity * 10
+          )
+          .padding(state.backgroundPadding)
+          .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: alignmentValue)
+      }
     }
     .onReceive(state.$currentTime) { time in
       updateZoomState(at: CMTimeGetSeconds(time))
     }
     .onChange(of: state.zoomSegments) { _, _ in
       updateZoomState(at: CMTimeGetSeconds(state.currentTime))
+    }
+  }
+
+  // MARK: - Background View
+
+  @ViewBuilder
+  private var backgroundView: some View {
+    switch state.backgroundStyle {
+    case .none:
+      Color.clear
+    case .gradient(let preset):
+      LinearGradient(
+        colors: preset.colors,
+        startPoint: .topLeading,
+        endPoint: .bottomTrailing
+      )
+    case .solidColor(let color):
+      color
+    case .wallpaper(let url):
+      if let nsImage = NSImage(contentsOf: url) {
+        Image(nsImage: nsImage)
+          .resizable()
+          .aspectRatio(contentMode: .fill)
+      } else {
+        Color.gray
+      }
+    case .blurred(let url):
+      if let nsImage = NSImage(contentsOf: url) {
+        Image(nsImage: nsImage)
+          .resizable()
+          .aspectRatio(contentMode: .fill)
+          .blur(radius: 20)
+      } else {
+        Color.gray
+      }
+    }
+  }
+
+  // MARK: - Video Player Content
+
+  @ViewBuilder
+  private func videoPlayerContent(in size: CGSize) -> some View {
+    VideoPlayerSection(player: state.player)
+      .scaleEffect(currentZoomLevel)
+      .offset(zoomOffset(in: size))
+      .clipped()
+      .animation(.easeInOut(duration: animationDuration), value: currentZoomLevel)
+      .animation(.easeInOut(duration: animationDuration), value: currentZoomCenter)
+      .overlay(alignment: .topTrailing) {
+        zoomIndicator
+          .allowsHitTesting(false)
+      }
+      .contentShape(Rectangle())
+  }
+
+  // MARK: - Alignment
+
+  private var alignmentValue: Alignment {
+    switch state.backgroundAlignment {
+    case .topLeft: return .topLeading
+    case .top: return .top
+    case .topRight: return .topTrailing
+    case .left: return .leading
+    case .center: return .center
+    case .right: return .trailing
+    case .bottomLeft: return .bottomLeading
+    case .bottom: return .bottom
+    case .bottomRight: return .bottomTrailing
     }
   }
 
