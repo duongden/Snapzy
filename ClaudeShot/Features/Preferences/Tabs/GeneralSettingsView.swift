@@ -30,12 +30,18 @@ struct GeneralSettingsView: View {
   var body: some View {
     Form {
       Section("Startup") {
-        Toggle("Start at login", isOn: $startAtLogin)
-          .onChange(of: startAtLogin) { _, newValue in
-            LoginItemManager.setEnabled(newValue)
-          }
+        settingRow(icon: "power.circle", title: "Start at login", description: "Launch ClaudeShot when you log in") {
+          Toggle("", isOn: $startAtLogin)
+            .labelsHidden()
+            .onChange(of: startAtLogin) { _, newValue in
+              LoginItemManager.setEnabled(newValue)
+            }
+        }
 
-        Toggle("Play sounds", isOn: $playSounds)
+        settingRow(icon: "speaker.wave.2", title: "Play sounds", description: "Audio feedback for captures") {
+          Toggle("", isOn: $playSounds)
+            .labelsHidden()
+        }
       }
 
       Section("Appearance") {
@@ -44,17 +50,12 @@ struct GeneralSettingsView: View {
       }
 
       Section("Storage") {
-        HStack {
-          Text("Save screenshots & recordings to:")
-          Spacer()
-          Text(exportLocationDisplay)
-            .foregroundColor(.secondary)
-            .lineLimit(1)
-            .truncationMode(.middle)
-            .frame(maxWidth: 200)
+        settingRow(icon: "folder.fill", title: "Save location", description: exportLocationDisplay) {
           Button("Choose...") {
             chooseExportLocation()
           }
+          .buttonStyle(.bordered)
+          .controlSize(.small)
         }
       }
 
@@ -63,31 +64,40 @@ struct GeneralSettingsView: View {
       }
 
       Section("Help") {
-        Button("Restart Onboarding...") {
-          restartOnboarding()
+        settingRow(icon: "arrow.counterclockwise.circle", title: "Restart Onboarding", description: "Show the welcome tutorial again") {
+          Button("Restart") {
+            restartOnboarding()
+          }
+          .buttonStyle(.bordered)
+          .controlSize(.small)
         }
-        .foregroundColor(.accentColor)
       }
 
       Section("Software Updates") {
-        Toggle("Automatically check for updates", isOn: Binding(
-          get: { updater.automaticallyChecksForUpdates },
-          set: { updater.automaticallyChecksForUpdates = $0 }
-        ))
+        settingRow(icon: "arrow.triangle.2.circlepath", title: "Check automatically", description: "Look for updates on launch") {
+          Toggle("", isOn: Binding(
+            get: { updater.automaticallyChecksForUpdates },
+            set: { updater.automaticallyChecksForUpdates = $0 }
+          ))
+          .labelsHidden()
+        }
 
-        Toggle("Automatically download updates", isOn: Binding(
-          get: { updater.automaticallyDownloadsUpdates },
-          set: { updater.automaticallyDownloadsUpdates = $0 }
-        ))
+        settingRow(icon: "arrow.down.circle", title: "Download automatically", description: "Download updates in background") {
+          Toggle("", isOn: Binding(
+            get: { updater.automaticallyDownloadsUpdates },
+            set: { updater.automaticallyDownloadsUpdates = $0 }
+          ))
+          .labelsHidden()
+        }
 
-        HStack {
-          Text("Last checked:")
-          Spacer()
+        settingRow(icon: "clock", title: "Last checked", description: nil) {
           if let lastCheck = updater.lastUpdateCheckDate {
             Text(lastCheck, style: .relative)
+              .font(.caption)
               .foregroundColor(.secondary)
           } else {
             Text("Never")
+              .font(.caption)
               .foregroundColor(.secondary)
           }
         }
@@ -100,6 +110,39 @@ struct GeneralSettingsView: View {
     }
   }
 
+  // MARK: - Setting Row Helper
+
+  @ViewBuilder
+  private func settingRow<Content: View>(
+    icon: String,
+    title: String,
+    description: String?,
+    @ViewBuilder content: () -> Content
+  ) -> some View {
+    HStack(spacing: 12) {
+      Image(systemName: icon)
+        .font(.title2)
+        .foregroundColor(.secondary)
+        .frame(width: 28)
+
+      VStack(alignment: .leading, spacing: 2) {
+        Text(title)
+          .fontWeight(.medium)
+        if let description {
+          Text(description)
+            .font(.caption)
+            .foregroundColor(.secondary)
+        }
+      }
+
+      Spacer()
+      content()
+    }
+    .padding(.vertical, 4)
+  }
+
+  // MARK: - Helpers
+
   private var exportLocationDisplay: String {
     if exportLocation.isEmpty {
       return "Desktop/ClaudeShot"
@@ -110,7 +153,6 @@ struct GeneralSettingsView: View {
   private func initializeExportLocation() {
     if exportLocation.isEmpty {
       guard let desktop = FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first else {
-        // Fallback to home directory
         let home = FileManager.default.homeDirectoryForCurrentUser
         exportLocation = home.appendingPathComponent("ClaudeShot").path
         return
@@ -134,9 +176,7 @@ struct GeneralSettingsView: View {
 
   private func restartOnboarding() {
     OnboardingFlowView.resetOnboarding()
-    // Close settings window
     NSApp.keyWindow?.close()
-    // Open onboarding window using SwiftUI environment
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
       NSApp.activate(ignoringOtherApps: true)
       openWindow(id: "onboarding")
@@ -146,5 +186,5 @@ struct GeneralSettingsView: View {
 
 #Preview {
   GeneralSettingsView()
-    .frame(width: 500, height: 400)
+    .frame(width: 600, height: 500)
 }

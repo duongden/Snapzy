@@ -17,7 +17,6 @@ struct RecordingSettingsView: View {
 
   @State private var showPermissionDeniedAlert = false
 
-  /// Microphone capture via ScreenCaptureKit requires macOS 15.0+
   private var isMicAvailable: Bool {
     if #available(macOS 15.0, *) {
       return true
@@ -28,57 +27,59 @@ struct RecordingSettingsView: View {
   var body: some View {
     Form {
       Section("Format") {
-        Picker("Video Format", selection: $format) {
-          Text("MOV (Recommended)").tag("mov")
-          Text("MP4").tag("mp4")
+        settingRow(icon: "film", title: "Video Format", description: "MOV offers better quality. MP4 provides wider compatibility.") {
+          Picker("", selection: $format) {
+            Text("MOV").tag("mov")
+            Text("MP4").tag("mp4")
+          }
+          .labelsHidden()
+          .pickerStyle(.segmented)
+          .frame(width: 120)
         }
-        .pickerStyle(.radioGroup)
-
-        Text("MOV offers better quality. MP4 provides wider compatibility.")
-          .font(.caption)
-          .foregroundColor(.secondary)
       }
 
       Section("Quality") {
-        Picker("Frame Rate", selection: $fps) {
-          Text("30 FPS").tag(30)
-          Text("60 FPS").tag(60)
+        settingRow(icon: "gauge.with.dots.needle.33percent", title: "Frame Rate", description: "Higher FPS for smoother motion") {
+          Picker("", selection: $fps) {
+            Text("30 FPS").tag(30)
+            Text("60 FPS").tag(60)
+          }
+          .labelsHidden()
+          .pickerStyle(.segmented)
+          .frame(width: 140)
         }
 
-        Picker("Quality", selection: $quality) {
-          Text("High").tag("high")
-          Text("Medium").tag("medium")
-          Text("Low").tag("low")
+        settingRow(icon: "sparkles", title: "Quality", description: "Higher quality = larger file size") {
+          Picker("", selection: $quality) {
+            Text("High").tag("high")
+            Text("Medium").tag("medium")
+            Text("Low").tag("low")
+          }
+          .labelsHidden()
+          .pickerStyle(.segmented)
+          .frame(width: 180)
         }
-
-        Text("Higher quality results in larger file sizes.")
-          .font(.caption)
-          .foregroundColor(.secondary)
       }
 
       Section("Audio") {
-        Toggle("Capture System Audio", isOn: $captureAudio)
+        settingRow(icon: "speaker.wave.3.fill", title: "System Audio", description: "Capture sounds from apps") {
+          Toggle("", isOn: $captureAudio)
+            .labelsHidden()
+        }
 
-        Toggle("Capture Microphone", isOn: Binding(
-          get: { captureMicrophone },
-          set: { newValue in
-            if newValue {
-              handleMicrophoneEnable()
-            } else {
-              captureMicrophone = false
+        settingRow(icon: "mic.fill", title: "Microphone", description: microphoneDescription) {
+          Toggle("", isOn: Binding(
+            get: { captureMicrophone },
+            set: { newValue in
+              if newValue {
+                handleMicrophoneEnable()
+              } else {
+                captureMicrophone = false
+              }
             }
-          }
-        ))
-        .disabled(!captureAudio || !isMicAvailable)
-
-        if !isMicAvailable {
-          Text("Microphone capture requires macOS 15.0 or later.")
-            .font(.caption)
-            .foregroundColor(.orange)
-        } else {
-          Text("System audio captures sounds from apps. Microphone captures your voice.")
-            .font(.caption)
-            .foregroundColor(.secondary)
+          ))
+          .labelsHidden()
+          .disabled(!captureAudio || !isMicAvailable)
         }
       }
       .alert("Microphone Access Required", isPresented: $showPermissionDeniedAlert) {
@@ -91,20 +92,56 @@ struct RecordingSettingsView: View {
       }
 
       Section("Save Location") {
-        HStack {
-          Text("Recordings save to the same location as screenshots.")
-            .foregroundColor(.secondary)
-          Spacer()
+        settingRow(icon: "folder.fill", title: "Recording Location", description: "Same as screenshots") {
           Text("See General tab")
-            .foregroundColor(.accentColor)
             .font(.caption)
+            .foregroundColor(.accentColor)
         }
       }
     }
     .formStyle(.grouped)
   }
 
-  /// Request microphone permission when user enables toggle
+  // MARK: - Setting Row Helper
+
+  @ViewBuilder
+  private func settingRow<Content: View>(
+    icon: String,
+    title: String,
+    description: String?,
+    @ViewBuilder content: () -> Content
+  ) -> some View {
+    HStack(spacing: 12) {
+      Image(systemName: icon)
+        .font(.title2)
+        .foregroundColor(.secondary)
+        .frame(width: 28)
+
+      VStack(alignment: .leading, spacing: 2) {
+        Text(title)
+          .fontWeight(.medium)
+        if let description {
+          Text(description)
+            .font(.caption)
+            .foregroundColor(.secondary)
+        }
+      }
+
+      Spacer()
+      content()
+    }
+    .padding(.vertical, 4)
+  }
+
+  // MARK: - Helpers
+
+  private var microphoneDescription: String {
+    if !isMicAvailable {
+      return "Requires macOS 15.0+"
+    }
+    return "Capture your voice"
+  }
+
   private func handleMicrophoneEnable() {
     let status = AVCaptureDevice.authorizationStatus(for: .audio)
 
@@ -138,5 +175,5 @@ struct RecordingSettingsView: View {
 
 #Preview {
   RecordingSettingsView()
-    .frame(width: 500, height: 400)
+    .frame(width: 600, height: 400)
 }

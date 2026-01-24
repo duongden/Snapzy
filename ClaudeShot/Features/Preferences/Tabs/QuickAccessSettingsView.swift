@@ -9,66 +9,84 @@ import SwiftUI
 
 struct QuickAccessSettingsView: View {
   @ObservedObject private var manager = QuickAccessManager.shared
-  
+
   @State private var positionIsLeft: Bool = false
-  
+
   var body: some View {
     Form {
       Section("Position") {
-        Picker("Screen edge", selection: $positionIsLeft) {
-          Text("Left").tag(true)
-          Text("Right").tag(false)
-        }
-        .pickerStyle(.segmented)
-        .onChange(of: positionIsLeft) { _, newValue in
-          manager.setPosition(newValue ? .bottomLeft : .bottomRight)
+        settingRow(icon: "rectangle.leadinghalf.inset.filled", title: "Screen Edge", description: "Where the overlay appears") {
+          Picker("", selection: $positionIsLeft) {
+            Text("Left").tag(true)
+            Text("Right").tag(false)
+          }
+          .labelsHidden()
+          .pickerStyle(.segmented)
+          .frame(width: 120)
+          .onChange(of: positionIsLeft) { _, newValue in
+            manager.setPosition(newValue ? .bottomLeft : .bottomRight)
+          }
         }
       }
-      
+
       Section("Appearance") {
-        VStack(alignment: .leading, spacing: 8) {
-          Text("Overlay Size")
-          HStack {
-            Text("Small")
+        settingRow(icon: "arrow.up.left.and.arrow.down.right", title: "Overlay Size", description: "Adjust the floating preview size") {
+          HStack(spacing: 8) {
+            Text("S")
               .font(.caption)
               .foregroundColor(.secondary)
             Slider(value: $manager.overlayScale, in: 0.75...1.5, step: 0.25)
-            Text("Large")
+              .frame(width: 100)
+            Text("L")
               .font(.caption)
               .foregroundColor(.secondary)
           }
         }
       }
-      
+
       Section("Behaviors") {
-        
-        VStack(alignment: .leading, spacing: 12) {
-          Toggle("Enable floating overlay", isOn: $manager.isEnabled)
-          
-          Divider()
-          
-          Toggle("Auto-close overlay", isOn: $manager.autoDismissEnabled)
-          
-          if manager.autoDismissEnabled {
-            HStack {
-              Text("Close after")
-              Slider(value: $manager.autoDismissDelay, in: 3...30, step: 1)
-                .frame(width: 150)
-              Text("\(Int(manager.autoDismissDelay))s")
-                .frame(width: 35)
-                .monospacedDigit()
-            }
-            .padding(.leading, 20)
-          }
-          
-          Divider()
-          
-          Toggle("Enable drag & drop to apps", isOn: $manager.dragDropEnabled)
-          
-          Toggle("Show cloud upload button", isOn: $manager.showCloudUpload)
+        settingRow(icon: "square.on.square", title: "Floating Overlay", description: "Show preview after capture") {
+          Toggle("", isOn: $manager.isEnabled)
+            .labelsHidden()
         }
-        .padding(4)
-        
+
+        settingRow(icon: "timer", title: "Auto-close", description: autoCloseDescription) {
+          Toggle("", isOn: $manager.autoDismissEnabled)
+            .labelsHidden()
+        }
+
+        if manager.autoDismissEnabled {
+          HStack(spacing: 12) {
+            Image(systemName: "clock")
+              .font(.title2)
+              .foregroundColor(.secondary)
+              .frame(width: 28)
+
+            Text("Close after")
+              .fontWeight(.medium)
+
+            Spacer()
+
+            Slider(value: $manager.autoDismissDelay, in: 3...30, step: 1)
+              .frame(width: 120)
+
+            Text("\(Int(manager.autoDismissDelay))s")
+              .frame(width: 35)
+              .monospacedDigit()
+              .foregroundColor(.secondary)
+          }
+          .padding(.vertical, 4)
+        }
+
+        settingRow(icon: "hand.draw", title: "Drag & Drop", description: "Drag captures to other apps") {
+          Toggle("", isOn: $manager.dragDropEnabled)
+            .labelsHidden()
+        }
+
+        settingRow(icon: "cloud.fill", title: "Cloud Upload", description: "Show upload button on overlay") {
+          Toggle("", isOn: $manager.showCloudUpload)
+            .labelsHidden()
+        }
       }
     }
     .formStyle(.grouped)
@@ -76,9 +94,49 @@ struct QuickAccessSettingsView: View {
       positionIsLeft = manager.position.isLeftSide
     }
   }
+
+  // MARK: - Setting Row Helper
+
+  @ViewBuilder
+  private func settingRow<Content: View>(
+    icon: String,
+    title: String,
+    description: String?,
+    @ViewBuilder content: () -> Content
+  ) -> some View {
+    HStack(spacing: 12) {
+      Image(systemName: icon)
+        .font(.title2)
+        .foregroundColor(.secondary)
+        .frame(width: 28)
+
+      VStack(alignment: .leading, spacing: 2) {
+        Text(title)
+          .fontWeight(.medium)
+        if let description {
+          Text(description)
+            .font(.caption)
+            .foregroundColor(.secondary)
+        }
+      }
+
+      Spacer()
+      content()
+    }
+    .padding(.vertical, 4)
+  }
+
+  // MARK: - Helpers
+
+  private var autoCloseDescription: String {
+    if manager.autoDismissEnabled {
+      return "Closes after \(Int(manager.autoDismissDelay)) seconds"
+    }
+    return "Keep overlay open until dismissed"
+  }
 }
 
 #Preview {
   QuickAccessSettingsView()
-    .frame(width: 500, height: 400)
+    .frame(width: 600, height: 450)
 }
