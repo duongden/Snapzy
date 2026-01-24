@@ -56,6 +56,7 @@ struct VideoEditorMainView: View {
           VideoInfoPanel(state: state)
             .padding(.horizontal, 16)
             .padding(.top, 12)
+            .padding(.bottom, 12)
 
           Spacer(minLength: 0)
 
