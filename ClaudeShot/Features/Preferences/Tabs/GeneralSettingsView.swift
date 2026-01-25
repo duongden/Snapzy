@@ -16,15 +16,9 @@ struct GeneralSettingsView: View {
 
   @State private var startAtLogin = LoginItemManager.isEnabled
 
-  // Sparkle updater for settings
-  private let updater: SPUUpdater
-
-  init() {
-    updater = SPUStandardUpdaterController(
-      startingUpdater: false,
-      updaterDelegate: nil,
-      userDriverDelegate: nil
-    ).updater
+  // Use shared updater manager
+  private var updater: SPUUpdater {
+    UpdaterManager.shared.updater
   }
 
   var body: some View {

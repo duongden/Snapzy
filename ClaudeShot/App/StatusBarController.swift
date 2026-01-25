@@ -251,10 +251,10 @@ final class StatusBarController: ObservableObject {
     // Check for Updates
     let updateItem = NSMenuItem(
       title: "Check for Updates...",
-      action: #selector(SPUStandardUpdaterController.checkForUpdates(_:)),
+      action: #selector(checkForUpdatesAction),
       keyEquivalent: ""
     )
-    updateItem.target = updater
+    updateItem.target = self
     menu?.addItem(updateItem)
 
     // Preferences
@@ -310,6 +310,10 @@ final class StatusBarController: ObservableObject {
 
   @objc private func grantPermissionAction() {
     viewModel?.requestPermission()
+  }
+
+  @objc private func checkForUpdatesAction() {
+    UpdaterManager.shared.checkForUpdates()
   }
 
   @objc private func openPreferencesAction() {

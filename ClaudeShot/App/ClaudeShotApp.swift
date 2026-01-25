@@ -51,20 +51,12 @@ struct ClaudeShotApp: App {
 
 class AppDelegate: NSObject, NSApplicationDelegate {
   private let viewModel = ScreenCaptureViewModel()
-  private var updaterController: SPUStandardUpdaterController!
 
   func applicationDidFinishLaunching(_ notification: Notification) {
-    // Initialize Sparkle updater
-    updaterController = SPUStandardUpdaterController(
-      startingUpdater: true,
-      updaterDelegate: nil,
-      userDriverDelegate: nil
-    )
-
-    // Setup status bar with dependencies
+    // Setup status bar with dependencies (uses shared UpdaterManager)
     StatusBarController.shared.setup(
       viewModel: viewModel,
-      updater: updaterController.updater
+      updater: UpdaterManager.shared.updater
     )
 
     // Show onboarding on first launch

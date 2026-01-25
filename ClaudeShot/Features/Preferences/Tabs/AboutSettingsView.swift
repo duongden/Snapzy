@@ -9,14 +9,9 @@ import SwiftUI
 import Sparkle
 
 struct AboutSettingsView: View {
-  private let updater: SPUUpdater
-
-  init() {
-    updater = SPUStandardUpdaterController(
-      startingUpdater: false,
-      updaterDelegate: nil,
-      userDriverDelegate: nil
-    ).updater
+  // Use shared updater manager
+  private var updater: SPUUpdater {
+    UpdaterManager.shared.updater
   }
 
   private var appVersion: String {
