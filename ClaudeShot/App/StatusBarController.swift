@@ -59,11 +59,21 @@ final class StatusBarController: ObservableObject {
     statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
 
     if let button = statusItem?.button {
-      button.image = NSImage(
-        systemSymbolName: "camera.aperture",
-        accessibilityDescription: "ClaudeShot"
-      )
-      button.image?.isTemplate = true
+      // Use AppIcon from Assets, resized for menu bar (18pt standard height)
+      if let appIcon = NSImage(named: "MenubarIcon") {
+        let size = NSSize(width: 18, height: 18)
+        let resizedIcon = NSImage(size: size)
+        resizedIcon.lockFocus()
+        appIcon.draw(
+          in: NSRect(origin: .zero, size: size),
+          from: NSRect(origin: .zero, size: appIcon.size),
+          operation: .copy,
+          fraction: 1.0
+        )
+        resizedIcon.unlockFocus()
+        resizedIcon.isTemplate = false
+        button.image = resizedIcon
+      }
 
       // Set up click action
       button.target = self
@@ -129,14 +139,22 @@ final class StatusBarController: ObservableObject {
     }
 
     if useTemplate {
-      // Template icon for idle state (adapts to light/dark mode)
-      let image = NSImage(
-        systemSymbolName: iconName,
-        accessibilityDescription: "ClaudeShot"
-      )
-      image?.isTemplate = true
-      button.image = image
-      button.contentTintColor = nil
+      // Use AppIcon for idle state, resized for menu bar
+      if let appIcon = NSImage(named: "AppIcon") {
+        let size = NSSize(width: 18, height: 18)
+        let resizedIcon = NSImage(size: size)
+        resizedIcon.lockFocus()
+        appIcon.draw(
+          in: NSRect(origin: .zero, size: size),
+          from: NSRect(origin: .zero, size: appIcon.size),
+          operation: .copy,
+          fraction: 1.0
+        )
+        resizedIcon.unlockFocus()
+        resizedIcon.isTemplate = false
+        button.image = resizedIcon
+        button.contentTintColor = nil
+      }
     } else {
       // Colored icon for recording states - use hierarchical rendering with red
       let config = NSImage.SymbolConfiguration(hierarchicalColor: .systemRed)
