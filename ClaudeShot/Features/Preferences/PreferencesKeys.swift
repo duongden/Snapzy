@@ -9,6 +9,9 @@ import Foundation
 
 /// Centralized keys for UserDefaults storage
 enum PreferencesKeys {
+  // Onboarding
+  static let onboardingCompleted = "onboardingCompleted"
+
   // General
   static let playSounds = "playSounds"
   static let showMenuBarIcon = "showMenuBarIcon"

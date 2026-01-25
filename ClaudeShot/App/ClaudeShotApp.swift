@@ -17,21 +17,23 @@ extension Notification.Name {
 @main
 struct ClaudeShotApp: App {
   @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
-  @State private var showOnboarding = !OnboardingFlowView.hasCompletedOnboarding
+  @AppStorage(PreferencesKeys.onboardingCompleted) private var onboardingCompleted = false
   @ObservedObject private var themeManager = ThemeManager.shared
 
   var body: some Scene {
     // Onboarding Window (shown only when needed)
     WindowGroup(id: "onboarding") {
-      OnboardingFlowView(onComplete: {
-        showOnboarding = false
-        // Close onboarding window
-        NSApp.windows
-          .filter { $0.identifier?.rawValue.contains("onboarding") == true }
-          .forEach { $0.close() }
-      })
-      .frame(width: 700, height: 600)
-      .preferredColorScheme(themeManager.systemAppearance)
+      if onboardingCompleted == false {
+        OnboardingFlowView(onComplete: {
+          onboardingCompleted = true
+          // Close onboarding window
+          NSApp.windows
+            .filter { $0.identifier?.rawValue.contains("onboarding") == true }
+            .forEach { $0.close() }
+        })
+        .frame(width: 700, height: 600)
+        .preferredColorScheme(themeManager.systemAppearance)
+      }
     }
     .windowStyle(.hiddenTitleBar)
     .windowResizability(.contentSize)

@@ -20,7 +20,7 @@ struct OnboardingFlowView: View {
 
   let onComplete: () -> Void
 
-  private static let onboardingCompletedKey = "onboardingCompleted"
+  private static let onboardingCompletedKey = PreferencesKeys.onboardingCompleted
 
   var body: some View {
     Group {

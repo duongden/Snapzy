@@ -179,7 +179,7 @@ struct GeneralSettingsView: View {
     NSApp.keyWindow?.close()
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
       NSApp.activate(ignoringOtherApps: true)
-      openWindow(id: "onboarding")
+      // openWindow(id: "onboarding")
     }
   }
 }

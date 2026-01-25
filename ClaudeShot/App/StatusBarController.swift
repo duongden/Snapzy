@@ -313,7 +313,26 @@ final class StatusBarController: ObservableObject {
   }
 
   @objc private func openPreferencesAction() {
-    NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+    NSApp.activate(ignoringOtherApps: true)
+    // Trigger Settings scene - equivalent to SettingsLink behavior
+    // Uses the standard Cmd+, keyboard shortcut action
+    if #available(macOS 14.0, *) {
+      NSApp.mainMenu?.performKeyEquivalent(with: NSEvent.keyEvent(
+        with: .keyDown,
+        location: .zero,
+        modifierFlags: .command,
+        timestamp: 0,
+        windowNumber: 0,
+        context: nil,
+        characters: ",",
+        charactersIgnoringModifiers: ",",
+        isARepeat: false,
+        keyCode: 43
+      )!)
+    } else {
+      // Fallback for all macOS versions: use selector string
+      NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+    }
   }
 
   @objc private func quitAction() {
