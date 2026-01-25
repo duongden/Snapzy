@@ -23,6 +23,8 @@ final class RecordingToolbarWindow: NSWindow {
   // Callbacks
   var onRecord: (() -> Void)?
   var onCancel: (() -> Void)?
+  var onDelete: (() -> Void)?
+  var onRestart: (() -> Void)?
   var onStop: (() -> Void)?
 
   // State
@@ -115,6 +117,8 @@ final class RecordingToolbarWindow: NSWindow {
 
     let view = RecordingStatusBarView(
       recorder: recorder,
+      onDelete: { [weak self] in self?.onDelete?() },
+      onRestart: { [weak self] in self?.onRestart?() },
       onStop: { [weak self] in self?.onStop?() }
     )
 

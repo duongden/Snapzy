@@ -10,6 +10,8 @@ import SwiftUI
 
 struct RecordingStatusBarView: View {
   @ObservedObject var recorder: ScreenRecordingManager
+  let onDelete: () -> Void
+  let onRestart: () -> Void
   let onStop: () -> Void
 
   @State private var indicatorOpacity: Double = 1.0
@@ -28,12 +30,19 @@ struct RecordingStatusBarView: View {
         .onAppear { indicatorOpacity = 0.3 }
         .accessibilityLabel(recorder.isPaused ? "Recording paused" : "Recording in progress")
 
-      // Timer display
-      Text(recorder.formattedDuration)
-        .font(.system(.body, design: .monospaced))
-        .foregroundColor(recorder.isPaused ? .secondary : .primary)
-        .frame(minWidth: 60, alignment: .leading)
-        .accessibilityLabel("Duration: \(recorder.formattedDuration)")
+      // Timer display with integrated Stop action
+      Button(action: onStop) {
+        HStack(spacing: 6) {
+          Text(recorder.formattedDuration)
+            .font(.system(.body, design: .monospaced))
+            .foregroundColor(recorder.isPaused ? .secondary : .primary)
+          Image(systemName: "stop.fill")
+        }
+      }
+      .buttonStyle(StopButtonStyle())
+      .fixedSize()
+      .accessibilityLabel("Stop recording - Duration: \(recorder.formattedDuration)")
+      .accessibilityHint("Stops and saves the recording")
 
       RecordingToolbarDivider()
 
@@ -46,17 +55,21 @@ struct RecordingStatusBarView: View {
 
       RecordingToolbarDivider()
 
-      // Stop button
-      Button(action: onStop) {
-        HStack(spacing: 6) {
-          Image(systemName: "stop.fill")
-          Text("Stop")
-        }
-      }
-      .buttonStyle(StopButtonStyle())
-      .fixedSize()
-      .accessibilityLabel("Stop recording")
-      .accessibilityHint("Stops and saves the recording")
+      // Restart button
+      ToolbarIconButton(
+        systemName: "arrow.counterclockwise",
+        action: onRestart,
+        accessibilityLabel: "Restart recording"
+      )
+
+      RecordingToolbarDivider()
+
+      // Delete button
+      ToolbarIconButton(
+        systemName: "trash",
+        action: onDelete,
+        accessibilityLabel: "Delete recording"
+      )
     }
     .padding(.horizontal, ToolbarConstants.horizontalPadding)
     .padding(.vertical, ToolbarConstants.verticalPadding)
@@ -71,6 +84,8 @@ struct RecordingStatusBarView: View {
 #Preview {
   RecordingStatusBarView(
     recorder: ScreenRecordingManager.shared,
+    onDelete: {},
+    onRestart: {},
     onStop: {}
   )
   .padding()

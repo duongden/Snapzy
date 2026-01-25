@@ -41,6 +41,12 @@ final class RecordingCoordinator: ObservableObject {
     toolbarWindow?.onCancel = { [weak self] in
       self?.cancel()
     }
+    toolbarWindow?.onDelete = { [weak self] in
+      self?.deleteRecording()
+    }
+    toolbarWindow?.onRestart = { [weak self] in
+      self?.restartRecording()
+    }
     toolbarWindow?.onStop = { [weak self] in
       self?.stopRecording()
     }
@@ -93,6 +99,72 @@ final class RecordingCoordinator: ObservableObject {
       await recorder.cancelRecording()
     }
     cleanup()
+  }
+
+  /// Delete current recording and close
+  private func deleteRecording() {
+    Task {
+      await recorder.cancelRecording()
+      NSSound(named: "Funk")?.play()
+    }
+    cleanup()
+  }
+
+  /// Restart recording from scratch (cancel current and start new)
+  private func restartRecording() {
+    guard let rect = selectedRect, let window = toolbarWindow else { return }
+
+    let savedFormat = window.selectedFormat
+    let savedQuality = window.selectedQuality
+    let savedCaptureAudio = window.captureAudio
+    let savedCaptureMicrophone = window.captureMicrophone
+
+    Task {
+      // Cancel current recording
+      await recorder.cancelRecording()
+
+      // Small delay to ensure cleanup completes
+      try? await Task.sleep(nanoseconds: 100_000_000)  // 0.1s
+
+      // Re-prepare and start recording with same settings
+      do {
+        var fps = UserDefaults.standard.integer(forKey: PreferencesKeys.recordingFPS)
+        if fps == 0 { fps = 30 }
+
+        let saveDirectory: URL
+        if let path = UserDefaults.standard.string(forKey: PreferencesKeys.exportLocation),
+          !path.isEmpty
+        {
+          saveDirectory = URL(fileURLWithPath: path)
+        } else {
+          saveDirectory =
+            FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first!
+            .appendingPathComponent("ClaudeShot")
+        }
+
+        try await recorder.prepareRecording(
+          rect: rect,
+          format: savedFormat,
+          quality: savedQuality,
+          fps: fps,
+          captureSystemAudio: savedCaptureAudio,
+          captureMicrophone: savedCaptureMicrophone,
+          saveDirectory: saveDirectory
+        )
+
+        try await recorder.startRecording()
+
+        // Play sound to indicate restart
+        NSSound(named: "Purr")?.play()
+
+      } catch let error as RecordingError {
+        showErrorAlert(error)
+        cancel()
+      } catch {
+        showErrorAlert(.setupFailed(error.localizedDescription))
+        cancel()
+      }
+    }
   }
 
   // MARK: - Private
@@ -336,6 +408,8 @@ final class RecordingCoordinator: ObservableObject {
         self.toolbarWindow?.selectedFormat = savedFormat
         self.toolbarWindow?.onRecord = { [weak self] in self?.startRecording() }
         self.toolbarWindow?.onCancel = { [weak self] in self?.cancel() }
+        self.toolbarWindow?.onDelete = { [weak self] in self?.deleteRecording() }
+        self.toolbarWindow?.onRestart = { [weak self] in self?.restartRecording() }
         self.toolbarWindow?.onStop = { [weak self] in self?.stopRecording() }
         self.showRegionOverlay(for: rect)
       } else {
