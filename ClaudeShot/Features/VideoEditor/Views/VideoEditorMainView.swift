@@ -76,7 +76,6 @@ struct VideoEditorMainView: View {
       }
       .animation(.easeInOut(duration: 0.2), value: state.isVideoInfoSidebarVisible)
     }
-    .background(Color(NSColor.windowBackgroundColor))
     // Keyboard shortcuts for zoom operations
     .background {
       // Add zoom at playhead (Z key)

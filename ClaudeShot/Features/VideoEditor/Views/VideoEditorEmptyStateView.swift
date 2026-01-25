@@ -38,7 +38,6 @@ struct VideoEditorEmptyStateView: View {
       }
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
-    .background(Color(NSColor.windowBackgroundColor))
     .alert("Invalid File", isPresented: $showError) {
       Button("OK", role: .cancel) {}
     } message: {

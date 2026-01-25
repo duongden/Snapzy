@@ -39,7 +39,6 @@ struct VideoEditorRightSidebar: View {
     }
     .frame(width: 320)
     .frame(maxHeight: .infinity, alignment: .top)
-    .background(Color(NSColor.controlBackgroundColor))
     .onChange(of: state.selectedZoomId) { _, newValue in
       // Auto-switch to zoom tab when a zoom is selected
       if newValue != nil {

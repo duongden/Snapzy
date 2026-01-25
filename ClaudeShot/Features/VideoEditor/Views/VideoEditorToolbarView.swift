@@ -32,7 +32,6 @@ struct VideoEditorToolbarView: View {
     }
     .frame(height: 44)
     .padding(.horizontal, 12)
-    .background(Color(NSColor.windowBackgroundColor))
   }
 
   // MARK: - Left Section

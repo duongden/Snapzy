@@ -68,7 +68,6 @@ struct VideoDetailsSidebarView: View {
       .padding(12)
     }
     .frame(maxHeight: .infinity)
-    .background(Color(NSColor.controlBackgroundColor))
   }
 }
 
