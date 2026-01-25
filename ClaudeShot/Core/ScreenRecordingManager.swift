@@ -168,7 +168,7 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
     self.captureSystemAudio = captureSystemAudio
     self.captureMicrophone = captureMicrophone
 
-    // Check permission
+    // Check permission and get shareable content
     let content: SCShareableContent
     do {
       content = try await SCShareableContent.current
@@ -176,6 +176,14 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
       state = .idle
       self.error = .permissionDenied
       throw RecordingError.permissionDenied
+    }
+
+    // Find own app to exclude from capture (hides toolbar/status bar from recording)
+    let excludedApps: [SCRunningApplication]
+    if let bundleID = Bundle.main.bundleIdentifier {
+      excludedApps = content.applications.filter { $0.bundleIdentifier == bundleID }
+    } else {
+      excludedApps = []
     }
 
     // Find the display containing the rect using NSScreen (same coordinate system as input rect)
@@ -230,8 +238,8 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
     // Setup AVAssetWriter
     try setupAssetWriter(width: outputWidth, height: outputHeight, captureSystemAudio: captureSystemAudio, captureMicrophone: captureMicrophone)
 
-    // Setup SCStream
-    try await setupStream(display: display, rect: rect, scaleFactor: scaleFactor, captureSystemAudio: captureSystemAudio, captureMicrophone: captureMicrophone)
+    // Setup SCStream with app exclusion to hide toolbar/status bar from capture
+    try await setupStream(display: display, rect: rect, scaleFactor: scaleFactor, captureSystemAudio: captureSystemAudio, captureMicrophone: captureMicrophone, excludedApps: excludedApps)
   }
 
   /// Start the recording
@@ -419,8 +427,10 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
     }
   }
 
-  private func setupStream(display: SCDisplay, rect: CGRect, scaleFactor: CGFloat, captureSystemAudio: Bool, captureMicrophone: Bool) async throws {
-    let filter = SCContentFilter(display: display, excludingWindows: [])
+  private func setupStream(display: SCDisplay, rect: CGRect, scaleFactor: CGFloat, captureSystemAudio: Bool, captureMicrophone: Bool, excludedApps: [SCRunningApplication]) async throws {
+    // Exclude own app from capture to hide toolbar/status bar from recording output
+    // This works on macOS 14, 15, and future versions (API available since macOS 12.3)
+    let filter = SCContentFilter(display: display, excludingApplications: excludedApps, exceptingWindows: [])
 
     let config = SCStreamConfiguration()
     config.width = Int(ceil(rect.width * scaleFactor))
