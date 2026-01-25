@@ -19,6 +19,12 @@ final class VideoEditorWindow: NSWindow {
     )
     configure()
   }
+  
+  override func layoutIfNeeded() {
+    super.layoutIfNeeded()
+    
+    layoutTrafficLights()
+  }
 
   private func configure() {
     applyTheme()
@@ -31,6 +37,8 @@ final class VideoEditorWindow: NSWindow {
     minSize = NSSize(width: 400, height: 300)
     isReleasedWhenClosed = false
     center()
+
+    applyCornerRadius()
   }
 
   /// Apply current theme from ThemeManager
