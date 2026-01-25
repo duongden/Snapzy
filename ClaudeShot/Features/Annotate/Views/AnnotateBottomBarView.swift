@@ -19,9 +19,9 @@ struct AnnotateBottomBarView: View {
       Spacer()
 
       // Drag handle
-      dragHandle
+//      dragHandle
 
-      Spacer()
+//      Spacer()
 
       // Action buttons
       actionButtons
