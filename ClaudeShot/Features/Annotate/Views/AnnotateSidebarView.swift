@@ -31,7 +31,7 @@ struct AnnotateSidebarView: View {
         alignmentSection
         
         // Ratio section
-        ratioSection
+        // ratioSection
 
         // Text styling section (shown when text annotation is selected)
         if state.selectedTextAnnotation != nil {
@@ -164,19 +164,19 @@ struct AnnotateSidebarView: View {
     }
   }
   
-  private var ratioSection: some View {
-    VStack(alignment: .leading, spacing: 6) {
-      SidebarSectionHeader(title: "Ratio")
-      Picker("", selection: $state.aspectRatio) {
-        ForEach(AspectRatioOption.allCases) { option in
-          Text(option.rawValue).tag(option)
-        }
-      }
-      .pickerStyle(.menu)
-      .labelsHidden()
-      .frame(maxWidth: .infinity, alignment: .leading)
-    }
-  }
+  // private var ratioSection: some View {
+  //   VStack(alignment: .leading, spacing: 6) {
+  //     SidebarSectionHeader(title: "Ratio")
+  //     Picker("", selection: $state.aspectRatio) {
+  //       ForEach(AspectRatioOption.allCases) { option in
+  //         Text(option.rawValue).tag(option)
+  //       }
+  //     }
+  //     .pickerStyle(.menu)
+  //     .labelsHidden()
+  //     .frame(maxWidth: .infinity, alignment: .leading)
+  //   }
+  // }
 }
 
 // MARK: - Compact Components
