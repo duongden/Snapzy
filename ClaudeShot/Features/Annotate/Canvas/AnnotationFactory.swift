@@ -56,7 +56,7 @@ enum AnnotationFactory {
       type = .highlight(path)
 
     case .blur:
-      type = .blur
+      type = .blur(state.blurType)
 
     case .counter:
       type = .counter(state.nextCounterValue())

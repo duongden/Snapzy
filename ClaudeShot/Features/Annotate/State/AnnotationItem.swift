@@ -9,6 +9,28 @@ import CoreGraphics
 import Foundation
 import SwiftUI
 
+/// Blur effect type for blur annotations
+enum BlurType: String, CaseIterable, Identifiable, Equatable {
+  case pixelated
+  case gaussian
+
+  var id: String { rawValue }
+
+  var displayName: String {
+    switch self {
+    case .pixelated: return "Pixelated"
+    case .gaussian: return "Gaussian"
+    }
+  }
+
+  var icon: String {
+    switch self {
+    case .pixelated: return "square.grid.3x3"
+    case .gaussian: return "drop.halffull"
+    }
+  }
+}
+
 /// Single annotation element on the canvas
 struct AnnotationItem: Identifiable, Equatable {
   let id: UUID
@@ -37,7 +59,7 @@ enum AnnotationType: Equatable {
   case line(start: CGPoint, end: CGPoint)
   case text(String)
   case highlight([CGPoint])
-  case blur
+  case blur(BlurType)
   case counter(Int)
 }
 
@@ -72,7 +94,7 @@ extension AnnotationItem {
     let tolerance = baseTolerance + properties.strokeWidth / 2
 
     switch type {
-    case .rectangle, .blur:
+    case .rectangle, .blur(_):
       return bounds.contains(point)
 
     case .oval:

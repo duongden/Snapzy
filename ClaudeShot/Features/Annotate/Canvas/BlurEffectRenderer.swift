@@ -14,6 +14,20 @@ struct BlurEffectRenderer {
   /// Default pixel block size for blur effect
   static let defaultPixelSize: CGFloat = 12
 
+  /// Default Gaussian blur radius
+  static let defaultGaussianRadius: Double = 20.0
+
+  /// Shared GPU-backed CIContext for performance (reused across blur operations)
+  static let sharedCIContext: CIContext = {
+    if let metalDevice = MTLCreateSystemDefaultDevice() {
+      return CIContext(mtlDevice: metalDevice, options: [
+        .cacheIntermediates: true,
+        .priorityRequestLow: false
+      ])
+    }
+    return CIContext(options: [.cacheIntermediates: true])
+  }()
+
   /// Draw a pixelated version of the source image region
   /// - Parameters:
   ///   - context: The graphics context to draw into
@@ -154,5 +168,67 @@ struct BlurEffectRenderer {
     context.setLineDash(phase: 0, lengths: [6, 4])
     context.stroke(region)
     context.setLineDash(phase: 0, lengths: [])
+  }
+
+  /// Draw Gaussian blur region using CIFilter (GPU-accelerated)
+  static func drawGaussianRegion(
+    in context: CGContext,
+    sourceImage: NSImage,
+    region: CGRect,
+    radius: Double = defaultGaussianRadius
+  ) {
+    guard region.width > 0, region.height > 0 else { return }
+
+    guard let cgImage = sourceImage.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
+      drawFallbackBlur(in: context, region: region)
+      return
+    }
+
+    // Calculate image scale
+    let imageScale = CGFloat(cgImage.width) / sourceImage.size.width
+
+    // Convert region to pixel coordinates (flip Y for CGImage)
+    let pixelRegion = CGRect(
+      x: region.origin.x * imageScale,
+      y: (sourceImage.size.height - region.origin.y - region.height) * imageScale,
+      width: region.width * imageScale,
+      height: region.height * imageScale
+    )
+
+    // Clamp to image bounds
+    let clampedPixelRegion = pixelRegion.intersection(
+      CGRect(x: 0, y: 0, width: cgImage.width, height: cgImage.height)
+    )
+    guard !clampedPixelRegion.isEmpty else {
+      drawFallbackBlur(in: context, region: region)
+      return
+    }
+
+    // Crop the region
+    guard let croppedImage = cgImage.cropping(to: clampedPixelRegion) else {
+      drawFallbackBlur(in: context, region: region)
+      return
+    }
+
+    // Apply CIGaussianBlur
+    let ciImage = CIImage(cgImage: croppedImage)
+    let filter = CIFilter(name: "CIGaussianBlur")
+    filter?.setValue(ciImage, forKey: kCIInputImageKey)
+    filter?.setValue(radius, forKey: kCIInputRadiusKey)
+
+    guard let outputImage = filter?.outputImage else {
+      drawFallbackBlur(in: context, region: region)
+      return
+    }
+
+    // Crop to original extent (blur expands the image)
+    let croppedOutput = outputImage.cropped(to: ciImage.extent)
+
+    guard let blurredCGImage = sharedCIContext.createCGImage(croppedOutput, from: ciImage.extent) else {
+      drawFallbackBlur(in: context, region: region)
+      return
+    }
+
+    context.draw(blurredCGImage, in: region)
   }
 }

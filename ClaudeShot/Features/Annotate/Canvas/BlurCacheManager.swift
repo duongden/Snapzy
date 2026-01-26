@@ -16,6 +16,7 @@ final class BlurCacheManager {
   private struct CacheEntry {
     let image: CGImage
     let bounds: CGRect
+    let blurType: BlurType
   }
 
   /// Get or create cached blur image for annotation
@@ -23,16 +24,18 @@ final class BlurCacheManager {
   ///   - annotationId: The annotation's unique identifier
   ///   - bounds: The annotation bounds in image coordinates
   ///   - sourceImage: The source image to sample from
-  ///   - pixelSize: Size of each pixel block for blur effect
+  ///   - blurType: The type of blur effect to apply
+  ///   - pixelSize: Size of each pixel block for pixelated blur effect
   /// - Returns: Cached CGImage if available, or newly rendered image
   func getCachedBlur(
     for annotationId: UUID,
     bounds: CGRect,
     sourceImage: NSImage,
+    blurType: BlurType = .pixelated,
     pixelSize: CGFloat = BlurEffectRenderer.defaultPixelSize
   ) -> CGImage? {
-    // Return cached if valid (same bounds)
-    if let entry = cache[annotationId], entry.bounds == bounds {
+    // Return cached if valid (same bounds and blur type)
+    if let entry = cache[annotationId], entry.bounds == bounds, entry.blurType == blurType {
       return entry.image
     }
 
@@ -40,10 +43,11 @@ final class BlurCacheManager {
     guard let rendered = renderBlurToImage(
       bounds: bounds,
       sourceImage: sourceImage,
+      blurType: blurType,
       pixelSize: pixelSize
     ) else { return nil }
 
-    cache[annotationId] = CacheEntry(image: rendered, bounds: bounds)
+    cache[annotationId] = CacheEntry(image: rendered, bounds: bounds, blurType: blurType)
     return rendered
   }
 
@@ -65,6 +69,7 @@ final class BlurCacheManager {
   private func renderBlurToImage(
     bounds: CGRect,
     sourceImage: NSImage,
+    blurType: BlurType,
     pixelSize: CGFloat
   ) -> CGImage? {
     let width = Int(ceil(bounds.width))
@@ -86,13 +91,23 @@ final class BlurCacheManager {
     let localRegion = CGRect(x: 0, y: 0, width: bounds.width, height: bounds.height)
 
     // Render blur using the original bounds for sampling, but draw at origin
-    renderPixelatedRegion(
-      in: context,
-      sourceImage: sourceImage,
-      sourceRegion: bounds,
-      destRegion: localRegion,
-      pixelSize: pixelSize
-    )
+    switch blurType {
+    case .pixelated:
+      renderPixelatedRegion(
+        in: context,
+        sourceImage: sourceImage,
+        sourceRegion: bounds,
+        destRegion: localRegion,
+        pixelSize: pixelSize
+      )
+    case .gaussian:
+      renderGaussianRegion(
+        in: context,
+        sourceImage: sourceImage,
+        sourceRegion: bounds,
+        destRegion: localRegion
+      )
+    }
 
     return context.makeImage()
   }
@@ -214,5 +229,70 @@ final class BlurCacheManager {
   private func drawFallbackBlur(in context: CGContext, region: CGRect) {
     context.setFillColor(NSColor.gray.withAlphaComponent(0.7).cgColor)
     context.fill(region)
+  }
+
+  /// Render Gaussian blur region using CIFilter (GPU-accelerated)
+  private func renderGaussianRegion(
+    in context: CGContext,
+    sourceImage: NSImage,
+    sourceRegion: CGRect,
+    destRegion: CGRect
+  ) {
+    guard sourceRegion.width > 0, sourceRegion.height > 0 else { return }
+
+    guard let cgImage = sourceImage.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
+      drawFallbackBlur(in: context, region: destRegion)
+      return
+    }
+
+    // Calculate image scale
+    let imageScale = CGFloat(cgImage.width) / sourceImage.size.width
+
+    // Convert region to pixel coordinates (flip Y for CGImage)
+    let pixelRegion = CGRect(
+      x: sourceRegion.origin.x * imageScale,
+      y: (sourceImage.size.height - sourceRegion.origin.y - sourceRegion.height) * imageScale,
+      width: sourceRegion.width * imageScale,
+      height: sourceRegion.height * imageScale
+    )
+
+    // Clamp to image bounds
+    let clampedPixelRegion = pixelRegion.intersection(
+      CGRect(x: 0, y: 0, width: cgImage.width, height: cgImage.height)
+    )
+    guard !clampedPixelRegion.isEmpty else {
+      drawFallbackBlur(in: context, region: destRegion)
+      return
+    }
+
+    // Crop the region
+    guard let croppedImage = cgImage.cropping(to: clampedPixelRegion) else {
+      drawFallbackBlur(in: context, region: destRegion)
+      return
+    }
+
+    // Apply CIGaussianBlur
+    let ciImage = CIImage(cgImage: croppedImage)
+    let filter = CIFilter(name: "CIGaussianBlur")
+    filter?.setValue(ciImage, forKey: kCIInputImageKey)
+    filter?.setValue(BlurEffectRenderer.defaultGaussianRadius, forKey: kCIInputRadiusKey)
+
+    guard let outputImage = filter?.outputImage else {
+      drawFallbackBlur(in: context, region: destRegion)
+      return
+    }
+
+    // Use shared GPU-backed CIContext for performance
+    let ciContext = BlurEffectRenderer.sharedCIContext
+
+    // Crop to original extent (blur expands the image)
+    let croppedOutput = outputImage.cropped(to: ciImage.extent)
+
+    guard let blurredCGImage = ciContext.createCGImage(croppedOutput, from: ciImage.extent) else {
+      drawFallbackBlur(in: context, region: destRegion)
+      return
+    }
+
+    context.draw(blurredCGImage, in: destRegion)
   }
 }

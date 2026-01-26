@@ -137,3 +137,76 @@ struct SidebarSlidersSection: View {
     }
   }
 }
+
+// MARK: - Blur Type Section
+
+struct BlurTypeSection: View {
+  @ObservedObject var state: AnnotateState
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 8) {
+      SidebarSectionHeader(title: "Blur Type")
+
+      HStack(spacing: 8) {
+        ForEach(BlurType.allCases) { blurType in
+          BlurTypeButton(
+            blurType: blurType,
+            isSelected: state.blurType == blurType
+          ) {
+            state.blurType = blurType
+          }
+        }
+      }
+
+      Text(state.blurType == .pixelated
+           ? "Pixelated blur for redacting sensitive content"
+           : "Smooth Gaussian blur similar to CSS filter")
+        .font(.system(size: 10))
+        .foregroundColor(.secondary)
+        .padding(.top, 2)
+    }
+  }
+}
+
+struct BlurTypeButton: View {
+  let blurType: BlurType
+  let isSelected: Bool
+  let action: () -> Void
+
+  @State private var isHovering = false
+
+  var body: some View {
+    Button(action: action) {
+      VStack(spacing: 4) {
+        Image(systemName: blurType.icon)
+          .font(.system(size: 16))
+          .foregroundColor(isSelected ? .accentColor : .primary)
+
+        Text(blurType.displayName)
+          .font(.system(size: 10, weight: .medium))
+          .foregroundColor(isSelected ? .accentColor : .secondary)
+      }
+      .frame(maxWidth: .infinity)
+      .padding(.vertical, 8)
+      .background(
+        RoundedRectangle(cornerRadius: 8)
+          .fill(backgroundColor)
+      )
+      .overlay(
+        RoundedRectangle(cornerRadius: 8)
+          .stroke(isSelected ? Color.accentColor : Color.clear, lineWidth: 1.5)
+      )
+    }
+    .buttonStyle(.plain)
+    .onHover { isHovering = $0 }
+  }
+
+  private var backgroundColor: Color {
+    if isSelected {
+      return Color.accentColor.opacity(0.15)
+    } else if isHovering {
+      return Color.primary.opacity(0.08)
+    }
+    return Color.primary.opacity(0.05)
+  }
+}

@@ -555,7 +555,8 @@ final class DrawingCanvasNSView: NSView {
         renderer.drawBlurPreview(
           start: start,
           currentPoint: lastPoint,
-          strokeColor: state.strokeColor
+          strokeColor: state.strokeColor,
+          blurType: state.blurType
         )
       } else {
         renderer.drawCurrentStroke(

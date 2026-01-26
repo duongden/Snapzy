@@ -27,6 +27,7 @@ final class AnnotateState: ObservableObject {
   @Published var strokeWidth: CGFloat = 3
   @Published var strokeColor: Color = .red
   @Published var fillColor: Color = .clear
+  @Published var blurType: BlurType = .pixelated
 
   // MARK: - UI State
 

@@ -44,6 +44,12 @@ struct AnnotateSidebarView: View {
           AnnotationPropertiesSection(state: state)
         }
 
+        // Blur type section (shown when blur tool is active)
+        if state.selectedTool == .blur {
+          Divider().background(Color(nsColor: .separatorColor))
+          BlurTypeSection(state: state)
+        }
+
         Spacer(minLength: 20)
       }
       .padding(12)

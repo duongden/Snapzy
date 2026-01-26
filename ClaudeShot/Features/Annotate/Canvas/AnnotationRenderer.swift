@@ -64,8 +64,8 @@ struct AnnotationRenderer {
     case .counter(let value):
       drawCounter(value: value, at: annotation.bounds.origin, color: annotation.properties.strokeColor)
 
-    case .blur:
-      drawBlur(bounds: annotation.bounds, annotationId: annotation.id)
+    case .blur(let blurType):
+      drawBlur(bounds: annotation.bounds, annotationId: annotation.id, blurType: blurType)
 
     case .text(let content):
       drawText(content, in: annotation.bounds, properties: annotation.properties)
@@ -218,7 +218,7 @@ struct AnnotationRenderer {
     )
   }
 
-  private func drawBlur(bounds: CGRect, annotationId: UUID) {
+  private func drawBlur(bounds: CGRect, annotationId: UUID, blurType: BlurType) {
     guard let sourceImage = sourceImage else {
       // Fallback when no source image available
       BlurEffectRenderer.drawBlurPreview(
@@ -234,33 +234,52 @@ struct AnnotationRenderer {
        let cachedImage = cacheManager.getCachedBlur(
          for: annotationId,
          bounds: bounds,
-         sourceImage: sourceImage
+         sourceImage: sourceImage,
+         blurType: blurType
        ) {
       context.draw(cachedImage, in: bounds)
       return
     }
 
     // Fallback to direct render (slower)
-    BlurEffectRenderer.drawPixelatedRegion(
-      in: context,
-      sourceImage: sourceImage,
-      region: bounds
-    )
+    switch blurType {
+    case .pixelated:
+      BlurEffectRenderer.drawPixelatedRegion(
+        in: context,
+        sourceImage: sourceImage,
+        region: bounds
+      )
+    case .gaussian:
+      BlurEffectRenderer.drawGaussianRegion(
+        in: context,
+        sourceImage: sourceImage,
+        region: bounds
+      )
+    }
   }
 
   /// Draw blur preview during drag operation
-  func drawBlurPreview(start: CGPoint, currentPoint: CGPoint, strokeColor: Color) {
+  func drawBlurPreview(start: CGPoint, currentPoint: CGPoint, strokeColor: Color, blurType: BlurType) {
     let rect = makeRect(from: start, to: currentPoint)
     guard rect.width > 0, rect.height > 0 else { return }
 
     if let sourceImage = sourceImage {
-      // Show actual pixelated preview
-      BlurEffectRenderer.drawPixelatedRegion(
-        in: context,
-        sourceImage: sourceImage,
-        region: rect,
-        pixelSize: BlurEffectRenderer.defaultPixelSize
-      )
+      // Show preview based on selected blur type
+      switch blurType {
+      case .pixelated:
+        BlurEffectRenderer.drawPixelatedRegion(
+          in: context,
+          sourceImage: sourceImage,
+          region: rect,
+          pixelSize: BlurEffectRenderer.defaultPixelSize
+        )
+      case .gaussian:
+        BlurEffectRenderer.drawGaussianRegion(
+          in: context,
+          sourceImage: sourceImage,
+          region: rect
+        )
+      }
     }
 
     // Draw border indicator
