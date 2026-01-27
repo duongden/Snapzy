@@ -15,10 +15,10 @@ struct SidebarGradientSection: View {
   @ObservedObject var state: AnnotateState
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 8) {
+    VStack(alignment: .leading, spacing: Spacing.sm) {
       SidebarSectionHeader(title: "Gradients")
 
-      LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4), spacing: 8) {
+      LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: GridConfig.gap), count: GridConfig.backgroundColumns), spacing: GridConfig.gap) {
         ForEach(GradientPreset.allCases) { preset in
           GradientPresetButton(
             preset: preset,
@@ -39,10 +39,10 @@ struct SidebarWallpaperSection: View {
   @State private var customWallpapers: [URL] = []
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 6) {
+    VStack(alignment: .leading, spacing: Spacing.sm) {
       SidebarSectionHeader(title: "Wallpapers")
 
-      LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 4), spacing: 6) {
+      LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: GridConfig.gap), count: GridConfig.backgroundColumns), spacing: GridConfig.gap) {
         // 3 bundled presets
         ForEach(WallpaperPreset.allCases) { preset in
           WallpaperPresetButton(
@@ -115,10 +115,10 @@ struct SidebarWallpaperSection: View {
 
 struct SidebarBlurredSection: View {
   var body: some View {
-    VStack(alignment: .leading, spacing: 8) {
+    VStack(alignment: .leading, spacing: Spacing.sm) {
       SidebarSectionHeader(title: "Blurred")
 
-      HStack(spacing: 8) {
+      HStack(spacing: GridConfig.gap) {
         BlurredPlaceholder()
         BlurredPlaceholder()
       }
@@ -132,7 +132,7 @@ struct SidebarColorSection: View {
   @ObservedObject var state: AnnotateState
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 8) {
+    VStack(alignment: .leading, spacing: Spacing.sm) {
       SidebarSectionHeader(title: "Plain color")
       ColorSwatchGrid(selectedColor: colorBinding)
     }
@@ -161,14 +161,14 @@ struct SidebarSlidersSection: View {
   @ObservedObject var state: AnnotateState
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 12) {
+    VStack(alignment: .leading, spacing: Spacing.md) {
       SliderRow(label: "Padding", value: $state.padding, range: 0...100)
       SliderRow(label: "Inset", value: $state.inset, range: 0...50)
 
       Toggle("Auto-balance", isOn: $state.autoBalance)
-        .font(.system(size: 12))
-        .foregroundColor(.white.opacity(0.8))
-        .padding(.leading, 4)
+        .font(Typography.body)
+        .foregroundColor(SidebarColors.labelPrimary.opacity(0.8))
+        .padding(.leading, Spacing.xs)
 
       SliderRow(label: "Shadow", value: $state.shadowIntensity, range: 0...1)
       SliderRow(label: "Corners", value: $state.cornerRadius, range: 0...32)
@@ -182,10 +182,10 @@ struct BlurTypeSection: View {
   @ObservedObject var state: AnnotateState
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 8) {
+    VStack(alignment: .leading, spacing: Spacing.sm) {
       SidebarSectionHeader(title: "Blur Type")
 
-      HStack(spacing: 8) {
+      HStack(spacing: Spacing.sm) {
         ForEach(BlurType.allCases) { blurType in
           BlurTypeButton(
             blurType: blurType,
@@ -199,8 +199,8 @@ struct BlurTypeSection: View {
       Text(state.blurType == .pixelated
            ? "Pixelated blur for redacting sensitive content"
            : "Smooth Gaussian blur similar to CSS filter")
-        .font(.system(size: 10))
-        .foregroundColor(.secondary)
+        .font(Typography.labelSmall)
+        .foregroundColor(SidebarColors.labelSecondary)
         .padding(.top, 2)
     }
   }
@@ -215,24 +215,25 @@ struct BlurTypeButton: View {
 
   var body: some View {
     Button(action: action) {
-      VStack(spacing: 4) {
+      VStack(spacing: Spacing.xs) {
         Image(systemName: blurType.icon)
           .font(.system(size: 16))
-          .foregroundColor(isSelected ? .accentColor : .primary)
+          .foregroundColor(isSelected ? .accentColor : SidebarColors.labelPrimary)
 
         Text(blurType.displayName)
-          .font(.system(size: 10, weight: .medium))
-          .foregroundColor(isSelected ? .accentColor : .secondary)
+          .font(Typography.labelSmall)
+          .fontWeight(.medium)
+          .foregroundColor(isSelected ? .accentColor : SidebarColors.labelSecondary)
       }
       .frame(maxWidth: .infinity)
-      .padding(.vertical, 8)
+      .padding(.vertical, Spacing.sm)
       .background(
-        RoundedRectangle(cornerRadius: 8)
+        RoundedRectangle(cornerRadius: Size.radiusMd)
           .fill(backgroundColor)
       )
       .overlay(
-        RoundedRectangle(cornerRadius: 8)
-          .stroke(isSelected ? Color.accentColor : Color.clear, lineWidth: 1.5)
+        RoundedRectangle(cornerRadius: Size.radiusMd)
+          .stroke(isSelected ? Color.accentColor : Color.clear, lineWidth: Size.strokeDefault + 0.5)
       )
     }
     .buttonStyle(.plain)
@@ -241,10 +242,10 @@ struct BlurTypeButton: View {
 
   private var backgroundColor: Color {
     if isSelected {
-      return Color.accentColor.opacity(0.15)
+      return SidebarColors.itemSelected
     } else if isHovering {
-      return Color.primary.opacity(0.08)
+      return SidebarColors.itemHover
     }
-    return Color.primary.opacity(0.05)
+    return SidebarColors.itemDefault
   }
 }

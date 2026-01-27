@@ -14,9 +14,8 @@ struct SidebarSectionHeader: View {
 
   var body: some View {
     Text(title)
-      .font(.system(size: 11, weight: .semibold))
-      .foregroundColor(.secondary)
-      .textCase(.uppercase)
+      .font(Typography.sectionHeader)
+      .foregroundColor(SidebarColors.labelSecondary)
   }
 }
 
@@ -27,15 +26,13 @@ struct GradientPresetButton: View {
   let isSelected: Bool
   let action: () -> Void
 
+  @State private var isHovering = false
+
   var body: some View {
     Button(action: action) {
-      RoundedRectangle(cornerRadius: 6)
+      RoundedRectangle(cornerRadius: Size.radiusMd)
         .fill(LinearGradient(colors: preset.colors, startPoint: .topLeading, endPoint: .bottomTrailing))
-        .frame(width: 44, height: 44)
-        .overlay(
-          RoundedRectangle(cornerRadius: 6)
-            .stroke(isSelected ? Color.accentColor : Color.clear, lineWidth: 2)
-        )
+        .sidebarItemStyle(isSelected: isSelected)
     }
     .buttonStyle(.plain)
   }
@@ -45,9 +42,9 @@ struct GradientPresetButton: View {
 
 struct WallpaperPlaceholder: View {
   var body: some View {
-    RoundedRectangle(cornerRadius: 6)
+    RoundedRectangle(cornerRadius: Size.radiusMd)
       .fill(Color.gray.opacity(0.3))
-      .frame(width: 44, height: 44)
+      .frame(width: Size.gridItem, height: Size.gridItem)
   }
 }
 
@@ -60,13 +57,9 @@ struct WallpaperPresetButton: View {
 
   var body: some View {
     Button(action: action) {
-      RoundedRectangle(cornerRadius: 6)
+      RoundedRectangle(cornerRadius: Size.radiusMd)
         .fill(preset.gradient)
-        .frame(width: 44, height: 44)
-        .overlay(
-          RoundedRectangle(cornerRadius: 6)
-            .stroke(isSelected ? Color.accentColor : Color.clear, lineWidth: 2)
-        )
+        .sidebarItemStyle(isSelected: isSelected)
     }
     .buttonStyle(.plain)
   }
@@ -90,12 +83,7 @@ struct CustomWallpaperButton: View {
           Color.gray.opacity(0.3)
         }
       }
-      .frame(width: 44, height: 44)
-      .clipShape(RoundedRectangle(cornerRadius: 6))
-      .overlay(
-        RoundedRectangle(cornerRadius: 6)
-          .stroke(isSelected ? Color.accentColor : Color.clear, lineWidth: 2)
-      )
+      .sidebarItemStyle(isSelected: isSelected)
     }
     .buttonStyle(.plain)
   }
@@ -108,14 +96,10 @@ struct AddWallpaperButton: View {
 
   var body: some View {
     Button(action: action) {
-      RoundedRectangle(cornerRadius: 6)
-        .strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [4]))
-        .foregroundColor(.white.opacity(0.3))
-        .frame(width: 44, height: 44)
-        .overlay(
-          Image(systemName: "plus")
-            .foregroundColor(.white.opacity(0.5))
-        )
+      Image(systemName: "plus")
+        .font(.system(size: 16, weight: .medium))
+        .foregroundColor(.primary.opacity(0.5))
+        .actionButtonStyle()
     }
     .buttonStyle(.plain)
   }
@@ -123,9 +107,9 @@ struct AddWallpaperButton: View {
 
 struct BlurredPlaceholder: View {
   var body: some View {
-    RoundedRectangle(cornerRadius: 6)
+    RoundedRectangle(cornerRadius: Size.radiusMd)
       .fill(Color.gray.opacity(0.2))
-      .frame(width: 44, height: 44)
+      .frame(width: Size.gridItem, height: Size.gridItem)
       .blur(radius: 2)
   }
 }
@@ -141,9 +125,9 @@ struct ColorSwatchGrid: View {
   ]
 
   var body: some View {
-    VStack(spacing: 6) {
+    VStack(spacing: Spacing.sm) {
       ForEach(0..<colors.count, id: \.self) { row in
-        HStack(spacing: 6) {
+        HStack(spacing: Spacing.sm) {
           ForEach(0..<colors[row].count, id: \.self) { col in
             ColorSwatch(
               color: colors[row][col],
@@ -167,11 +151,7 @@ struct ColorSwatch: View {
     Button(action: action) {
       Circle()
         .fill(color)
-        .frame(width: 24, height: 24)
-        .overlay(
-          Circle()
-            .stroke(isSelected ? Color.accentColor : Color.secondary.opacity(0.5), lineWidth: isSelected ? 2 : 1)
-        )
+        .colorSwatchStyle(isSelected: isSelected)
     }
     .buttonStyle(.plain)
   }
@@ -185,10 +165,10 @@ struct SliderRow: View {
   let range: ClosedRange<CGFloat>
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 4) {
+    VStack(alignment: .leading, spacing: Spacing.xs) {
       Text(label)
-        .font(.system(size: 11))
-        .foregroundColor(.secondary)
+        .font(Typography.labelMedium)
+        .foregroundColor(SidebarColors.labelSecondary)
 
       Slider(value: $value, in: range)
         .controlSize(.small)
@@ -225,9 +205,9 @@ struct AlignmentGrid: View {
         }
       }
     }
-    .padding(4)
-    .background(Color.secondary.opacity(0.1))
-    .cornerRadius(6)
+    .padding(Spacing.xs)
+    .background(SidebarColors.itemDefault)
+    .cornerRadius(Size.radiusSm)
   }
 }
 
@@ -236,13 +216,22 @@ struct AlignmentCell: View {
   let isSelected: Bool
   let action: () -> Void
 
+  @State private var isHovering = false
+
   var body: some View {
     Button(action: action) {
       Rectangle()
-        .fill(isSelected ? Color.blue : Color.secondary.opacity(0.3))
+        .fill(backgroundColor)
         .frame(width: 20, height: 20)
-        .cornerRadius(3)
+        .cornerRadius(Size.radiusXs)
     }
     .buttonStyle(.plain)
+    .onHover { isHovering = $0 }
+  }
+
+  private var backgroundColor: Color {
+    if isSelected { return .accentColor }
+    if isHovering { return SidebarColors.itemHover }
+    return Color.secondary.opacity(0.3)
   }
 }

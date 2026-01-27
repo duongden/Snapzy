@@ -13,9 +13,9 @@ struct AnnotateSidebarView: View {
   
   var body: some View {
     ScrollView(.vertical, showsIndicators: true) {
-      VStack(alignment: .leading, spacing: 12) {
+      VStack(alignment: .leading, spacing: Spacing.md) {
         noneButton
-        
+
         // Compact gradient section
         gradientSection
 
@@ -24,15 +24,15 @@ struct AnnotateSidebarView: View {
 
         // Compact color section
         colorSection
-        
+
         Divider().background(Color(nsColor: .separatorColor))
-        
+
         // Sliders section
         slidersSection
-        
+
         // Alignment section
         alignmentSection
-        
+
         // Ratio section
         // ratioSection
 
@@ -59,30 +59,34 @@ struct AnnotateSidebarView: View {
           MockupControlsSection(state: state)
         }
 
-        Spacer(minLength: 20)
+        Spacer(minLength: Spacing.lg)
       }
-      .padding(12)
+      .padding(Spacing.md)
     }
     .frame(maxHeight: .infinity)
 //    .background(Color(nsColor: .scrubberTexturedBackground))
   }
   
   // MARK: - None Button
-  
+
   private var noneButton: some View {
     Button {
       state.backgroundStyle = .none
       state.padding = 0
-      
+
     } label: {
       Text("None")
-        .font(.system(size: 11, weight: .medium))
-        .foregroundColor(.primary)
+        .font(Typography.labelMedium)
+        .foregroundColor(SidebarColors.labelPrimary)
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 6)
+        .padding(.vertical, Spacing.sm)
         .background(
-          RoundedRectangle(cornerRadius: 6)
-            .fill(state.backgroundStyle == .none ? Color.blue.opacity(0.3) : Color.primary.opacity(0.1))
+          RoundedRectangle(cornerRadius: Size.radiusSm)
+            .fill(state.backgroundStyle == .none ? Color.accentColor.opacity(0.3) : SidebarColors.itemDefault)
+        )
+        .overlay(
+          RoundedRectangle(cornerRadius: Size.radiusSm)
+            .stroke(state.backgroundStyle == .none ? Color.accentColor : Color.clear, lineWidth: Size.strokeSelected)
         )
     }
     .buttonStyle(.plain)
@@ -91,20 +95,20 @@ struct AnnotateSidebarView: View {
   // MARK: - Sections
   
   private var gradientSection: some View {
-    VStack(alignment: .leading, spacing: 6) {
+    VStack(alignment: .leading, spacing: Spacing.sm) {
       SidebarSectionHeader(title: "Gradients")
-      
-      LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 4), spacing: 6) {
+
+      LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: GridConfig.gap), count: GridConfig.backgroundColumns), spacing: GridConfig.gap) {
         ForEach(GradientPreset.allCases) { preset in
           GradientPresetButton(
             preset: preset,
             isSelected: state.backgroundStyle == .gradient(preset)
           ) {
-            
-            if (state.padding <= 0) {
+
+            if state.padding <= 0 {
               state.padding = 24
             }
-            
+
             state.backgroundStyle = .gradient(preset)
           }
         }
@@ -117,7 +121,7 @@ struct AnnotateSidebarView: View {
   }
 
   private var colorSection: some View {
-    VStack(alignment: .leading, spacing: 6) {
+    VStack(alignment: .leading, spacing: Spacing.sm) {
       SidebarSectionHeader(title: "Colors")
       CompactColorSwatchGrid(selectedColor: colorBinding)
     }
@@ -140,7 +144,7 @@ struct AnnotateSidebarView: View {
   }
   
   private var slidersSection: some View {
-    VStack(alignment: .leading, spacing: 10) {
+    VStack(alignment: .leading, spacing: Spacing.sm) {
       CompactSliderRow(
         label: "Padding",
         value: Binding(
@@ -161,7 +165,7 @@ struct AnnotateSidebarView: View {
   }
   
   private var alignmentSection: some View {
-    VStack(alignment: .leading, spacing: 6) {
+    VStack(alignment: .leading, spacing: Spacing.sm) {
       SidebarSectionHeader(title: "Alignment")
       AlignmentGrid(selected: $state.imageAlignment, onAlignmentChange: { newAlignment in
         print("DEBUG [Alignment]: Callback fired with newAlignment = \(newAlignment)")
@@ -202,24 +206,20 @@ struct AnnotateSidebarView: View {
 
 struct CompactColorSwatchGrid: View {
   @Binding var selectedColor: Color?
-  
+
   private let colors: [Color] = [
     .red, .orange, .yellow, .green, .blue, .purple, .pink, .gray, .white, .black
   ]
-  
+
   var body: some View {
-    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: 5), spacing: 4) {
+    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: GridConfig.gap), count: GridConfig.colorColumns), spacing: GridConfig.gap) {
       ForEach(colors, id: \.self) { color in
         Button {
           selectedColor = color
         } label: {
           Circle()
             .fill(color)
-            .frame(width: 28, height: 28)
-            .overlay(
-              Circle()
-                .stroke(selectedColor == color ? Color.accentColor : Color.secondary.opacity(0.5), lineWidth: selectedColor == color ? 2 : 1)
-            )
+            .colorSwatchStyle(isSelected: selectedColor == color)
         }
         .buttonStyle(.plain)
       }
@@ -239,20 +239,20 @@ struct CompactSliderRow: View {
     VStack(alignment: .leading, spacing: 2) {
       HStack {
         Text(label)
-          .font(.system(size: 10))
-          .foregroundColor(.secondary)
+          .font(Typography.labelSmall)
+          .foregroundColor(SidebarColors.labelSecondary)
         Spacer()
         TextField("", text: $textValue)
-          .font(.system(size: 10))
-          .foregroundColor(.secondary.opacity(0.9))
+          .font(Typography.labelSmall)
+          .foregroundColor(SidebarColors.labelSecondary.opacity(0.9))
           .multilineTextAlignment(.trailing)
           .textFieldStyle(.plain)
           .frame(width: 36)
-          .padding(.horizontal, 4)
+          .padding(.horizontal, Spacing.xs)
           .padding(.vertical, 2)
           .background(
-            RoundedRectangle(cornerRadius: 4)
-              .fill(Color.primary.opacity(0.05))
+            RoundedRectangle(cornerRadius: Size.radiusXs)
+              .fill(SidebarColors.itemDefault)
           )
           .focused($isTextFieldFocused)
           .onAppear {
