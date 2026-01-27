@@ -83,6 +83,7 @@ struct CustomWallpaperButton: View {
           Color.gray.opacity(0.3)
         }
       }
+      .clipped()
       .sidebarItemStyle(isSelected: isSelected)
     }
     .buttonStyle(.plain)
@@ -100,6 +101,57 @@ struct AddWallpaperButton: View {
         .font(.system(size: 16, weight: .medium))
         .foregroundColor(.primary.opacity(0.5))
         .actionButtonStyle()
+    }
+    .buttonStyle(.plain)
+  }
+}
+
+// MARK: - System Wallpaper Button
+
+struct SystemWallpaperButton: View {
+  let item: SystemWallpaperManager.WallpaperItem
+  let isSelected: Bool
+  let action: () -> Void
+
+  var body: some View {
+    Button(action: action) {
+      Group {
+        if let thumbnailURL = item.thumbnailURL,
+          let image = NSImage(contentsOf: thumbnailURL)
+        {
+          Image(nsImage: image)
+            .resizable()
+            .aspectRatio(1, contentMode: .fill)
+        } else if let image = NSImage(contentsOf: item.fullImageURL) {
+          Image(nsImage: image)
+            .resizable()
+            .aspectRatio(1, contentMode: .fill)
+        } else {
+          Color.gray.opacity(0.3)
+        }
+      }
+      .clipped()
+      .sidebarItemStyle(isSelected: isSelected)
+    }
+    .buttonStyle(.plain)
+  }
+}
+
+// MARK: - Grant Access Button
+
+struct GrantAccessButton: View {
+  let action: () -> Void
+
+  var body: some View {
+    Button(action: action) {
+      VStack(spacing: Spacing.xs) {
+        Image(systemName: "folder.badge.plus")
+          .font(.system(size: 16, weight: .medium))
+        Text("Grant")
+          .font(Typography.labelSmall)
+      }
+      .foregroundColor(.primary.opacity(0.5))
+      .actionButtonStyle()
     }
     .buttonStyle(.plain)
   }

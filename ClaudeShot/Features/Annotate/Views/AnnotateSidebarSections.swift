@@ -36,6 +36,7 @@ struct SidebarGradientSection: View {
 
 struct SidebarWallpaperSection: View {
   @ObservedObject var state: AnnotateState
+  @StateObject private var systemManager = SystemWallpaperManager.shared
   @State private var customWallpapers: [URL] = []
 
   var body: some View {
@@ -44,12 +45,22 @@ struct SidebarWallpaperSection: View {
 
       LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: GridConfig.gap), count: GridConfig.backgroundColumns), spacing: GridConfig.gap) {
         // 3 bundled presets
-        ForEach(WallpaperPreset.allCases) { preset in
-          WallpaperPresetButton(
-            preset: preset,
-            isSelected: isPresetSelected(preset)
+        // ForEach(WallpaperPreset.allCases) { preset in
+        //   WallpaperPresetButton(
+        //     preset: preset,
+        //     isSelected: isPresetSelected(preset)
+        //   ) {
+        //     selectPreset(preset)
+        //   }
+        // }
+
+        // System wallpapers
+        ForEach(systemManager.systemWallpapers) { item in
+          SystemWallpaperButton(
+            item: item,
+            isSelected: isSystemWallpaperSelected(item)
           ) {
-            selectPreset(preset)
+            selectSystemWallpaper(item)
           }
         }
 
@@ -71,6 +82,20 @@ struct SidebarWallpaperSection: View {
           addWallpaper()
         }
       }
+
+      // Loading indicator
+      if systemManager.isLoading {
+        HStack {
+          ProgressView()
+            .scaleEffect(0.6)
+          Text("Loading system wallpapers...")
+            .font(Typography.labelSmall)
+            .foregroundColor(SidebarColors.labelSecondary)
+        }
+      }
+    }
+    .task {
+      await systemManager.loadSystemWallpapers()
     }
   }
 
@@ -88,12 +113,25 @@ struct SidebarWallpaperSection: View {
     return false
   }
 
+  private func isSystemWallpaperSelected(_ item: SystemWallpaperManager.WallpaperItem) -> Bool {
+    if case .wallpaper(let url) = state.backgroundStyle {
+      return url == item.fullImageURL
+    }
+    return false
+  }
+
   private func selectPreset(_ preset: WallpaperPreset) {
     if state.padding <= 0 {
       state.padding = 24
     }
-    // Use a special URL scheme for presets
     state.backgroundStyle = .wallpaper(URL(string: "preset://\(preset.rawValue)")!)
+  }
+
+  private func selectSystemWallpaper(_ item: SystemWallpaperManager.WallpaperItem) {
+    if state.padding <= 0 {
+      state.padding = 24
+    }
+    state.backgroundStyle = .wallpaper(item.fullImageURL)
   }
 
   private func addWallpaper() {
