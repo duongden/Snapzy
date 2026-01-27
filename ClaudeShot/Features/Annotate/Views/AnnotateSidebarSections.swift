@@ -36,30 +36,64 @@ struct SidebarGradientSection: View {
 
 struct SidebarWallpaperSection: View {
   @ObservedObject var state: AnnotateState
+  @State private var customWallpapers: [URL] = []
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 8) {
+    VStack(alignment: .leading, spacing: 6) {
       SidebarSectionHeader(title: "Wallpapers")
 
-      HStack(spacing: 8) {
-        WallpaperPlaceholder()
-        WallpaperPlaceholder()
-
-        Button {
-          addWallpaper()
-        } label: {
-          RoundedRectangle(cornerRadius: 6)
-            .strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [4]))
-            .foregroundColor(.white.opacity(0.3))
-            .frame(width: 44, height: 44)
-            .overlay(
-              Image(systemName: "plus")
-                .foregroundColor(.white.opacity(0.5))
-            )
+      LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 4), spacing: 6) {
+        // 3 bundled presets
+        ForEach(WallpaperPreset.allCases) { preset in
+          WallpaperPresetButton(
+            preset: preset,
+            isSelected: isPresetSelected(preset)
+          ) {
+            selectPreset(preset)
+          }
         }
-        .buttonStyle(.plain)
+
+        // Custom wallpapers from disk
+        ForEach(customWallpapers, id: \.self) { url in
+          CustomWallpaperButton(
+            url: url,
+            isSelected: isUrlSelected(url)
+          ) {
+            if state.padding <= 0 {
+              state.padding = 24
+            }
+            state.backgroundStyle = .wallpaper(url)
+          }
+        }
+
+        // Add button
+        AddWallpaperButton {
+          addWallpaper()
+        }
       }
     }
+  }
+
+  private func isPresetSelected(_ preset: WallpaperPreset) -> Bool {
+    if case .wallpaper(let url) = state.backgroundStyle {
+      return url.absoluteString == "preset://\(preset.rawValue)"
+    }
+    return false
+  }
+
+  private func isUrlSelected(_ url: URL) -> Bool {
+    if case .wallpaper(let selectedUrl) = state.backgroundStyle {
+      return selectedUrl == url
+    }
+    return false
+  }
+
+  private func selectPreset(_ preset: WallpaperPreset) {
+    if state.padding <= 0 {
+      state.padding = 24
+    }
+    // Use a special URL scheme for presets
+    state.backgroundStyle = .wallpaper(URL(string: "preset://\(preset.rawValue)")!)
   }
 
   private func addWallpaper() {
@@ -68,6 +102,10 @@ struct SidebarWallpaperSection: View {
     panel.allowsMultipleSelection = false
 
     if panel.runModal() == .OK, let url = panel.url {
+      customWallpapers.append(url)
+      if state.padding <= 0 {
+        state.padding = 24
+      }
       state.backgroundStyle = .wallpaper(url)
     }
   }

@@ -189,7 +189,19 @@ struct AnnotateCanvasView: View {
         )
 
     case .wallpaper(let url):
-      if let nsImage = NSImage(contentsOf: url) {
+      // Check if this is a preset wallpaper
+      if url.scheme == "preset", let presetName = url.host,
+         let preset = WallpaperPreset(rawValue: presetName) {
+        RoundedRectangle(cornerRadius: state.cornerRadius)
+          .fill(preset.gradient)
+          .frame(width: width, height: height)
+          .shadow(
+            color: .black.opacity(state.shadowIntensity),
+            radius: 20,
+            x: 0,
+            y: 10
+          )
+      } else if let nsImage = NSImage(contentsOf: url) {
         Image(nsImage: nsImage)
           .resizable()
           .aspectRatio(contentMode: .fill)

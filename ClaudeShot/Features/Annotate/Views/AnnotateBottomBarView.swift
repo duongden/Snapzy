@@ -31,9 +31,7 @@ struct AnnotateBottomBarView: View {
         Spacer()
 
         // Action buttons (hide in preview mode for cleaner view)
-        if state.editorMode != .preview {
-          actionButtons
-        }
+        actionButtons
       }
       .windowBottomBarPadding()
     }
@@ -84,18 +82,6 @@ struct AnnotateBottomBarView: View {
         .tag(AnnotateState.EditorMode.preview)
     }
     .pickerStyle(.segmented)
-  }
-
-  // MARK: - Drag Handle
-
-  private var dragHandle: some View {
-    Text("Drag me")
-      .font(.system(size: 12, weight: .medium))
-      .foregroundColor(.secondary)
-      .padding(.horizontal, 16)
-      .padding(.vertical, 6)
-      .background(Color.primary.opacity(0.05))
-      .cornerRadius(6)
   }
 
   // MARK: - Action Buttons

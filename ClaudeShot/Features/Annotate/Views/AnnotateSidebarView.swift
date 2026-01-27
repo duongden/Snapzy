@@ -18,7 +18,10 @@ struct AnnotateSidebarView: View {
         
         // Compact gradient section
         gradientSection
-        
+
+        // Wallpaper section
+        wallpaperSection
+
         // Compact color section
         colorSection
         
@@ -108,7 +111,11 @@ struct AnnotateSidebarView: View {
       }
     }
   }
-  
+
+  private var wallpaperSection: some View {
+    SidebarWallpaperSection(state: state)
+  }
+
   private var colorSection: some View {
     VStack(alignment: .leading, spacing: 6) {
       SidebarSectionHeader(title: "Colors")

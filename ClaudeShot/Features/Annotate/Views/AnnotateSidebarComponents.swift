@@ -51,6 +51,76 @@ struct WallpaperPlaceholder: View {
   }
 }
 
+// MARK: - Wallpaper Preset Button
+
+struct WallpaperPresetButton: View {
+  let preset: WallpaperPreset
+  let isSelected: Bool
+  let action: () -> Void
+
+  var body: some View {
+    Button(action: action) {
+      RoundedRectangle(cornerRadius: 6)
+        .fill(preset.gradient)
+        .frame(width: 44, height: 44)
+        .overlay(
+          RoundedRectangle(cornerRadius: 6)
+            .stroke(isSelected ? Color.accentColor : Color.clear, lineWidth: 2)
+        )
+    }
+    .buttonStyle(.plain)
+  }
+}
+
+// MARK: - Custom Wallpaper Button
+
+struct CustomWallpaperButton: View {
+  let url: URL
+  let isSelected: Bool
+  let action: () -> Void
+
+  var body: some View {
+    Button(action: action) {
+      Group {
+        if let image = NSImage(contentsOf: url) {
+          Image(nsImage: image)
+            .resizable()
+            .aspectRatio(contentMode: .fill)
+        } else {
+          Color.gray.opacity(0.3)
+        }
+      }
+      .frame(width: 44, height: 44)
+      .clipShape(RoundedRectangle(cornerRadius: 6))
+      .overlay(
+        RoundedRectangle(cornerRadius: 6)
+          .stroke(isSelected ? Color.accentColor : Color.clear, lineWidth: 2)
+      )
+    }
+    .buttonStyle(.plain)
+  }
+}
+
+// MARK: - Add Wallpaper Button
+
+struct AddWallpaperButton: View {
+  let action: () -> Void
+
+  var body: some View {
+    Button(action: action) {
+      RoundedRectangle(cornerRadius: 6)
+        .strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [4]))
+        .foregroundColor(.white.opacity(0.3))
+        .frame(width: 44, height: 44)
+        .overlay(
+          Image(systemName: "plus")
+            .foregroundColor(.white.opacity(0.5))
+        )
+    }
+    .buttonStyle(.plain)
+  }
+}
+
 struct BlurredPlaceholder: View {
   var body: some View {
     RoundedRectangle(cornerRadius: 6)

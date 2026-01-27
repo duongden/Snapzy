@@ -50,6 +50,35 @@ enum ImageAlignment: String, CaseIterable {
   case bottomLeft, bottom, bottomRight
 }
 
+/// Predefined wallpaper presets (abstract gradient patterns)
+enum WallpaperPreset: String, CaseIterable, Identifiable {
+  case oceanBreeze
+  case sunsetGlow
+  case forestMist
+
+  var id: String { rawValue }
+
+  var displayName: String {
+    switch self {
+    case .oceanBreeze: return "Ocean"
+    case .sunsetGlow: return "Sunset"
+    case .forestMist: return "Forest"
+    }
+  }
+
+  var colors: [Color] {
+    switch self {
+    case .oceanBreeze: return [Color(red: 0.1, green: 0.4, blue: 0.6), Color(red: 0.2, green: 0.6, blue: 0.8), Color(red: 0.4, green: 0.8, blue: 0.9)]
+    case .sunsetGlow: return [Color(red: 0.9, green: 0.3, blue: 0.2), Color(red: 0.95, green: 0.5, blue: 0.3), Color(red: 1.0, green: 0.7, blue: 0.4)]
+    case .forestMist: return [Color(red: 0.1, green: 0.3, blue: 0.2), Color(red: 0.2, green: 0.5, blue: 0.3), Color(red: 0.4, green: 0.7, blue: 0.5)]
+    }
+  }
+
+  var gradient: LinearGradient {
+    LinearGradient(colors: colors, startPoint: .top, endPoint: .bottom)
+  }
+}
+
 /// Aspect ratio options for export
 enum AspectRatioOption: String, CaseIterable, Identifiable {
   case auto = "Auto"

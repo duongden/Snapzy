@@ -50,7 +50,11 @@ struct MockupCanvasView: View {
         case .solidColor(let color):
             color
         case .wallpaper(let url):
-            if let image = NSImage(contentsOf: url) {
+            // Check if this is a preset wallpaper
+            if url.scheme == "preset", let presetName = url.host,
+               let preset = WallpaperPreset(rawValue: presetName) {
+                preset.gradient
+            } else if let image = NSImage(contentsOf: url) {
                 Image(nsImage: image)
                     .resizable()
                     .aspectRatio(contentMode: .fill)
