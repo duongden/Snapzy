@@ -48,7 +48,7 @@ final class StatusBarController: ObservableObject {
         NSSound(named: "Glass")?.play()
         await QuickAccessManager.shared.addVideo(url: url)
       }
-      // Cleanup coordinator UI (toolbar, overlays)
+      // Cleanup coordinator UI (toolbar, overlays) - cancel() now guards against double cleanup
       RecordingCoordinator.shared.cancel()
     }
   }
@@ -139,9 +139,9 @@ final class StatusBarController: ObservableObject {
     }
 
     if useTemplate {
-      // Use AppIcon for idle state, resized for menu bar
-      if let appIcon = NSImage(named: "AppIcon") {
-        let size = NSSize(width: 24, height: 24)
+      // Use MenubarIcon for idle state, resized for menu bar
+      if let appIcon = NSImage(named: "MenubarIcon") {
+        let size = NSSize(width: 18, height: 18)
         let resizedIcon = NSImage(size: size)
         resizedIcon.lockFocus()
         appIcon.draw(

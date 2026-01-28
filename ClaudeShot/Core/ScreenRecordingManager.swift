@@ -336,6 +336,8 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
 
   /// Cancel the recording without saving
   func cancelRecording() async {
+    guard state != .idle else { return }
+
     timer?.invalidate()
     timer = nil
 

@@ -97,8 +97,8 @@ final class RecordingCoordinator: ObservableObject {
   func cancel() {
     Task {
       await recorder.cancelRecording()
+      cleanup()
     }
-    cleanup()
   }
 
   /// Delete current recording and close
@@ -106,8 +106,8 @@ final class RecordingCoordinator: ObservableObject {
     Task {
       await recorder.cancelRecording()
       NSSound(named: "Funk")?.play()
+      cleanup()
     }
-    cleanup()
   }
 
   /// Restart recording from scratch (cancel current and start new)
