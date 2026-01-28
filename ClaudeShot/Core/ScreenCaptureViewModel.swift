@@ -200,9 +200,8 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
       AreaSelectionController.shared.startSelection { [weak self] rect in
         guard let self = self else { return }
 
-        // Show main window again
-        NSApp.unhide(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        // Note: Do NOT call NSApp.unhide/activate here - it steals focus from user's current app
+        // Screenshot capture doesn't need app activation
 
         guard let selectedRect = rect else {
           // Cancelled - clear flag so user can start new selection
@@ -271,11 +270,11 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
       AreaSelectionController.shared.startSelection(mode: .recording) { [weak self] rect, mode in
         guard let self = self else { return }
 
-        NSApp.unhide(nil)
-        NSApp.activate(ignoringOtherApps: true)
-
         // Cleanup flag
         self.isAreaSelectionActive = false
+
+        // Note: Do NOT call NSApp.unhide/activate here - it steals focus from user's current app
+        // The recording toolbar uses orderFrontRegardless() which doesn't require app activation
 
         guard let rect = rect else { return }
 
