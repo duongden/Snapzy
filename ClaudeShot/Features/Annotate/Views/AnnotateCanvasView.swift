@@ -96,13 +96,16 @@ struct AnnotateCanvasView: View {
     let availableWidth = containerSize.width - margin * 2
     let availableHeight = containerSize.height - margin * 2
 
+    // Use effective values for smooth preview during slider drag
+    let currentPadding = state.effectivePadding
+
     // Calculate alignment space needed for non-center alignments
     // This expands the background to allow image movement
     let alignmentSpace: CGFloat = state.imageAlignment != .center ? 40 : 0
 
     // Logical canvas = image + padding + alignment space (this is what we export)
-    let logicalCanvasWidth = state.imageWidth + state.padding * 2 + alignmentSpace
-    let logicalCanvasHeight = state.imageHeight + state.padding * 2 + alignmentSpace
+    let logicalCanvasWidth = state.imageWidth + currentPadding * 2 + alignmentSpace
+    let logicalCanvasHeight = state.imageHeight + currentPadding * 2 + alignmentSpace
 
     // Scale entire canvas to fit in available space (unified scaling)
     let scaleX = availableWidth / logicalCanvasWidth
@@ -122,7 +125,7 @@ struct AnnotateCanvasView: View {
     let offset = state.imageOffset(
       for: CGSize(width: bgWidth, height: bgHeight),
       imageDisplaySize: imageDisplaySize,
-      displayPadding: state.padding * scale
+      displayPadding: currentPadding * scale
     )
 
     return ZStack {
@@ -169,83 +172,99 @@ struct AnnotateCanvasView: View {
 
   @ViewBuilder
   private func backgroundLayer(width: CGFloat, height: CGFloat) -> some View {
-    switch state.backgroundStyle {
-    case .none:
-      EmptyView()
+    // Use effective values for smooth preview during slider drag
+    let currentCornerRadius = state.effectiveCornerRadius
+    let currentShadowIntensity = state.effectiveShadowIntensity
 
-    case .gradient(let preset):
-      RoundedRectangle(cornerRadius: state.cornerRadius)
-        .fill(LinearGradient(
-          colors: preset.colors,
-          startPoint: .topLeading,
-          endPoint: .bottomTrailing
-        ))
-        .frame(width: width, height: height)
-        .shadow(
-          color: .black.opacity(state.shadowIntensity),
-          radius: 20,
-          x: 0,
-          y: 10
-        )
+    Group {
+      switch state.backgroundStyle {
+      case .none:
+        EmptyView()
 
-    case .wallpaper(let url):
-      // Check if this is a preset wallpaper
-      if url.scheme == "preset", let presetName = url.host,
-         let preset = WallpaperPreset(rawValue: presetName) {
-        RoundedRectangle(cornerRadius: state.cornerRadius)
-          .fill(preset.gradient)
+      case .gradient(let preset):
+        RoundedRectangle(cornerRadius: currentCornerRadius)
+          .fill(LinearGradient(
+            colors: preset.colors,
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+          ))
           .frame(width: width, height: height)
           .shadow(
-            color: .black.opacity(state.shadowIntensity),
+            color: .black.opacity(currentShadowIntensity),
             radius: 20,
             x: 0,
             y: 10
           )
-      } else if let nsImage = NSImage(contentsOf: url) {
-        Image(nsImage: nsImage)
-          .resizable()
-          .aspectRatio(contentMode: .fill)
-          .frame(width: width, height: height)
-          .clipped()
-          .cornerRadius(state.cornerRadius)
-      }
 
-    case .blurred(let url):
-      if let nsImage = NSImage(contentsOf: url) {
-        Image(nsImage: nsImage)
-          .resizable()
-          .aspectRatio(contentMode: .fill)
-          .frame(width: width, height: height)
-          .blur(radius: 20)
-          .clipped()
-          .cornerRadius(state.cornerRadius)
-      }
+      case .wallpaper(let url):
+        // Check if this is a preset wallpaper
+        if url.scheme == "preset", let presetName = url.host,
+           let preset = WallpaperPreset(rawValue: presetName) {
+          RoundedRectangle(cornerRadius: currentCornerRadius)
+            .fill(preset.gradient)
+            .frame(width: width, height: height)
+            .shadow(
+              color: .black.opacity(currentShadowIntensity),
+              radius: 20,
+              x: 0,
+              y: 10
+            )
+        } else if let nsImage = state.cachedBackgroundImage {
+          // Use CACHED image instead of loading from disk every render
+          Image(nsImage: nsImage)
+            .resizable()
+            .aspectRatio(contentMode: .fill)
+            .frame(width: width, height: height)
+            .clipped()
+            .cornerRadius(currentCornerRadius)
+        }
 
-    case .solidColor(let color):
-      RoundedRectangle(cornerRadius: state.cornerRadius)
-        .fill(color)
-        .frame(width: width, height: height)
-        .shadow(
-          color: .black.opacity(state.shadowIntensity),
-          radius: 20,
-          x: 0,
-          y: 10
-        )
+      case .blurred(let url):
+        if url.scheme == "preset" {
+          EmptyView()
+        } else if let nsImage = state.cachedBackgroundImage {
+          // Use CACHED image instead of loading from disk every render
+          Image(nsImage: nsImage)
+            .resizable()
+            .aspectRatio(contentMode: .fill)
+            .frame(width: width, height: height)
+            .blur(radius: 20)
+            .clipped()
+            .cornerRadius(currentCornerRadius)
+        }
+
+      case .solidColor(let color):
+        RoundedRectangle(cornerRadius: currentCornerRadius)
+          .fill(color)
+          .frame(width: width, height: height)
+          .shadow(
+            color: .black.opacity(currentShadowIntensity),
+            radius: 20,
+            x: 0,
+            y: 10
+          )
+      }
     }
+    .drawingGroup() // Rasterize to Metal texture for performance
   }
 
   // MARK: - Image Layer
 
   @ViewBuilder
   private func imageLayer(width: CGFloat, height: CGFloat) -> some View {
+    // Use effective values for smooth preview during slider drag
+    let currentCornerRadius = state.effectiveCornerRadius
+    let currentShadowIntensity = state.effectiveShadowIntensity
+
     if let sourceImage = state.sourceImage {
       Image(nsImage: sourceImage)
         .resizable()
         .aspectRatio(contentMode: .fit)
         .frame(width: width, height: height)
-        .cornerRadius(state.cornerRadius)
+        .cornerRadius(currentCornerRadius)
+        .drawingGroup() // Rasterize image with corners for performance
         .shadow(
-          color: .black.opacity(state.backgroundStyle != .none ? state.shadowIntensity : 0),
+          color: .black.opacity(state.backgroundStyle != .none ? currentShadowIntensity : 0),
           radius: 15,
           x: 0,
           y: 8

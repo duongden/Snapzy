@@ -47,7 +47,30 @@ final class AnnotateState: ObservableObject {
 
   // MARK: - Background Settings
 
-  @Published var backgroundStyle: BackgroundStyle = .none
+  @Published var backgroundStyle: BackgroundStyle = .none {
+    didSet {
+      // Pre-cache wallpaper/blurred image when style changes
+      switch backgroundStyle {
+      case .wallpaper(let url), .blurred(let url):
+        loadBackgroundImage(from: url)
+      default:
+        cachedBackgroundImage = nil
+      }
+    }
+  }
+
+  /// Cached background image for performance (avoids disk reads during slider drag)
+  private(set) var cachedBackgroundImage: NSImage?
+
+  private func loadBackgroundImage(from url: URL) {
+    // Skip preset URLs (handled via gradient)
+    guard url.scheme != "preset" else {
+      cachedBackgroundImage = nil
+      return
+    }
+    cachedBackgroundImage = NSImage(contentsOf: url)
+  }
+
   @Published var padding: CGFloat = 0
   @Published var inset: CGFloat = 0
   @Published var autoBalance: Bool = true
@@ -55,6 +78,20 @@ final class AnnotateState: ObservableObject {
   @Published var cornerRadius: CGFloat = 8
   @Published var imageAlignment: ImageAlignment = .center
   @Published var aspectRatio: AspectRatioOption = .auto
+
+  // MARK: - Preview Values (for smooth slider dragging)
+
+  /// Preview values during slider drag - nil when not dragging
+  @Published var previewPadding: CGFloat?
+  @Published var previewInset: CGFloat?
+  @Published var previewShadowIntensity: CGFloat?
+  @Published var previewCornerRadius: CGFloat?
+
+  /// Effective values for canvas rendering (preview overrides actual during drag)
+  var effectivePadding: CGFloat { previewPadding ?? padding }
+  var effectiveInset: CGFloat { previewInset ?? inset }
+  var effectiveShadowIntensity: CGFloat { previewShadowIntensity ?? shadowIntensity }
+  var effectiveCornerRadius: CGFloat { previewCornerRadius ?? cornerRadius }
 
   // MARK: - Display Metrics (for inset padding layout)
 

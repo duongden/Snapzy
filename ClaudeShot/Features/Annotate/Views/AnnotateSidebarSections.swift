@@ -200,16 +200,44 @@ struct SidebarSlidersSection: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: Spacing.md) {
-      SliderRow(label: "Padding", value: $state.padding, range: 0...100)
-      SliderRow(label: "Inset", value: $state.inset, range: 0...50)
+      SliderRow(
+        label: "Padding",
+        value: $state.padding,
+        range: 0...100,
+        onDragging: { isDragging, value in
+          state.previewPadding = isDragging ? value : nil
+        }
+      )
+      SliderRow(
+        label: "Inset",
+        value: $state.inset,
+        range: 0...50,
+        onDragging: { isDragging, value in
+          state.previewInset = isDragging ? value : nil
+        }
+      )
 
       Toggle("Auto-balance", isOn: $state.autoBalance)
         .font(Typography.body)
         .foregroundColor(SidebarColors.labelPrimary.opacity(0.8))
         .padding(.leading, Spacing.xs)
 
-      SliderRow(label: "Shadow", value: $state.shadowIntensity, range: 0...1)
-      SliderRow(label: "Corners", value: $state.cornerRadius, range: 0...32)
+      SliderRow(
+        label: "Shadow",
+        value: $state.shadowIntensity,
+        range: 0...1,
+        onDragging: { isDragging, value in
+          state.previewShadowIntensity = isDragging ? value : nil
+        }
+      )
+      SliderRow(
+        label: "Corners",
+        value: $state.cornerRadius,
+        range: 0...32,
+        onDragging: { isDragging, value in
+          state.previewCornerRadius = isDragging ? value : nil
+        }
+      )
     }
   }
 }

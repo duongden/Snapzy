@@ -215,6 +215,10 @@ struct SliderRow: View {
   let label: String
   @Binding var value: CGFloat
   let range: ClosedRange<CGFloat>
+  var onDragging: ((Bool, CGFloat) -> Void)? = nil
+
+  @State private var localValue: CGFloat = 0
+  @State private var isDragging: Bool = false
 
   var body: some View {
     VStack(alignment: .leading, spacing: Spacing.xs) {
@@ -222,8 +226,24 @@ struct SliderRow: View {
         .font(Typography.labelMedium)
         .foregroundColor(SidebarColors.labelSecondary)
 
-      Slider(value: $value, in: range)
-        .controlSize(.small)
+      Slider(
+        value: $localValue,
+        in: range,
+        onEditingChanged: { editing in
+          isDragging = editing
+          onDragging?(editing, localValue)
+          if !editing {
+            // Sync to binding only when drag ends
+            value = localValue
+          }
+        }
+      )
+      .controlSize(.small)
+    }
+    .onAppear { localValue = value }
+    .onChange(of: value) { newValue in
+      // External changes sync to local (e.g., preset selection)
+      if !isDragging { localValue = newValue }
     }
   }
 }
