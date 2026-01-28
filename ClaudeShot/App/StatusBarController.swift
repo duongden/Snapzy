@@ -37,6 +37,9 @@ final class StatusBarController: ObservableObject {
     setupStatusItem()
     buildMenu()
     observeRecordingState()
+
+    // Pre-allocate area selection windows for instant activation (<150ms)
+    AreaSelectionController.shared.prepareWindowPool()
   }
 
   /// Stop recording from external trigger (click-to-stop)

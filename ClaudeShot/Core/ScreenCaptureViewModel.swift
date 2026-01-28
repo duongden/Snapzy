@@ -49,7 +49,7 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
   private let captureManager = ScreenCaptureManager.shared
   private let shortcutManager = KeyboardShortcutManager.shared
   private let quickAccessManager = QuickAccessManager.shared
-  private var areaSelectionController: AreaSelectionController?
+  private var isAreaSelectionActive = false
   private var cancellables = Set<AnyCancellable>()
 
   // Shortcut bindings for UI
@@ -182,7 +182,7 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
 
   func captureArea() {
     // Prevent multiple area captures - only one at a time
-    if areaSelectionController != nil {
+    if isAreaSelectionActive {
       return
     }
 
@@ -194,10 +194,10 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
       guard let self = self else { return }
 
       // Double-check to prevent race condition
-      guard self.areaSelectionController == nil else { return }
+      guard !self.isAreaSelectionActive else { return }
+      self.isAreaSelectionActive = true
 
-      self.areaSelectionController = AreaSelectionController()
-      self.areaSelectionController?.startSelection { [weak self] rect in
+      AreaSelectionController.shared.startSelection { [weak self] rect in
         guard let self = self else { return }
 
         // Show main window again
@@ -205,8 +205,8 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
         NSApp.activate(ignoringOtherApps: true)
 
         guard let selectedRect = rect else {
-          // Cancelled - clear controller so user can start new selection
-          self.areaSelectionController = nil
+          // Cancelled - clear flag so user can start new selection
+          self.isAreaSelectionActive = false
           self.lastCaptureResult = .failure(.cancelled)
           return
         }
@@ -228,7 +228,7 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
           }
         }
 
-        self.areaSelectionController = nil
+        self.isAreaSelectionActive = false
       }
     }
   }
@@ -258,7 +258,7 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
     guard !RecordingCoordinator.shared.isActive else { return }
 
     // Prevent multiple area selections
-    guard areaSelectionController == nil else { return }
+    guard !isAreaSelectionActive else { return }
 
     // Hide main window
     NSApp.hide(nil)
@@ -266,17 +266,16 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
     // Small delay to ensure window is hidden
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
       guard let self = self else { return }
+      self.isAreaSelectionActive = true
 
-      // Store as instance variable to prevent ARC deallocation
-      self.areaSelectionController = AreaSelectionController()
-      self.areaSelectionController?.startSelection(mode: .recording) { [weak self] rect, mode in
+      AreaSelectionController.shared.startSelection(mode: .recording) { [weak self] rect, mode in
         guard let self = self else { return }
 
         NSApp.unhide(nil)
         NSApp.activate(ignoringOtherApps: true)
 
-        // Cleanup controller
-        self.areaSelectionController = nil
+        // Cleanup flag
+        self.isAreaSelectionActive = false
 
         guard let rect = rect else { return }
 

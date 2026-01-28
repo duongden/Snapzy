@@ -20,7 +20,6 @@ final class RecordingCoordinator: ObservableObject {
   private var regionOverlayWindows: [RecordingRegionOverlayWindow] = []
   private var selectedRect: CGRect?
   private let recorder = ScreenRecordingManager.shared
-  private var areaSelectionController: AreaSelectionController?
   private var localEscapeMonitor: Any?
   private var globalEscapeMonitor: Any?
 
@@ -369,7 +368,6 @@ final class RecordingCoordinator: ObservableObject {
     toolbarWindow?.close()
     toolbarWindow = nil
     selectedRect = nil
-    areaSelectionController = nil
     isActive = false
   }
 
@@ -396,11 +394,9 @@ final class RecordingCoordinator: ObservableObject {
     toolbarWindow = nil
     selectedRect = nil
 
-    // Start new selection
-    areaSelectionController = AreaSelectionController()
-    areaSelectionController?.startSelection(mode: .recording) { [weak self] rect, _ in
+    // Start new selection using shared controller
+    AreaSelectionController.shared.startSelection(mode: .recording) { [weak self] rect, _ in
       guard let self = self else { return }
-      self.areaSelectionController = nil
 
       if let rect = rect {
         self.selectedRect = rect
