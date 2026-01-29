@@ -105,6 +105,11 @@ final class VideoEditorState: ObservableObject {
   @Published var exportProgress: Float = 0
   @Published var exportStatusMessage: String = "Preparing..."
 
+  // MARK: - Export Settings
+
+  @Published var exportSettings: ExportSettings = ExportSettings()
+  @Published private(set) var estimatedFileSize: Int64 = 0
+
   // MARK: - Unsaved Changes
 
   @Published var hasUnsavedChanges: Bool = false
@@ -633,6 +638,56 @@ final class VideoEditorState: ObservableObject {
     isBackgroundSidebarVisible.toggle()
   }
 
+  // MARK: - Export Settings Methods
+
+  /// Update export settings and recalculate file size
+  func updateExportSettings(_ settings: ExportSettings) {
+    exportSettings = settings
+    recalculateEstimatedFileSize()
+  }
+
+  /// Recalculate estimated file size based on current settings
+  func recalculateEstimatedFileSize() {
+    Task { @MainActor in
+      estimatedFileSize = await calculateEstimatedFileSize()
+    }
+  }
+
+  /// Calculate estimated file size based on export settings
+  private func calculateEstimatedFileSize() async -> Int64 {
+    // Get source file size
+    guard let attrs = try? FileManager.default.attributesOfItem(atPath: sourceURL.path),
+          let sourceSize = attrs[.size] as? Int64 else { return 0 }
+
+    let sourceDuration = CMTimeGetSeconds(duration)
+    guard sourceDuration > 0 else { return 0 }
+
+    // Calculate trim ratio
+    let trimmedDurationSec = CMTimeGetSeconds(trimmedDuration)
+    let trimRatio = trimmedDurationSec / sourceDuration
+
+    // Calculate dimension ratio
+    let exportSize = exportSettings.exportSize(from: naturalSize)
+    let originalPixels = naturalSize.width * naturalSize.height
+    let exportPixels = exportSize.width * exportSize.height
+    let dimensionRatio = originalPixels > 0 ? exportPixels / originalPixels : 1.0
+
+    // Apply quality multiplier
+    let qualityMultiplier = Double(exportSettings.quality.bitrateMultiplier)
+
+    // Audio adjustment (rough estimate: audio is ~10% of file)
+    let audioMultiplier: Double = {
+      switch exportSettings.audioMode {
+      case .mute: return 0.9 // Remove audio portion
+      case .keep, .custom: return 1.0
+      }
+    }()
+
+    // Calculate estimated size
+    let estimated = Double(sourceSize) * trimRatio * dimensionRatio * qualityMultiplier * audioMultiplier
+    return Int64(max(estimated, 1024)) // Minimum 1KB
+  }
+
   // MARK: - Private Methods
 
   private func setupTimeObserver() {
@@ -691,6 +746,14 @@ final class VideoEditorState: ObservableObject {
       .dropFirst(4)
       .sink { [weak self] _, _, _, _ in
         self?.updateHasUnsavedChanges()
+      }
+      .store(in: &cancellables)
+
+    // Track export settings changes for file size estimation
+    $exportSettings
+      .dropFirst()
+      .sink { [weak self] _ in
+        self?.recalculateEstimatedFileSize()
       }
       .store(in: &cancellables)
   }

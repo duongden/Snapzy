@@ -12,6 +12,7 @@ import SwiftUI
 struct VideoEditorMainView: View {
   @ObservedObject var state: VideoEditorState
   var onSave: (() -> Void)?
+  var onCancel: (() -> Void)?
 
   // Computed property for current frame preview
   private var currentFrameImage: NSImage? {
@@ -27,10 +28,7 @@ struct VideoEditorMainView: View {
   var body: some View {
     VStack(spacing: 0) {
       // NEW: Full-width toolbar at top
-      VideoEditorToolbarView(
-        state: state,
-        onSave: { onSave?() }
-      )
+      VideoEditorToolbarView(state: state)
 
       Divider()
 
@@ -60,6 +58,11 @@ struct VideoEditorMainView: View {
           VideoTimelineView(state: state)
             .windowContentHPadding()
             .padding(.top, WindowSpacingConfiguration.default.contentTopPadding)
+
+          // Export settings panel (collapsible)
+          VideoExportSettingsPanel(state: state)
+            .windowContentHPadding()
+            .padding(.top, 8)
             .padding(.bottom, WindowSpacingConfiguration.default.contentBottomPadding)
 
           Spacer(minLength: 0)
@@ -77,6 +80,12 @@ struct VideoEditorMainView: View {
         }
       }
       .animation(.easeInOut(duration: 0.2), value: state.isVideoInfoSidebarVisible)
+
+      // Bottom bar with Cancel/Convert
+      VideoEditorBottomBar(
+        onCancel: { onCancel?() },
+        onConvert: { onSave?() }
+      )
     }
     // Keyboard shortcuts for zoom operations
     .background {

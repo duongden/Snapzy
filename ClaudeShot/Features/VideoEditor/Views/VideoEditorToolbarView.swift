@@ -10,7 +10,6 @@ import SwiftUI
 /// Top toolbar for video editor window
 struct VideoEditorToolbarView: View {
   @ObservedObject var state: VideoEditorState
-  var onSave: () -> Void
 
   @State private var editingFilename: String = ""
   @State private var renameError: String?
@@ -156,11 +155,11 @@ struct VideoEditorToolbarView: View {
       .keyboardShortcut(".", modifiers: [.command])
       .help(state.isRightSidebarVisible ? "Hide Sidebar (⌘.)" : "Show Sidebar (⌘.)")
 
-      Divider()
-        .frame(height: 20)
-
       // Unsaved changes indicator
       if state.hasUnsavedChanges {
+        Divider()
+          .frame(height: 20)
+
         HStack(spacing: 4) {
           Image(systemName: "circle.fill")
             .font(.system(size: 6))
@@ -170,14 +169,6 @@ struct VideoEditorToolbarView: View {
             .foregroundColor(.secondary)
         }
       }
-
-      // Save button (primary)
-      Button(action: onSave) {
-        Text("Save")
-      }
-      .buttonStyle(.borderedProminent)
-      .keyboardShortcut("s", modifiers: [.command])
-      .disabled(!state.hasUnsavedChanges)
     }
   }
 
@@ -212,8 +203,7 @@ struct VideoEditorToolbarView: View {
 
 #Preview {
   VideoEditorToolbarView(
-    state: VideoEditorState(url: URL(fileURLWithPath: "/tmp/test-video.mov")),
-    onSave: {}
+    state: VideoEditorState(url: URL(fileURLWithPath: "/tmp/test-video.mov"))
   )
   .frame(width: 800)
   .background(Color(NSColor.windowBackgroundColor))

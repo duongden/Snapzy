@@ -92,7 +92,8 @@ final class VideoEditorWindowController: NSWindowController, NSWindowDelegate {
 
     let mainView = VideoEditorMainView(
       state: state,
-      onSave: { [weak self] in self?.showSaveConfirmation() }
+      onSave: { [weak self] in self?.showSaveConfirmation() },
+      onCancel: { [weak self] in self?.handleCancel() }
     )
     window?.contentView = NSHostingView(rootView: mainView)
   }

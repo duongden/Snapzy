@@ -29,8 +29,8 @@ enum VideoEditorExporter {
       return
     }
 
-    // If muted, export without audio
-    if state.isMuted {
+    // If muted via export settings, export without audio
+    if state.exportSettings.audioMode == .mute {
       try await exportVideoOnly(state: state, to: outputURL, progress: progress)
       return
     }
@@ -53,7 +53,7 @@ enum VideoEditorExporter {
 
     guard let exportSession = AVAssetExportSession(
       asset: state.asset,
-      presetName: AVAssetExportPresetHighestQuality
+      presetName: state.exportSettings.quality.exportPreset
     ) else {
       throw ExportError.sessionCreationFailed
     }
@@ -160,8 +160,9 @@ enum VideoEditorExporter {
     compositionVideoTrack.preferredTransform = transform
     print("🔍 [ZoomExport] Applied video transform: \(transform)")
 
-    // Add audio track if not muted
-    if !state.isMuted {
+    // Add audio track based on export settings
+    var audioMix: AVMutableAudioMix?
+    if state.exportSettings.shouldIncludeAudio {
       if let sourceAudioTrack = try await state.asset.loadTracks(withMediaType: .audio).first {
         if let compositionAudioTrack = composition.addMutableTrack(
           withMediaType: .audio,
@@ -169,6 +170,16 @@ enum VideoEditorExporter {
         ) {
           try? compositionAudioTrack.insertTimeRange(timeRange, of: sourceAudioTrack, at: .zero)
           print("🔍 [ZoomExport] Added audio track")
+
+          // Apply volume adjustment if custom volume
+          if state.exportSettings.audioMode == .custom {
+            let mix = AVMutableAudioMix()
+            let params = AVMutableAudioMixInputParameters(track: compositionAudioTrack)
+            params.setVolume(state.exportSettings.effectiveVolume, at: .zero)
+            mix.inputParameters = [params]
+            audioMix = mix
+            print("🔍 [ZoomExport] Applied custom volume: \(state.exportSettings.effectiveVolume)")
+          }
         }
       } else {
         print("🔍 [ZoomExport] No audio track in source")
@@ -187,17 +198,30 @@ enum VideoEditorExporter {
     }
     print("🔍 [ZoomExport] Verified composed video track ID: \(composedVideoTrack.trackID)")
 
-    // Create zoom compositor
-    print("🔍 [ZoomExport] Creating ZoomCompositor with renderSize: \(state.naturalSize)")
+    // Calculate target render size BEFORE creating compositor
+    // This prevents AVFoundation from recalculating frame boundaries after composition is created
+    let baseRenderSize: CGSize
+    if state.exportSettings.dimensionPreset != .original {
+      baseRenderSize = state.exportSettings.exportSize(from: state.naturalSize)
+      print("🔍 [ZoomExport] Using custom dimensions: \(baseRenderSize)")
+    } else {
+      baseRenderSize = state.naturalSize
+      print("🔍 [ZoomExport] Using original dimensions: \(baseRenderSize)")
+    }
+
+    // Create zoom compositor with correct render size from the start
+    print("🔍 [ZoomExport] Creating ZoomCompositor with renderSize: \(baseRenderSize)")
     let zoomCompositor = ZoomCompositor(
       zooms: adjustedZooms,
-      renderSize: state.naturalSize,
+      renderSize: baseRenderSize,
       backgroundStyle: state.backgroundStyle,
       backgroundPadding: state.backgroundPadding,
       cornerRadius: state.backgroundCornerRadius
     )
 
-    let compositionTimeRange = CMTimeRange(start: .zero, duration: state.trimmedDuration)
+    // Use actual composition duration to prevent frame boundary issues
+    let actualCompositionDuration = composition.duration
+    let compositionTimeRange = CMTimeRange(start: .zero, duration: actualCompositionDuration)
     print("🔍 [ZoomExport] Composition time range: start=\(CMTimeGetSeconds(compositionTimeRange.start))s, duration=\(CMTimeGetSeconds(compositionTimeRange.duration))s")
 
     let videoComposition: AVMutableVideoComposition
@@ -206,7 +230,7 @@ enum VideoEditorExporter {
         for: composition,
         timeRange: compositionTimeRange
       )
-      // Use padded render size if background is applied
+      // RenderSize is already set correctly in ZoomCompositor, just use paddedRenderSize for background
       videoComposition.renderSize = zoomCompositor.paddedRenderSize
       print("🔍 [ZoomExport] Created video composition successfully")
       print("🔍 [ZoomExport] Video composition render size: \(videoComposition.renderSize)")
@@ -220,7 +244,7 @@ enum VideoEditorExporter {
     // Export with video composition
     guard let exportSession = AVAssetExportSession(
       asset: composition,
-      presetName: AVAssetExportPresetHighestQuality
+      presetName: state.exportSettings.quality.exportPreset
     ) else {
       print("❌ [ZoomExport] ERROR: Failed to create export session")
       throw ExportError.sessionCreationFailed
@@ -232,6 +256,9 @@ enum VideoEditorExporter {
     exportSession.outputURL = outputURL
     exportSession.outputFileType = outputFileType(for: state.fileExtension)
     exportSession.videoComposition = videoComposition
+    if let audioMix = audioMix {
+      exportSession.audioMix = audioMix
+    }
     print("🔍 [ZoomExport] Export session configured with output type: \(exportSession.outputFileType?.rawValue ?? "nil")")
 
     let progressTask = Task {
@@ -295,7 +322,7 @@ enum VideoEditorExporter {
     // Export composition
     guard let exportSession = AVAssetExportSession(
       asset: composition,
-      presetName: AVAssetExportPresetHighestQuality
+      presetName: state.exportSettings.quality.exportPreset
     ) else {
       throw ExportError.sessionCreationFailed
     }
