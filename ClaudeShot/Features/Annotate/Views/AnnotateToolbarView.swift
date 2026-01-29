@@ -68,10 +68,6 @@ struct AnnotateToolbarView: View {
           state.showSidebar.toggle()
         }
       }
-
-      ToolbarButton(icon: "photo", isSelected: false) {}
-        .disabled(true)
-        .opacity(0.5)
     }
   }
 
