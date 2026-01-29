@@ -214,10 +214,10 @@ struct VideoBackgroundSidebarView: View {
             }
           }
         ),
-        range: 0...100
+        range: 0...300
       )
       VideoSliderRow(label: "Shadow", value: $state.backgroundShadowIntensity, range: 0...1)
-      VideoSliderRow(label: "Corners", value: $state.backgroundCornerRadius, range: 0...32)
+      VideoSliderRow(label: "Corners", value: $state.backgroundCornerRadius, range: 0...60)
     }
   }
 }

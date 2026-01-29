@@ -188,11 +188,26 @@ class ZoomVideoCompositorClass: NSObject, AVVideoCompositing {
   private let ciContext = CIContext(options: [.useSoftwareRenderer: false])
   private let queue = DispatchQueue(label: "com.claudeshot.zoomcompositor")
 
+  // Wallpaper cache to avoid loading from disk on every frame
+  private var cachedWallpaperURL: URL?
+  private var cachedWallpaperSize: CGSize?
+  private var cachedScaledWallpaper: CIImage?
+
+  // Blurred wallpaper cache
+  private var cachedBlurredURL: URL?
+  private var cachedBlurredSize: CGSize?
+  private var cachedBlurredWallpaper: CIImage?
+
   // MARK: - AVVideoCompositing Protocol
 
   func renderContextChanged(_ newRenderContext: AVVideoCompositionRenderContext) {
     queue.sync {
       renderContext = newRenderContext
+      // Clear wallpaper cache if size changed to ensure correct scaling
+      if cachedWallpaperSize != newRenderContext.size {
+        cachedScaledWallpaper = nil
+        cachedBlurredWallpaper = nil
+      }
       print("🎥 [Compositor] Render context changed - size: \(newRenderContext.size)")
     }
   }
@@ -429,17 +444,47 @@ class ZoomVideoCompositorClass: NSObject, AVVideoCompositing {
       return CIImage(color: ciColor).cropped(to: rect)
 
     case .wallpaper(let url):
-      guard let image = CIImage(contentsOf: url) else {
-        return CIImage(color: .black).cropped(to: rect)
+      // Check if we have a cached version for this URL and size
+      if let cached = cachedScaledWallpaper,
+         cachedWallpaperURL == url,
+         cachedWallpaperSize == size {
+        return cached
       }
-      return scaleToFill(image: image, targetSize: size)
 
-    case .blurred(let url):
+      // Load and cache the wallpaper
       guard let image = CIImage(contentsOf: url) else {
         return CIImage(color: .black).cropped(to: rect)
       }
       let scaled = scaleToFill(image: image, targetSize: size)
-      return scaled.applyingGaussianBlur(sigma: 20).cropped(to: rect)
+
+      // Store in cache
+      cachedWallpaperURL = url
+      cachedWallpaperSize = size
+      cachedScaledWallpaper = scaled
+
+      return scaled
+
+    case .blurred(let url):
+      // Check if we have a cached version for this URL and size
+      if let cached = cachedBlurredWallpaper,
+         cachedBlurredURL == url,
+         cachedBlurredSize == size {
+        return cached
+      }
+
+      // Load and cache the blurred wallpaper
+      guard let image = CIImage(contentsOf: url) else {
+        return CIImage(color: .black).cropped(to: rect)
+      }
+      let scaled = scaleToFill(image: image, targetSize: size)
+      let blurred = scaled.applyingGaussianBlur(sigma: 20).cropped(to: rect)
+
+      // Store in cache
+      cachedBlurredURL = url
+      cachedBlurredSize = size
+      cachedBlurredWallpaper = blurred
+
+      return blurred
     }
   }
 
