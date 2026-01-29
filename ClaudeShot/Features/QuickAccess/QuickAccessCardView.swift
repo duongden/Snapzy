@@ -24,6 +24,13 @@ struct QuickAccessCardView: View {
 
   private let cornerRadius: CGFloat = 16
 
+  /// Dismiss direction based on panel position
+  /// Right side panel: swipe right to dismiss (+1)
+  /// Left side panel: swipe left to dismiss (-1)
+  private var dismissDirection: CGFloat {
+    manager.position.isLeftSide ? -1 : 1
+  }
+
   var body: some View {
     ZStack(alignment: .center) {
       // Thumbnail with blur effect on hover
@@ -78,7 +85,6 @@ struct QuickAccessCardView: View {
     .onTapGesture(count: 2) {
       handleDoubleClick()
     }
-    .gesture(swipeGesture)
     .if(manager.dragDropEnabled) { view in
       view.onDrag {
         isDragging = true
@@ -93,6 +99,7 @@ struct QuickAccessCardView: View {
         dragPreview
       }
     }
+    .simultaneousGesture(swipeGesture)
     .onDisappear {
       dragRemovalTask?.cancel()
     }
@@ -110,24 +117,41 @@ struct QuickAccessCardView: View {
 
   // MARK: - Gestures
 
+  /// Check if swipe is toward dismiss direction (toward screen edge)
+  private func isDismissSwipe(_ translation: CGFloat) -> Bool {
+    // Right panel: positive translation (swipe right) dismisses
+    // Left panel: negative translation (swipe left) dismisses
+    return (translation * dismissDirection) > 0
+  }
+
   private var swipeGesture: some Gesture {
     DragGesture()
       .updating($swipeOffset) { value, state, _ in
         guard !isDragging, !reduceMotion else { return }
-        state = value.translation.width
+        // Only allow swipe offset in dismiss direction
+        let translation = value.translation.width
+        if isDismissSwipe(translation) {
+          state = translation
+        }
       }
       .onEnded { value in
         guard !isDragging else { return }
+        let translation = value.translation.width
+        let velocity = value.velocity.width
         let threshold: CGFloat = 80
         let velocityThreshold: CGFloat = 300
 
-        if abs(value.translation.width) > threshold || abs(value.velocity.width) > velocityThreshold {
-          isDismissing = true
-          QuickAccessSound.dismiss.play(reduceMotion: reduceMotion)
-          withAnimation(QuickAccessAnimations.cardSwipeDismiss) {
-            manager.removeScreenshot(id: item.id)
+        // Only dismiss if swiping toward screen edge
+        if isDismissSwipe(translation) {
+          if abs(translation) > threshold || abs(velocity) > velocityThreshold {
+            isDismissing = true
+            QuickAccessSound.dismiss.play(reduceMotion: reduceMotion)
+            withAnimation(QuickAccessAnimations.cardSwipeDismiss) {
+              manager.removeScreenshot(id: item.id)
+            }
           }
         }
+        // Swipe opposite direction does nothing - onDrag handles external drop
       }
   }
 
