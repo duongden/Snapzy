@@ -16,60 +16,99 @@ struct CropOverlayView: View {
   private let handleSize: CGFloat = 12
   private let cornerHandleLength: CGFloat = 20
 
+  /// Whether crop is being actively edited (vs just previewing applied crop)
+  private var isActivelyEditing: Bool {
+    state.selectedTool == .crop && state.isCropActive
+  }
+
   var body: some View {
     GeometryReader { geometry in
       ZStack {
         if let cropRect = state.cropRect {
           let scaledCrop = scaledCropRect(cropRect)
 
-          // Dim overlay outside crop region
-          CropDimOverlay(
-            cropRect: scaledCrop,
-            containerSize: geometry.size
-          )
-          .allowsHitTesting(false)
-
-          // Crop border
-          Rectangle()
-            .stroke(Color.white, lineWidth: 1.5)
-            .frame(width: scaledCrop.width, height: scaledCrop.height)
-            .position(x: scaledCrop.midX, y: scaledCrop.midY)
-            .shadow(color: .black.opacity(0.5), radius: 1, x: 0, y: 0)
-            .allowsHitTesting(false)
-
-          // Rule of thirds grid
-          if state.showCropGrid {
-            CropGridOverlay(cropRect: scaledCrop)
-              .allowsHitTesting(false)
-          }
-
-          // Corner L-shaped handles (CleanShot X style)
-          ForEach(CropHandle.corners, id: \.self) { handle in
-            CropCornerHandle(handle: handle, length: cornerHandleLength)
-              .position(handlePosition(for: handle, in: scaledCrop))
-              .allowsHitTesting(false)
-          }
-
-          // Edge handles (subtle lines)
-          ForEach(CropHandle.edges, id: \.self) { handle in
-            CropEdgeHandle(handle: handle, cropRect: scaledCrop)
-              .position(handlePosition(for: handle, in: scaledCrop))
-              .allowsHitTesting(false)
-          }
-
-          // Dimension display (when resizing)
-          if state.isCropResizing || state.isCropActive {
-            CropDimensionLabel(
-              width: Int(cropRect.width),
-              height: Int(cropRect.height)
-            )
-            .position(x: scaledCrop.midX, y: scaledCrop.maxY + 24)
-            .allowsHitTesting(false)
+          if isActivelyEditing {
+            // Active editing mode: show handles and grid
+            activeEditingOverlay(scaledCrop: scaledCrop, containerSize: geometry.size)
+          } else {
+            // Preview mode: show solid mask outside crop area
+            appliedCropPreview(scaledCrop: scaledCrop, containerSize: geometry.size)
           }
         }
       }
     }
     .allowsHitTesting(false)
+  }
+
+  // MARK: - Active Editing Overlay
+
+  @ViewBuilder
+  private func activeEditingOverlay(scaledCrop: CGRect, containerSize: CGSize) -> some View {
+    // Dim overlay outside crop region
+    CropDimOverlay(
+      cropRect: scaledCrop,
+      containerSize: containerSize
+    )
+    .allowsHitTesting(false)
+
+    // Crop border
+    Rectangle()
+      .stroke(Color.white, lineWidth: 1.5)
+      .frame(width: scaledCrop.width, height: scaledCrop.height)
+      .position(x: scaledCrop.midX, y: scaledCrop.midY)
+      .shadow(color: .black.opacity(0.5), radius: 1, x: 0, y: 0)
+      .allowsHitTesting(false)
+
+    // Rule of thirds grid
+    if state.showCropGrid {
+      CropGridOverlay(cropRect: scaledCrop)
+        .allowsHitTesting(false)
+    }
+
+    // Corner L-shaped handles (CleanShot X style)
+    ForEach(CropHandle.corners, id: \.self) { handle in
+      CropCornerHandle(handle: handle, length: cornerHandleLength)
+        .position(handlePosition(for: handle, in: scaledCrop))
+        .allowsHitTesting(false)
+    }
+
+    // Edge handles (subtle lines)
+    ForEach(CropHandle.edges, id: \.self) { handle in
+      CropEdgeHandle(handle: handle, cropRect: scaledCrop)
+        .position(handlePosition(for: handle, in: scaledCrop))
+        .allowsHitTesting(false)
+    }
+
+    // Dimension display (when resizing)
+    if state.isCropResizing || state.isCropActive {
+      if let cropRect = state.cropRect {
+        CropDimensionLabel(
+          width: Int(cropRect.width),
+          height: Int(cropRect.height)
+        )
+        .position(x: scaledCrop.midX, y: scaledCrop.maxY + 24)
+        .allowsHitTesting(false)
+      }
+    }
+  }
+
+  // MARK: - Applied Crop Preview (solid mask)
+
+  @ViewBuilder
+  private func appliedCropPreview(scaledCrop: CGRect, containerSize: CGSize) -> some View {
+    // Solid black mask outside crop region (hides cropped areas)
+    CropSolidMask(
+      cropRect: scaledCrop,
+      containerSize: containerSize
+    )
+    .allowsHitTesting(false)
+
+    // Subtle border around crop area
+    Rectangle()
+      .stroke(Color.white.opacity(0.3), lineWidth: 1)
+      .frame(width: scaledCrop.width, height: scaledCrop.height)
+      .position(x: scaledCrop.midX, y: scaledCrop.midY)
+      .allowsHitTesting(false)
   }
 
   private func scaledCropRect(_ rect: CGRect) -> CGRect {
@@ -140,6 +179,39 @@ struct CropDimOverlay: View {
 
       // Right region (between top and bottom)
       dimColor
+        .frame(width: max(0, containerSize.width - cropRect.maxX), height: cropRect.height)
+        .position(x: (containerSize.width + cropRect.maxX) / 2, y: cropRect.midY)
+    }
+  }
+}
+
+// MARK: - Crop Solid Mask (for applied crop preview)
+
+struct CropSolidMask: View {
+  let cropRect: CGRect
+  let containerSize: CGSize
+  // Use canvas background color for seamless masking
+  private let maskColor = Color(nsColor: .windowBackgroundColor)
+
+  var body: some View {
+    ZStack {
+      // Top region
+      maskColor
+        .frame(width: containerSize.width, height: max(0, cropRect.minY))
+        .position(x: containerSize.width / 2, y: cropRect.minY / 2)
+
+      // Bottom region
+      maskColor
+        .frame(width: containerSize.width, height: max(0, containerSize.height - cropRect.maxY))
+        .position(x: containerSize.width / 2, y: (containerSize.height + cropRect.maxY) / 2)
+
+      // Left region (between top and bottom)
+      maskColor
+        .frame(width: max(0, cropRect.minX), height: cropRect.height)
+        .position(x: cropRect.minX / 2, y: cropRect.midY)
+
+      // Right region (between top and bottom)
+      maskColor
         .frame(width: max(0, containerSize.width - cropRect.maxX), height: cropRect.height)
         .position(x: (containerSize.width + cropRect.maxX) / 2, y: cropRect.midY)
     }

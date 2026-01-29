@@ -36,6 +36,8 @@ struct AnnotateMainView: View {
 
         AnnotateCanvasView(state: state)
           .frame(maxWidth: .infinity, maxHeight: .infinity)
+          .contentShape(Rectangle()) // Constrain hit-test area to frame bounds
+          .clipped() // Prevent canvas content from overlapping toolbar/bottombar
       }
 
       Divider()

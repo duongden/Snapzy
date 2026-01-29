@@ -103,9 +103,25 @@ struct AnnotateCanvasView: View {
     // This expands the background to allow image movement
     let alignmentSpace: CGFloat = state.imageAlignment != .center ? 40 : 0
 
-    // Logical canvas = image + padding + alignment space (this is what we export)
-    let logicalCanvasWidth = state.imageWidth + currentPadding * 2 + alignmentSpace
-    let logicalCanvasHeight = state.imageHeight + currentPadding * 2 + alignmentSpace
+    // Determine effective dimensions based on crop state
+    // When crop is applied (not editing), use crop dimensions for centering
+    let isCropApplied = state.cropRect != nil && !state.isCropActive
+    let effectiveWidth: CGFloat
+    let effectiveHeight: CGFloat
+
+    if isCropApplied, let cropRect = state.cropRect {
+      // Use crop dimensions for canvas layout
+      effectiveWidth = cropRect.width
+      effectiveHeight = cropRect.height
+    } else {
+      // Use full image dimensions
+      effectiveWidth = state.imageWidth
+      effectiveHeight = state.imageHeight
+    }
+
+    // Logical canvas = effective size + padding + alignment space
+    let logicalCanvasWidth = effectiveWidth + currentPadding * 2 + alignmentSpace
+    let logicalCanvasHeight = effectiveHeight + currentPadding * 2 + alignmentSpace
 
     // Scale entire canvas to fit in available space (unified scaling)
     let scaleX = availableWidth / logicalCanvasWidth
@@ -122,50 +138,83 @@ struct AnnotateCanvasView: View {
 
     // Image offset for alignment (relative to ZStack center)
     let imageDisplaySize = CGSize(width: imgWidth, height: imgHeight)
-    let offset = state.imageOffset(
-      for: CGSize(width: bgWidth, height: bgHeight),
-      imageDisplaySize: imageDisplaySize,
-      displayPadding: currentPadding * scale
-    )
+
+    // Calculate offset based on crop state
+    let offset: CGPoint
+    if isCropApplied, let cropRect = state.cropRect {
+      // When crop is applied, offset image so crop area is centered
+      let cropCenterX = cropRect.midX * scale
+      let cropCenterY = (state.imageHeight - cropRect.midY) * scale // Flip Y for SwiftUI
+      let imageCenterX = imgWidth / 2
+      let imageCenterY = imgHeight / 2
+      offset = CGPoint(
+        x: imageCenterX - cropCenterX,
+        y: imageCenterY - cropCenterY
+      )
+    } else {
+      // Normal alignment offset
+      offset = state.imageOffset(
+        for: CGSize(width: bgWidth, height: bgHeight),
+        imageDisplaySize: imageDisplaySize,
+        displayPadding: currentPadding * scale
+      )
+    }
+
+    // Calculate clipping rect for applied crop (in display coordinates)
+    let clipRect: CGRect? = isCropApplied ? state.cropRect.map { cropRect in
+      CGRect(
+        x: cropRect.origin.x * scale,
+        y: (state.imageHeight - cropRect.origin.y - cropRect.height) * scale,
+        width: cropRect.width * scale,
+        height: cropRect.height * scale
+      )
+    } : nil
 
     return ZStack {
-      // Background layer (scaled canvas with padding) - NOT transformed
-      backgroundLayer(width: bgWidth, height: bgHeight)
+      // Scaled content group
+      ZStack {
+        // Background layer (scaled canvas with padding) - NOT transformed
+        backgroundLayer(width: bgWidth, height: bgHeight)
 
-      // GROUP: Image + Annotations (transformed together in mockup mode)
-      Group {
-        // Image positioned within scaled padding area
-        imageLayer(width: imgWidth, height: imgHeight)
+        // GROUP: Image + Annotations (transformed together in mockup mode)
+        Group {
+          // Image positioned within scaled padding area
+          imageLayer(width: imgWidth, height: imgHeight)
 
-        // Drawing canvas matches image position
-        CanvasDrawingView(state: state, displayScale: scale)
-          .frame(width: imgWidth, height: imgHeight)
+          // Drawing canvas matches image position - clip to crop when applied
+          CanvasDrawingView(state: state, displayScale: scale)
+            .frame(width: imgWidth, height: imgHeight)
+            .clipShape(
+              CropClipShape(clipRect: clipRect, containerSize: CGSize(width: imgWidth, height: imgHeight))
+            )
 
-        // Text editing overlay (when editing a text annotation)
-        if state.editingTextAnnotationId != nil {
-          TextEditOverlay(
+          // Text editing overlay (when editing a text annotation)
+          if state.editingTextAnnotationId != nil {
+            TextEditOverlay(
+              state: state,
+              scale: scale,
+              imageSize: CGSize(width: state.imageWidth, height: state.imageHeight)
+            )
+            .frame(width: imgWidth, height: imgHeight)
+          }
+        }
+        .offset(x: offset.x, y: offset.y)
+        .modifier(MockupTransformModifier(state: state, isEnabled: shouldShowMockupTransforms))
+
+        // Crop overlay (NOT transformed - editing UI stays flat)
+        if state.selectedTool == .crop || state.cropRect != nil {
+          CropOverlayView(
             state: state,
             scale: scale,
             imageSize: CGSize(width: state.imageWidth, height: state.imageHeight)
           )
           .frame(width: imgWidth, height: imgHeight)
+          .offset(x: offset.x, y: offset.y)
         }
       }
-      .offset(x: offset.x, y: offset.y)
-      .modifier(MockupTransformModifier(state: state, isEnabled: shouldShowMockupTransforms))
+      .scaleEffect(state.zoomLevel)
 
-      // Crop overlay (NOT transformed - editing UI stays flat)
-      if state.selectedTool == .crop || state.cropRect != nil {
-        CropOverlayView(
-          state: state,
-          scale: scale,
-          imageSize: CGSize(width: state.imageWidth, height: state.imageHeight)
-        )
-        .frame(width: imgWidth, height: imgHeight)
-        .offset(x: offset.x, y: offset.y)
-      }
-
-      // Crop toolbar (floating at bottom)
+      // Crop toolbar (floating at bottom) - OUTSIDE scaleEffect so it doesn't zoom
       if state.selectedTool == .crop && state.isCropActive {
         VStack {
           Spacer()
@@ -174,7 +223,6 @@ struct AnnotateCanvasView: View {
         }
       }
     }
-    .scaleEffect(state.zoomLevel)
   }
 
   // MARK: - Background Layer
@@ -405,5 +453,23 @@ final class ScrollWheelZoomNSView: NSView {
 extension View {
   func onScrollWheelZoom(_ action: @escaping (CGFloat) -> Void) -> some View {
     modifier(ScrollWheelZoomModifier(onZoom: action))
+  }
+}
+
+// MARK: - Crop Clip Shape
+
+/// Shape that clips content to crop rect when applied, or shows full content when no crop
+struct CropClipShape: Shape {
+  let clipRect: CGRect?
+  let containerSize: CGSize
+
+  func path(in rect: CGRect) -> Path {
+    if let clipRect = clipRect {
+      // Clip to crop rect
+      return Path(clipRect)
+    } else {
+      // No clip - show full content
+      return Path(rect)
+    }
   }
 }

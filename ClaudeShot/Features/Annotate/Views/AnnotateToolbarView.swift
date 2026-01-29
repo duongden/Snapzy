@@ -53,9 +53,12 @@ struct AnnotateToolbarView: View {
         isSelected: state.selectedTool == .crop
       ) {
         state.selectedTool = .crop
-        // Initialize crop immediately when tool is selected
+        // Initialize crop or re-enable editing mode
         if state.cropRect == nil && state.hasImage {
           state.initializeCrop()
+        } else if state.cropRect != nil {
+          // Re-enable editing mode for existing crop
+          state.isCropActive = true
         }
       }
 

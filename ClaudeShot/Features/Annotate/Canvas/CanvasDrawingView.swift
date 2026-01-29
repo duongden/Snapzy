@@ -262,11 +262,21 @@ final class DrawingCanvasNSView: NSView {
     )
   }
 
-  /// Clamp point to image bounds
+  /// Clamp point to effective drawing bounds (crop rect if applied, otherwise full image)
   private func clampToImageBounds(_ point: CGPoint) -> CGPoint {
-    CGPoint(
-      x: max(0, min(point.x, state.imageWidth)),
-      y: max(0, min(point.y, state.imageHeight))
+    // Use crop bounds if crop is applied (not actively editing)
+    let bounds: CGRect
+    if let cropRect = state.cropRect, !state.isCropActive {
+      // Crop is applied - constrain to crop area
+      bounds = cropRect
+    } else {
+      // No crop or crop is being edited - use full image bounds
+      bounds = CGRect(origin: .zero, size: CGSize(width: state.imageWidth, height: state.imageHeight))
+    }
+
+    return CGPoint(
+      x: max(bounds.minX, min(point.x, bounds.maxX)),
+      y: max(bounds.minY, min(point.y, bounds.maxY))
     )
   }
 
@@ -768,6 +778,13 @@ final class DrawingCanvasNSView: NSView {
         state.initializeCrop()
       }
       return
+    }
+
+    // Re-enable crop editing if clicking on crop area when not active
+    if !state.isCropActive {
+      Task { @MainActor in
+        state.isCropActive = true
+      }
     }
 
     guard let cropRect = state.cropRect else { return }
