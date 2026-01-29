@@ -151,16 +151,17 @@ struct ZoomableVideoPlayerSection: View {
 
   // MARK: - Preview Scale Factor
 
-  /// Calculate scale factor between preview container and video natural size
-  /// This ensures padding/cornerRadius in preview matches export proportionally
+  /// Calculate scale factor between preview container and export size
+  /// This ensures padding/cornerRadius in preview matches export proportionally (WYSIWYG)
   private func previewScaleFactor(for containerSize: CGSize) -> CGFloat {
-    let naturalSize = state.naturalSize
-    guard naturalSize.width > 0 && naturalSize.height > 0 &&
+    // Use export size for WYSIWYG preview - shows scaled video matching export result
+    let effectiveSize = state.exportSettings.exportSize(from: state.naturalSize)
+    guard effectiveSize.width > 0 && effectiveSize.height > 0 &&
           containerSize.width > 0 && containerSize.height > 0 else { return 1.0 }
 
     // Calculate how the video fits in the container (aspect fit)
     let containerAspect = containerSize.width / containerSize.height
-    let videoAspect = naturalSize.width / naturalSize.height
+    let videoAspect = effectiveSize.width / effectiveSize.height
 
     let fittedSize: CGSize
     if containerAspect > videoAspect {
@@ -177,26 +178,31 @@ struct ZoomableVideoPlayerSection: View {
       )
     }
 
-    // Scale factor = preview size / natural size
+    // Scale factor = preview size / effective size
     // This converts "pixels" in state to "points" in preview
-    return min(fittedSize.width / naturalSize.width, fittedSize.height / naturalSize.height)
+    return min(fittedSize.width / effectiveSize.width, fittedSize.height / effectiveSize.height)
   }
 
   // MARK: - Composite Size Calculation
 
   /// Calculate the size of the composite frame (video + padding) that fits within the container
-  /// This ensures background fills exactly the video+padding area with no black gaps
+  /// Uses export dimensions for WYSIWYG preview - shows scaled video matching export result
   private func calculateCompositeSize(containerSize: CGSize, scaledPadding: CGFloat) -> CGSize {
-    let naturalSize = state.naturalSize
-    guard naturalSize.width > 0 && naturalSize.height > 0 &&
+    // Use export size for WYSIWYG preview
+    let effectiveSize = state.exportSettings.exportSize(from: state.naturalSize)
+    guard effectiveSize.width > 0 && effectiveSize.height > 0 &&
           containerSize.width > 0 && containerSize.height > 0 else {
       return containerSize
     }
 
-    // Calculate the composite aspect ratio (video + padding on all sides)
-    let compositeNaturalWidth = naturalSize.width + (state.backgroundPadding * 2)
-    let compositeNaturalHeight = naturalSize.height + (state.backgroundPadding * 2)
-    let compositeAspect = compositeNaturalWidth / compositeNaturalHeight
+    // Scale background padding proportionally to export dimensions
+    let paddingScale = state.naturalSize.width > 0 ? effectiveSize.width / state.naturalSize.width : 1.0
+    let scaledBackgroundPadding = state.backgroundPadding * paddingScale
+
+    // Calculate the composite aspect ratio (video + scaled padding on all sides)
+    let compositeWidth = effectiveSize.width + (scaledBackgroundPadding * 2)
+    let compositeHeight = effectiveSize.height + (scaledBackgroundPadding * 2)
+    let compositeAspect = compositeWidth / compositeHeight
 
     // Fit composite into container maintaining aspect ratio
     let containerAspect = containerSize.width / containerSize.height
