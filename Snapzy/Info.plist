@@ -3,11 +3,11 @@
 <plist version="1.0">
 <dict>
 	<key>CFBundleIconFile</key>
-	<string>ClaudeShotIcon</string>
+	<string>SnapzyIcon</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>ClaudeShot needs microphone access to record audio with your screen recordings.</string>
+	<string>Snapzy needs microphone access to record audio with your screen recordings.</string>
 	<key>NSScreenCaptureUsageDescription</key>
-	<string>ClaudeShot needs screen recording permission to capture screenshots and record your screen.</string>
+	<string>Snapzy needs screen recording permission to capture screenshots and record your screen.</string>
 	<key>SUFeedURL</key>
 	<string>https://raw.githubusercontent.com/duongductrong/Snapzy/master/appcast.xml</string>
 	<key>SUPublicEDKey</key>
