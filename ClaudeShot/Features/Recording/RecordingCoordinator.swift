@@ -22,6 +22,7 @@ final class RecordingCoordinator: ObservableObject {
   private let recorder = ScreenRecordingManager.shared
   private var localEscapeMonitor: Any?
   private var globalEscapeMonitor: Any?
+  private var isShowingConfirmationDialog = false
 
   private init() {}
 
@@ -67,7 +68,7 @@ final class RecordingCoordinator: ObservableObject {
   private func setupEscapeMonitors() {
     localEscapeMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
       if event.keyCode == 53 {  // Escape key
-        self?.cancel()
+        self?.handleEscapeKey()
         return nil
       }
       return event
@@ -76,9 +77,75 @@ final class RecordingCoordinator: ObservableObject {
     globalEscapeMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
       if event.keyCode == 53 {
         DispatchQueue.main.async {
-          self?.cancel()
+          self?.handleEscapeKey()
         }
       }
+    }
+  }
+
+  /// Handle ESC key based on recording state
+  private func handleEscapeKey() {
+    // Prevent multiple dialogs
+    guard !isShowingConfirmationDialog else { return }
+
+    // If recording is in progress, show confirmation dialog
+    if recorder.isRecording || recorder.isPaused {
+      showStopConfirmationDialog()
+    } else {
+      // Not recording yet (pre-record mode), allow immediate cancel
+      cancel()
+    }
+  }
+
+  /// Show confirmation dialog when user presses ESC during recording
+  private func showStopConfirmationDialog() {
+    isShowingConfirmationDialog = true
+
+    // Pause recording while showing dialog
+    let wasRecording = recorder.isRecording
+    if wasRecording {
+      recorder.pauseRecording()
+    }
+
+    // Remove escape monitors while dialog is open to prevent ESC from triggering handlers
+    removeEscapeMonitors()
+
+    let alert = NSAlert()
+    alert.messageText = "Stop Recording?"
+    alert.informativeText = "Do you want to discard this recording?"
+    alert.alertStyle = .warning
+
+    // Discard is primary (first button), Continue is secondary
+    alert.addButton(withTitle: "Discard")
+    alert.addButton(withTitle: "Continue")
+
+    // Auto-focus Continue button (second button) by setting it as default
+    if alert.buttons.count > 1 {
+      let continueButton = alert.buttons[1]
+      continueButton.keyEquivalent = "\r"  // Return key
+      alert.buttons[0].keyEquivalent = ""  // Remove default from Discard
+    }
+
+    let response = alert.runModal()
+    isShowingConfirmationDialog = false
+
+    switch response {
+    case .alertFirstButtonReturn:
+      // Discard - cancel without saving
+      deleteRecording()
+    case .alertSecondButtonReturn, .cancel:
+      // Continue or ESC pressed - resume recording if it was recording
+      if wasRecording {
+        recorder.resumeRecording()
+      }
+      // Re-add escape monitors for future ESC presses
+      setupEscapeMonitors()
+    default:
+      // Any other case (shouldn't happen) - resume recording
+      if wasRecording {
+        recorder.resumeRecording()
+      }
+      setupEscapeMonitors()
     }
   }
 
