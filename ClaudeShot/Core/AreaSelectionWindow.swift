@@ -383,12 +383,16 @@ final class AreaSelectionOverlayView: NSView {
   private var horizontalCrosshairLayer: CAShapeLayer!
   private var verticalCrosshairLayer: CAShapeLayer!
   private var selectionBorderLayer: CAShapeLayer!
+  private var crosshairIndicatorLayer: CAShapeLayer!
 
   // Appearance constants
   private let dimColor = NSColor.black.withAlphaComponent(0.4)
   private let crosshairColor = NSColor.white.withAlphaComponent(0.6)
   private let selectionBorderColor = NSColor.white
   private let selectionBorderWidth: CGFloat = 2.0
+  private let crosshairIndicatorSize: CGFloat = 10.0
+  private let crosshairIndicatorLineWidth: CGFloat = 1.5
+  private let crosshairIndicatorCenterRadius: CGFloat = 6.0
 
   /// Disabled animations for instant layer updates
   private var disabledActions: [String: CAAction] {
@@ -434,17 +438,19 @@ final class AreaSelectionOverlayView: NSView {
     dimLayer.actions = disabledActions
     rootLayer.addSublayer(dimLayer)
 
-    // Horizontal crosshair line
+    // Horizontal crosshair line (hidden - using cursor instead)
     horizontalCrosshairLayer = CAShapeLayer()
     horizontalCrosshairLayer.strokeColor = crosshairColor.cgColor
     horizontalCrosshairLayer.lineWidth = 1.0
+    horizontalCrosshairLayer.isHidden = true
     horizontalCrosshairLayer.actions = disabledActions
     rootLayer.addSublayer(horizontalCrosshairLayer)
 
-    // Vertical crosshair line
+    // Vertical crosshair line (hidden - using cursor instead)
     verticalCrosshairLayer = CAShapeLayer()
     verticalCrosshairLayer.strokeColor = crosshairColor.cgColor
     verticalCrosshairLayer.lineWidth = 1.0
+    verticalCrosshairLayer.isHidden = true
     verticalCrosshairLayer.actions = disabledActions
     rootLayer.addSublayer(verticalCrosshairLayer)
 
@@ -457,6 +463,19 @@ final class AreaSelectionOverlayView: NSView {
     selectionBorderLayer.actions = disabledActions
     rootLayer.addSublayer(selectionBorderLayer)
 
+    // Crosshair indicator at mouse position (like CleanShot X)
+    crosshairIndicatorLayer = CAShapeLayer()
+    crosshairIndicatorLayer.strokeColor = NSColor.white.cgColor
+    crosshairIndicatorLayer.fillColor = nil
+    crosshairIndicatorLayer.lineWidth = crosshairIndicatorLineWidth
+    crosshairIndicatorLayer.lineCap = .round
+    crosshairIndicatorLayer.actions = disabledActions
+    crosshairIndicatorLayer.shadowColor = NSColor.black.cgColor
+    crosshairIndicatorLayer.shadowOffset = .zero
+    crosshairIndicatorLayer.shadowRadius = 2
+    crosshairIndicatorLayer.shadowOpacity = 0.5
+    rootLayer.addSublayer(crosshairIndicatorLayer)
+
     CATransaction.commit()
   }
 
@@ -465,11 +484,29 @@ final class AreaSelectionOverlayView: NSView {
   private func setupTrackingArea() {
     let trackingArea = NSTrackingArea(
       rect: bounds,
-      options: [.activeAlways, .mouseMoved, .inVisibleRect],
+      options: [.activeAlways, .mouseMoved, .mouseEnteredAndExited, .inVisibleRect, .cursorUpdate],
       owner: self,
       userInfo: nil
     )
     addTrackingArea(trackingArea)
+  }
+
+  // MARK: - Cursor
+
+  override func cursorUpdate(with event: NSEvent) {
+    NSCursor.crosshair.push()
+  }
+
+  override func mouseEntered(with event: NSEvent) {
+    NSCursor.crosshair.push()
+  }
+
+  override func mouseExited(with event: NSEvent) {
+    NSCursor.pop()
+  }
+
+  override func resetCursorRects() {
+    addCursorRect(bounds, cursor: .crosshair)
   }
 
   override func updateTrackingAreas() {
@@ -492,10 +529,11 @@ final class AreaSelectionOverlayView: NSView {
     CATransaction.begin()
     CATransaction.setDisableActions(true)
 
-    // Show crosshairs, hide selection
-    horizontalCrosshairLayer.isHidden = false
-    verticalCrosshairLayer.isHidden = false
+    // Keep crosshair layers hidden (using indicator instead)
+    horizontalCrosshairLayer.isHidden = true
+    verticalCrosshairLayer.isHidden = true
     selectionBorderLayer.isHidden = true
+    crosshairIndicatorLayer.isHidden = false
     dimLayer.mask = nil
     dimLayer.frame = bounds
 
@@ -592,23 +630,36 @@ final class AreaSelectionOverlayView: NSView {
     CATransaction.begin()
     CATransaction.setDisableActions(true)
 
-    // Show crosshairs
-    horizontalCrosshairLayer.isHidden = false
-    verticalCrosshairLayer.isHidden = false
-
-    // Horizontal line path
-    let hPath = CGMutablePath()
-    hPath.move(to: CGPoint(x: 0, y: currentMousePosition.y))
-    hPath.addLine(to: CGPoint(x: bounds.width, y: currentMousePosition.y))
-    horizontalCrosshairLayer.path = hPath
-
-    // Vertical line path
-    let vPath = CGMutablePath()
-    vPath.move(to: CGPoint(x: currentMousePosition.x, y: 0))
-    vPath.addLine(to: CGPoint(x: currentMousePosition.x, y: bounds.height))
-    verticalCrosshairLayer.path = vPath
+    // Update crosshair indicator position
+    crosshairIndicatorLayer.isHidden = false
+    let path = createCrosshairIndicatorPath(at: currentMousePosition)
+    crosshairIndicatorLayer.path = path
 
     CATransaction.commit()
+  }
+
+  /// Creates a crosshair indicator path centered at the given point
+  private func createCrosshairIndicatorPath(at point: CGPoint) -> CGPath {
+    let size = crosshairIndicatorSize
+    let path = CGMutablePath()
+
+    // Center circle
+    path.addEllipse(in: CGRect(
+      x: point.x - crosshairIndicatorCenterRadius,
+      y: point.y - crosshairIndicatorCenterRadius,
+      width: crosshairIndicatorCenterRadius * 2,
+      height: crosshairIndicatorCenterRadius * 2
+    ))
+
+    // Vertical line (crosses through circle)
+    path.move(to: CGPoint(x: point.x, y: point.y - size))
+    path.addLine(to: CGPoint(x: point.x, y: point.y + size))
+
+    // Horizontal line (crosses through circle)
+    path.move(to: CGPoint(x: point.x - size, y: point.y))
+    path.addLine(to: CGPoint(x: point.x + size, y: point.y))
+
+    return path
   }
 
   private func updateSelectionLayers() {
@@ -617,7 +668,8 @@ final class AreaSelectionOverlayView: NSView {
     CATransaction.begin()
     CATransaction.setDisableActions(true)
 
-    // Hide crosshairs during selection
+    // Hide crosshair indicator during selection
+    crosshairIndicatorLayer.isHidden = true
     horizontalCrosshairLayer.isHidden = true
     verticalCrosshairLayer.isHidden = true
 
