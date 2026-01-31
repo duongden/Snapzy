@@ -13,14 +13,12 @@ enum AfterCaptureAction: String, CaseIterable, Codable {
   case showQuickAccess = "showQuickAccess"
   case copyFile = "copyFile"
   case save = "save"
-  case uploadCloud = "uploadCloud"
 
   var displayName: String {
     switch self {
     case .showQuickAccess: return "Show Quick Access Overlay"
     case .copyFile: return "Copy file"
     case .save: return "Save"
-    case .uploadCloud: return "Upload to Cloud"
     }
   }
 }
@@ -67,11 +65,10 @@ final class PreferencesManager: ObservableObject {
 
   /// Default values for after-capture actions
   private func defaultValue(for action: AfterCaptureAction, type: CaptureType) -> Bool {
+    // All actions enabled by default on first install
     switch action {
-    case .showQuickAccess, .save:
+    case .showQuickAccess, .save, .copyFile:
       return true
-    case .copyFile, .uploadCloud:
-      return false
     }
   }
 

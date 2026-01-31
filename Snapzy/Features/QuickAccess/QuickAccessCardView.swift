@@ -22,6 +22,7 @@ struct QuickAccessCardView: View {
   let manager: QuickAccessManager
   var onHover: ((Bool) -> Void)? = nil
 
+  @ObservedObject private var preferencesManager = PreferencesManager.shared
   @State private var isHovering = false
   @State private var isDragging = false
   @State private var isDismissing = false
@@ -289,21 +290,29 @@ struct QuickAccessCardView: View {
   }
 
   private var hoverOverlay: some View {
-    ZStack {
+    let captureType: CaptureType = item.isVideo ? .recording : .screenshot
+    let showCopy = preferencesManager.isActionEnabled(.copyFile, for: captureType)
+    let showSave = preferencesManager.isActionEnabled(.save, for: captureType)
+
+    return ZStack {
       // Dimming overlay
       RoundedRectangle(cornerRadius: cornerRadius)
         .fill(Color.black.opacity(0.4))
 
-      // Action buttons with stagger effect
+      // Action buttons with stagger effect (only show enabled actions)
       VStack(spacing: 8) {
-        staggeredButton(label: "Copy", delay: 0) {
-          QuickAccessSound.copy.play(reduceMotion: reduceMotion)
-          manager.copyToClipboard(id: item.id)
+        if showCopy {
+          staggeredButton(label: "Copy", delay: 0) {
+            QuickAccessSound.copy.play(reduceMotion: reduceMotion)
+            manager.copyToClipboard(id: item.id)
+          }
         }
 
-        staggeredButton(label: "Save", delay: 1) {
-          QuickAccessSound.save.play(reduceMotion: reduceMotion)
-          manager.openInFinder(id: item.id)
+        if showSave {
+          staggeredButton(label: "Save", delay: showCopy ? 1 : 0) {
+            QuickAccessSound.save.play(reduceMotion: reduceMotion)
+            manager.openInFinder(id: item.id)
+          }
         }
       }
     }

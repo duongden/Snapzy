@@ -414,8 +414,8 @@ final class RecordingCoordinator: ObservableObject {
         // Play sound
         NSSound(named: "Glass")?.play()
 
-        // Add to QuickAccess stack
-        await QuickAccessManager.shared.addVideo(url: url)
+        // Execute post-capture actions based on user preferences
+        await PostCaptureActionHandler.shared.handleVideoCapture(url: url)
       }
 
       cleanup()

@@ -49,6 +49,7 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
   private let captureManager = ScreenCaptureManager.shared
   private let shortcutManager = KeyboardShortcutManager.shared
   private let quickAccessManager = QuickAccessManager.shared
+  private let postCaptureHandler = PostCaptureActionHandler.shared
   private var isAreaSelectionActive = false
   private var cancellables = Set<AnyCancellable>()
 
@@ -70,13 +71,13 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
     // Set up shortcut delegate
     shortcutManager.delegate = self
 
-    // Subscribe to capture completions for quick access preview
+    // Subscribe to capture completions for post-capture actions
     captureManager.captureCompletedPublisher
       .receive(on: DispatchQueue.main)
       .sink { [weak self] url in
-        guard self?.quickAccessManager.isEnabled == true else { return }
+        guard let self = self else { return }
         Task {
-          await self?.quickAccessManager.addScreenshot(url: url)
+          await self.postCaptureHandler.handleScreenshotCapture(url: url)
         }
       }
       .store(in: &cancellables)
