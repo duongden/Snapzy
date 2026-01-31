@@ -1,0 +1,61 @@
+name: Build and Create DMG
+
+on:
+  push:
+    branches:
+      - master
+  release:
+    types: [created]
+
+jobs:
+  build-and-package:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build Xcode project
+        run: |
+          # xcodebuild -project Snapzy.xcodeproj -scheme Snapzy -configuration Release archive -archivePath Snapzy.xcarchive
+          xcodebuild -project Snapzy.xcodeproj -scheme Snapzy -configuration Release CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO build
+
+
+      - name: Export application bundle
+        run: |
+          xcodebuild -exportArchive -archivePath Snapzy.xcarchive -exportPath ./exported_app -exportOptionsPlist ExportOptions.plist
+
+      - name: Create DMG file
+        uses: srtkk/create-dmg-action@v1.0.0
+        with:
+          app-path: './exported_app/Snapzy.app'
+          dmg-name: 'Snapzy.dmg'
+
+      - name: Upload DMG as an artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macOS-DMG
+          path: Snapzy.dmg
+
+      - name: Create Release (if triggered by push to master)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: v${{ github.run_number }}
+          release_name: Release v${{ github.run_number }}
+          draft: false
+          prerelease: false
+
+      - name: Upload DMG to Release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./Snapzy.dmg
+          asset_name: Snapzy.dmg
+          asset_content_type: application/x-apple-diskimage
