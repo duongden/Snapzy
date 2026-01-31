@@ -2,11 +2,20 @@ name: Build and Create DMG
 
 on:
   workflow_dispatch:
-  # push:
-  #   branches:
-  #     - master
-  # release:
-  #   types: [created]
+    inputs:
+      version:
+        description: 'Release version (e.g., 1.0.0)'
+        required: true
+        type: string
+      release_notes:
+        description: 'Release notes'
+        required: true
+        type: string
+      prerelease:
+        description: 'Mark as pre-release'
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   build-and-package:
@@ -18,13 +27,20 @@ jobs:
 
       - name: Build Xcode project
         run: |
-          # xcodebuild -project Snapzy.xcodeproj -scheme Snapzy -configuration Release archive -archivePath Snapzy.xcarchive
           xcodebuild -project Snapzy.xcodeproj -scheme Snapzy -configuration Release CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO build
 
-
-      - name: Export application bundle
+      - name: Locate and prepare app bundle
         run: |
-          xcodebuild -exportArchive -archivePath Snapzy.xcarchive -exportPath ./exported_app -exportOptionsPlist ExportOptions.plist
+          APP_PATH=$(find ~/Library/Developer/Xcode/DerivedData -name "Snapzy.app" -type d | head -1)
+          if [ -z "$APP_PATH" ]; then
+            APP_PATH=$(find build -name "Snapzy.app" -type d | head -1)
+          fi
+          if [ -z "$APP_PATH" ]; then
+            echo "Error: Could not find Snapzy.app"
+            exit 1
+          fi
+          mkdir -p ./exported_app
+          cp -R "$APP_PATH" ./exported_app/
 
       - name: Create DMG file
         uses: srtkk/create-dmg-action@v1.0.0
@@ -38,25 +54,24 @@ jobs:
           name: macOS-DMG
           path: Snapzy.dmg
 
-      - name: Create Release (if triggered by push to master)
-        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+      - name: Create Release
         id: create_release
         uses: actions/create-release@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: v${{ github.run_number }}
-          release_name: Release v${{ github.run_number }}
+          tag_name: v${{ inputs.version }}
+          release_name: Snapzy v${{ inputs.version }}
+          body: ${{ inputs.release_notes }}
           draft: false
-          prerelease: false
+          prerelease: ${{ inputs.prerelease }}
 
       - name: Upload DMG to Release
-        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
           asset_path: ./Snapzy.dmg
-          asset_name: Snapzy.dmg
+          asset_name: Snapzy-v${{ inputs.version }}.dmg
           asset_content_type: application/x-apple-diskimage
