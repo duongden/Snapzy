@@ -25,6 +25,9 @@ final class StatusBarController: ObservableObject {
   private var viewModel: ScreenCaptureViewModel?
   private var updater: SPUUpdater?
 
+  // Track if we elevated activation policy for Settings window
+  private var didElevateForSettings = false
+
   private init() {}
 
   // MARK: - Public API
@@ -353,9 +356,23 @@ final class StatusBarController: ObservableObject {
   }
 
   @objc private func openPreferencesAction() {
+    // Elevate to regular app so Snapzy appears in top-left menu bar
+    if !didElevateForSettings {
+      NSApp.setActivationPolicy(.regular)
+      didElevateForSettings = true
+
+      // Observe when Settings window closes to revert policy
+      NotificationCenter.default.addObserver(
+        self,
+        selector: #selector(windowDidClose(_:)),
+        name: NSWindow.willCloseNotification,
+        object: nil
+      )
+    }
+
     NSApp.activate(ignoringOtherApps: true)
+
     // Trigger Settings scene - equivalent to SettingsLink behavior
-    // Uses the standard Cmd+, keyboard shortcut action
     if #available(macOS 14.0, *) {
       NSApp.mainMenu?.performKeyEquivalent(with: NSEvent.keyEvent(
         with: .keyDown,
@@ -370,8 +387,27 @@ final class StatusBarController: ObservableObject {
         keyCode: 43
       )!)
     } else {
-      // Fallback for all macOS versions: use selector string
       NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+    }
+  }
+
+  @objc private func windowDidClose(_ notification: Notification) {
+    // Check if any visible windows remain (excluding status bar popover)
+    let visibleWindows = NSApp.windows.filter { window in
+      window.isVisible &&
+      window.className != "NSStatusBarWindow" &&
+      window.level == .normal
+    }
+
+    // If no visible windows, revert to accessory (menu bar only) mode
+    if visibleWindows.isEmpty && didElevateForSettings {
+      NSApp.setActivationPolicy(.accessory)
+      didElevateForSettings = false
+      NotificationCenter.default.removeObserver(
+        self,
+        name: NSWindow.willCloseNotification,
+        object: nil
+      )
     }
   }
 
