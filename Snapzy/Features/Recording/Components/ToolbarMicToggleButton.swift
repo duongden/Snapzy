@@ -9,7 +9,7 @@ import AVFoundation
 import SwiftUI
 
 struct ToolbarMicToggleButton: View {
-  @Binding var isOn: Bool
+  @ObservedObject var state: RecordingToolbarState
   @State private var isHovered = false
   @State private var showPermissionDeniedAlert = false
 
@@ -25,21 +25,21 @@ struct ToolbarMicToggleButton: View {
     if !isAvailable {
       return "mic.slash"
     }
-    return isOn ? "mic.fill" : "mic.slash.fill"
+    return state.captureMicrophone ? "mic.fill" : "mic.slash.fill"
   }
 
   private var accessibilityLabel: String {
     if !isAvailable {
       return "Microphone unavailable on this macOS version"
     }
-    return isOn ? "Mute microphone" : "Unmute microphone"
+    return state.captureMicrophone ? "Mute microphone" : "Unmute microphone"
   }
 
   private var tooltipText: String {
     if !isAvailable {
       return "Requires macOS 15.0+"
     }
-    return isOn ? "Microphone on" : "Microphone off"
+    return state.captureMicrophone ? "Microphone on" : "Microphone off"
   }
 
   var body: some View {
@@ -81,14 +81,14 @@ struct ToolbarMicToggleButton: View {
     if !isAvailable {
       return .secondary.opacity(0.5)
     }
-    return isOn ? .primary : .secondary
+    return state.captureMicrophone ? .primary : .secondary
   }
 
   /// Request microphone permission when user enables toggle
   private func handleMicToggle() {
-    if isOn {
+    if state.captureMicrophone {
       // Turning off - no permission needed
-      isOn = false
+      state.captureMicrophone = false
       return
     }
 
@@ -102,18 +102,18 @@ struct ToolbarMicToggleButton: View {
         let granted = await AVCaptureDevice.requestAccess(for: .audio)
         await MainActor.run {
           if granted {
-            isOn = true
+            state.captureMicrophone = true
           } else {
             showPermissionDeniedAlert = true
           }
         }
       }
     case .authorized:
-      isOn = true
+      state.captureMicrophone = true
     case .denied, .restricted:
       showPermissionDeniedAlert = true
     @unknown default:
-      isOn = true
+      state.captureMicrophone = true
     }
   }
 
@@ -126,8 +126,7 @@ struct ToolbarMicToggleButton: View {
 
 #Preview {
   HStack(spacing: 16) {
-    ToolbarMicToggleButton(isOn: .constant(true))
-    ToolbarMicToggleButton(isOn: .constant(false))
+    ToolbarMicToggleButton(state: RecordingToolbarState())
   }
   .padding()
   .background(.ultraThinMaterial)

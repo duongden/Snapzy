@@ -2,96 +2,163 @@
 //  ToolbarOptionsMenu.swift
 //  Snapzy
 //
-//  Options dropdown menu for recording toolbar with format, quality, and audio settings
+//  Options icon button with popover for recording toolbar settings
 //
 
 import SwiftUI
 
 struct ToolbarOptionsMenu: View {
-  @Binding var selectedFormat: VideoFormat
-  @Binding var selectedQuality: VideoQuality
-  @Binding var captureAudio: Bool
+  @ObservedObject var state: RecordingToolbarState
+
+  @State private var isHovered = false
+  @State private var showPopover = false
+
+  var body: some View {
+    Button {
+      showPopover.toggle()
+    } label: {
+      Image(systemName: "gearshape")
+        .font(.system(size: ToolbarConstants.iconSize, weight: .medium))
+        .foregroundColor(.primary)
+        .frame(
+          width: ToolbarConstants.iconButtonSize,
+          height: ToolbarConstants.iconButtonSize
+        )
+        .background(
+          RoundedRectangle(cornerRadius: ToolbarConstants.buttonCornerRadius)
+            .fill(Color.primary.opacity(isHovered || showPopover ? 0.1 : 0))
+        )
+        .animation(ToolbarConstants.hoverAnimation, value: isHovered)
+    }
+    .buttonStyle(.plain)
+    .onHover { isHovered = $0 }
+    .popover(isPresented: $showPopover, arrowEdge: .bottom) {
+      ToolbarOptionsPopoverContent(state: state)
+    }
+    .accessibilityLabel("Recording options")
+    .accessibilityHint("Opens settings for format, quality, and audio")
+  }
+}
+
+// MARK: - Popover Content
+
+private struct ToolbarOptionsPopoverContent: View {
+  @ObservedObject var state: RecordingToolbarState
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 16) {
+      // Header
+      HStack {
+        Image(systemName: "gearshape")
+          .foregroundColor(.secondary)
+        Text("Recording Settings")
+          .font(.system(size: 12, weight: .semibold))
+        Spacer()
+      }
+
+      Divider()
+
+      // Format Section
+      SettingsSection(title: "Format", icon: "film") {
+        HStack(spacing: 6) {
+          ForEach(VideoFormat.allCases, id: \.self) { format in
+            OptionPill(
+              title: format.displayName,
+              isSelected: state.selectedFormat == format
+            ) {
+              state.selectedFormat = format
+            }
+          }
+        }
+      }
+
+      // Quality Section
+      SettingsSection(title: "Quality", icon: "sparkles") {
+        HStack(spacing: 6) {
+          ForEach(VideoQuality.allCases, id: \.self) { quality in
+            OptionPill(
+              title: quality.displayName,
+              isSelected: state.selectedQuality == quality
+            ) {
+              state.selectedQuality = quality
+            }
+          }
+        }
+      }
+
+      Divider()
+
+      // Audio Section
+      SettingsSection(title: "Audio", icon: "speaker.wave.2") {
+        Toggle(isOn: $state.captureAudio) {
+          Text("System Audio")
+            .font(.system(size: 11))
+        }
+        .toggleStyle(.switch)
+        .controlSize(.small)
+      }
+    }
+    .padding(12)
+    .frame(width: 240)
+  }
+}
+
+// MARK: - Settings Section
+
+private struct SettingsSection<Content: View>: View {
+  let title: String
+  let icon: String
+  @ViewBuilder let content: () -> Content
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 8) {
+      HStack(spacing: 6) {
+        Image(systemName: icon)
+          .font(.system(size: 10))
+          .foregroundColor(.secondary)
+        Text(title)
+          .font(.system(size: 11, weight: .medium))
+          .foregroundColor(.secondary)
+      }
+      content()
+    }
+  }
+}
+
+// MARK: - Option Pill
+
+private struct OptionPill: View {
+  let title: String
+  let isSelected: Bool
+  let action: () -> Void
 
   @State private var isHovered = false
 
   var body: some View {
-    Menu {
-      // Format section
-      Section("Format") {
-        ForEach(VideoFormat.allCases, id: \.self) { format in
-          Button {
-            selectedFormat = format
-          } label: {
-            HStack {
-              Text(format.displayName)
-              if selectedFormat == format {
-                Spacer()
-                Image(systemName: "checkmark")
-              }
-            }
-          }
-        }
-      }
-
-      Divider()
-
-      // Quality section
-      Section("Quality") {
-        ForEach(VideoQuality.allCases, id: \.self) { quality in
-          Button {
-            selectedQuality = quality
-          } label: {
-            HStack {
-              Text(quality.displayName)
-              if selectedQuality == quality {
-                Spacer()
-                Image(systemName: "checkmark")
-              }
-            }
-          }
-        }
-      }
-
-      Divider()
-
-      // Audio toggle
-      Toggle("Capture Audio", isOn: $captureAudio)
-
-    } label: {
-      menuLabel
+    Button(action: action) {
+      Text(title)
+        .font(.system(size: 11, weight: isSelected ? .semibold : .regular))
+        .foregroundColor(isSelected ? .white : .primary)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+        .background(
+          RoundedRectangle(cornerRadius: 6)
+            .fill(isSelected ? Color.accentColor : Color.primary.opacity(isHovered ? 0.1 : 0.05))
+        )
     }
-    .menuStyle(.borderlessButton)
-    .menuIndicator(.hidden)
+    .buttonStyle(.plain)
     .onHover { isHovered = $0 }
-    .accessibilityLabel("Recording options")
-    .accessibilityHint("Opens menu to change format, quality, and audio settings")
-  }
-
-  private var menuLabel: some View {
-    HStack(spacing: 4) {
-      Text("Options")
-      Image(systemName: "chevron.down")
-        .font(.system(size: 10, weight: .semibold))
-    }
-    .font(.system(size: 13, weight: .medium))
-    .foregroundColor(.primary)
-    .padding(.horizontal, 12)
-    .padding(.vertical, 8)
-    .background(
-      RoundedRectangle(cornerRadius: ToolbarConstants.buttonCornerRadius)
-        .fill(Color.primary.opacity(isHovered ? 0.1 : 0.05))
-    )
-    .animation(ToolbarConstants.hoverAnimation, value: isHovered)
   }
 }
 
 #Preview {
-  ToolbarOptionsMenu(
-    selectedFormat: .constant(.mov),
-    selectedQuality: .constant(.high),
-    captureAudio: .constant(true)
-  )
-  .padding()
-  .background(.ultraThinMaterial)
-  .clipShape(RoundedRectangle(cornerRadius: 14))
+  ToolbarOptionsMenu(state: RecordingToolbarState())
+    .padding()
+    .background(.ultraThinMaterial)
+    .clipShape(RoundedRectangle(cornerRadius: 14))
+}
+
+#Preview("Popover Content") {
+  ToolbarOptionsPopoverContent(state: RecordingToolbarState())
+    .background(Color(NSColor.windowBackgroundColor))
 }

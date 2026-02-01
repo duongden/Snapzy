@@ -9,11 +9,7 @@
 import SwiftUI
 
 struct RecordingToolbarView: View {
-  @Binding var selectedFormat: VideoFormat
-  @Binding var selectedQuality: VideoQuality
-  @Binding var captureAudio: Bool
-  @Binding var captureMicrophone: Bool
-  @Binding var captureMode: RecordingCaptureMode
+  @ObservedObject var state: RecordingToolbarState
   let onRecord: () -> Void
   let onCancel: () -> Void
 
@@ -29,17 +25,13 @@ struct RecordingToolbarView: View {
       RecordingToolbarDivider()
 
       // Options menu
-      ToolbarOptionsMenu(
-        selectedFormat: $selectedFormat,
-        selectedQuality: $selectedQuality,
-        captureAudio: $captureAudio
-      )
+      ToolbarOptionsMenu(state: state)
 
       // Capture mode toggle (area/fullscreen)
-      ToolbarCaptureAreaToggle(captureMode: $captureMode)
+      ToolbarCaptureAreaToggle(state: state)
 
       // Mic toggle button
-      ToolbarMicToggleButton(isOn: $captureMicrophone)
+      ToolbarMicToggleButton(state: state)
 
       RecordingToolbarDivider()
 
@@ -67,11 +59,7 @@ struct RecordingToolbarView: View {
 
 #Preview {
   RecordingToolbarView(
-    selectedFormat: .constant(.mov),
-    selectedQuality: .constant(.high),
-    captureAudio: .constant(true),
-    captureMicrophone: .constant(false),
-    captureMode: .constant(.area),
+    state: RecordingToolbarState(),
     onRecord: {},
     onCancel: {}
   )

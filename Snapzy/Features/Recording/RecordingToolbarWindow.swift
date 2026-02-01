@@ -6,6 +6,7 @@
 //
 
 import AppKit
+import Combine
 import SwiftUI
 
 enum RecordingToolbarMode {
@@ -13,33 +14,19 @@ enum RecordingToolbarMode {
   case recording
 }
 
+// MARK: - Observable State
+
 @MainActor
-final class RecordingToolbarWindow: NSWindow {
+final class RecordingToolbarState: ObservableObject {
+  @Published var selectedFormat: VideoFormat
+  @Published var selectedQuality: VideoQuality
+  @Published var captureAudio: Bool
+  @Published var captureMicrophone: Bool
+  @Published var captureMode: RecordingCaptureMode
 
-  private var anchorRect: CGRect
-  private var mode: RecordingToolbarMode = .preRecord
-  private var hostingView: NSHostingView<AnyView>?
-
-  // Callbacks
-  var onRecord: (() -> Void)?
-  var onCancel: (() -> Void)?
-  var onDelete: (() -> Void)?
-  var onRestart: (() -> Void)?
-  var onStop: (() -> Void)?
-
-  // State
-  var selectedFormat: VideoFormat
-  var selectedQuality: VideoQuality
-  var captureAudio: Bool
-  var captureMicrophone: Bool
-  var captureMode: RecordingCaptureMode
-
-  // Callback for capture mode changes
   var onCaptureModeChanged: ((RecordingCaptureMode) -> Void)?
 
-  init(anchorRect: CGRect) {
-    self.anchorRect = anchorRect
-
+  init() {
     // Load format from preferences (default to mov if not set)
     if let formatString = UserDefaults.standard.string(forKey: PreferencesKeys.recordingFormat),
        let format = VideoFormat(rawValue: formatString) {
@@ -62,8 +49,60 @@ final class RecordingToolbarWindow: NSWindow {
     // Load microphone preference (default to false)
     self.captureMicrophone = UserDefaults.standard.object(forKey: PreferencesKeys.recordingCaptureMicrophone) as? Bool ?? false
 
-    // Default capture mode is area (as per user request)
+    // Default capture mode is area
     self.captureMode = .area
+  }
+}
+
+// MARK: - Toolbar Window
+
+@MainActor
+final class RecordingToolbarWindow: NSWindow {
+
+  private var anchorRect: CGRect
+  private var mode: RecordingToolbarMode = .preRecord
+  private var hostingView: NSHostingView<AnyView>?
+
+  // Callbacks
+  var onRecord: (() -> Void)?
+  var onCancel: (() -> Void)?
+  var onDelete: (() -> Void)?
+  var onRestart: (() -> Void)?
+  var onStop: (() -> Void)?
+
+  // Observable state for SwiftUI
+  let state = RecordingToolbarState()
+
+  // Expose state properties for external access (read/write)
+  var selectedFormat: VideoFormat {
+    get { state.selectedFormat }
+    set { state.selectedFormat = newValue }
+  }
+  var selectedQuality: VideoQuality {
+    get { state.selectedQuality }
+    set { state.selectedQuality = newValue }
+  }
+  var captureAudio: Bool {
+    get { state.captureAudio }
+    set { state.captureAudio = newValue }
+  }
+  var captureMicrophone: Bool {
+    get { state.captureMicrophone }
+    set { state.captureMicrophone = newValue }
+  }
+  var captureMode: RecordingCaptureMode {
+    get { state.captureMode }
+    set { state.captureMode = newValue }
+  }
+
+  // Callback for capture mode changes
+  var onCaptureModeChanged: ((RecordingCaptureMode) -> Void)? {
+    get { state.onCaptureModeChanged }
+    set { state.onCaptureModeChanged = newValue }
+  }
+
+  init(anchorRect: CGRect) {
+    self.anchorRect = anchorRect
 
     super.init(
       contentRect: .zero,
@@ -89,36 +128,8 @@ final class RecordingToolbarWindow: NSWindow {
   func showPreRecordToolbar() {
     mode = .preRecord
 
-    let formatBinding = Binding<VideoFormat>(
-      get: { [weak self] in self?.selectedFormat ?? .mov },
-      set: { [weak self] in self?.selectedFormat = $0 }
-    )
-    let qualityBinding = Binding<VideoQuality>(
-      get: { [weak self] in self?.selectedQuality ?? .high },
-      set: { [weak self] in self?.selectedQuality = $0 }
-    )
-    let audioBinding = Binding<Bool>(
-      get: { [weak self] in self?.captureAudio ?? true },
-      set: { [weak self] in self?.captureAudio = $0 }
-    )
-    let micBinding = Binding<Bool>(
-      get: { [weak self] in self?.captureMicrophone ?? false },
-      set: { [weak self] in self?.captureMicrophone = $0 }
-    )
-    let captureModeBinding = Binding<RecordingCaptureMode>(
-      get: { [weak self] in self?.captureMode ?? .area },
-      set: { [weak self] newMode in
-        self?.captureMode = newMode
-        self?.onCaptureModeChanged?(newMode)
-      }
-    )
-
     let view = RecordingToolbarView(
-      selectedFormat: formatBinding,
-      selectedQuality: qualityBinding,
-      captureAudio: audioBinding,
-      captureMicrophone: micBinding,
-      captureMode: captureModeBinding,
+      state: state,
       onRecord: { [weak self] in self?.onRecord?() },
       onCancel: { [weak self] in self?.onCancel?() }
     )

@@ -13,11 +13,11 @@ enum RecordingCaptureMode: String {
 }
 
 struct ToolbarCaptureAreaToggle: View {
-  @Binding var captureMode: RecordingCaptureMode
+  @ObservedObject var state: RecordingToolbarState
   @State private var isHovered = false
 
   private var isFullscreen: Bool {
-    captureMode == .fullscreen
+    state.captureMode == .fullscreen
   }
 
   private var systemName: String {
@@ -34,7 +34,9 @@ struct ToolbarCaptureAreaToggle: View {
 
   var body: some View {
     Button {
-      captureMode = isFullscreen ? .area : .fullscreen
+      let newMode: RecordingCaptureMode = isFullscreen ? .area : .fullscreen
+      state.captureMode = newMode
+      state.onCaptureModeChanged?(newMode)
     } label: {
       Image(systemName: systemName)
         .font(.system(size: ToolbarConstants.iconSize, weight: .medium))
@@ -63,8 +65,7 @@ struct ToolbarCaptureAreaToggle: View {
 
 #Preview {
   HStack(spacing: 16) {
-    ToolbarCaptureAreaToggle(captureMode: .constant(.area))
-    ToolbarCaptureAreaToggle(captureMode: .constant(.fullscreen))
+    ToolbarCaptureAreaToggle(state: RecordingToolbarState())
   }
   .padding()
   .background(.ultraThinMaterial)
