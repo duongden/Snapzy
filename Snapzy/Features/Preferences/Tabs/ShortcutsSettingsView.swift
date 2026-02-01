@@ -19,6 +19,7 @@ struct ShortcutsSettingsView: View {
   @State private var isConfirmedDisable: Bool = false
 
   private let manager = KeyboardShortcutManager.shared
+  @ObservedObject private var annotateManager = AnnotateShortcutManager.shared
 
   init() {
     _fullscreenShortcut = State(initialValue: KeyboardShortcutManager.shared.fullscreenShortcut)
@@ -126,6 +127,26 @@ struct ShortcutsSettingsView: View {
             .foregroundColor(.secondary)
             .padding(.top, 4)
         }
+
+        Section("Annotation Tool Shortcuts") {
+          Text("Single-key shortcuts for switching tools in the annotation editor.")
+            .font(.caption)
+            .foregroundColor(.secondary)
+
+          ForEach(AnnotateShortcutManager.configurableTools, id: \.self) { tool in
+            SingleKeyRecorderView(
+              tool: tool,
+              shortcut: bindingForTool(tool),
+              onChanged: { annotateManager.setShortcut($0, for: tool) },
+              conflictingTool: conflictForTool(tool)
+            )
+          }
+
+          Text("Click to record. Press Backspace to clear. Esc to cancel.")
+            .font(.caption)
+            .foregroundColor(.secondary)
+            .padding(.top, 4)
+        }
       }
     }
     .formStyle(.grouped)
@@ -189,6 +210,23 @@ struct ShortcutsSettingsView: View {
     manager.setRecordingShortcut(.defaultRecording)
     manager.setAnnotateShortcut(.defaultAnnotate)
     manager.setVideoEditorShortcut(.defaultVideoEditor)
+
+    // Reset annotation tool shortcuts
+    annotateManager.resetToDefaults()
+  }
+
+  // MARK: - Annotation Tool Helpers
+
+  private func bindingForTool(_ tool: AnnotationToolType) -> Binding<Character?> {
+    Binding(
+      get: { annotateManager.shortcut(for: tool) },
+      set: { annotateManager.setShortcut($0, for: tool) }
+    )
+  }
+
+  private func conflictForTool(_ tool: AnnotationToolType) -> AnnotationToolType? {
+    guard let key = annotateManager.shortcut(for: tool) else { return nil }
+    return annotateManager.conflictingTool(for: key, excluding: tool)
   }
 }
 

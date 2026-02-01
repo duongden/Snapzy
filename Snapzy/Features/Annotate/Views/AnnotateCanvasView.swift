@@ -11,6 +11,7 @@ import UniformTypeIdentifiers
 /// Canvas view for displaying and annotating the image
 struct AnnotateCanvasView: View {
   @ObservedObject var state: AnnotateState
+  @FocusState private var isCanvasFocused: Bool
   @State private var isDragOver = false
   @State private var showDropError = false
   @State private var dropErrorMessage = ""
@@ -54,6 +55,14 @@ struct AnnotateCanvasView: View {
       }
       .onDrop(of: [.fileURL, .image], isTargeted: $isDragOver) { providers in
         handleDrop(providers: providers)
+      }
+      .focusable()
+      .focused($isCanvasFocused)
+      .onKeyPress { keyPress in
+        handleToolShortcut(keyPress)
+      }
+      .onAppear {
+        isCanvasFocused = true
       }
       .overlay(alignment: .bottom) {
         if showDropError {
@@ -337,6 +346,45 @@ struct AnnotateCanvasView: View {
   }
 
   // MARK: - Drag and Drop
+
+  // MARK: - Keyboard Shortcuts
+
+  /// Handle tool switching keyboard shortcuts
+  private func handleToolShortcut(_ keyPress: KeyPress) -> KeyPress.Result {
+    // Skip if editing text annotation
+    guard state.editingTextAnnotationId == nil else {
+      return .ignored
+    }
+
+    // Skip if no image loaded
+    guard state.hasImage else {
+      return .ignored
+    }
+
+    // Get lowercase character for case-insensitive matching
+    guard let char = keyPress.characters.lowercased().first else {
+      return .ignored
+    }
+
+    // Look up tool for this key
+    guard let tool = AnnotateShortcutManager.shared.tool(for: char) else {
+      return .ignored
+    }
+
+    // Special handling for crop tool
+    if tool == .crop {
+      state.selectedTool = .crop
+      if state.cropRect == nil && state.hasImage {
+        state.initializeCrop()
+      } else if state.cropRect != nil {
+        state.isCropActive = true
+      }
+    } else {
+      state.selectedTool = tool
+    }
+
+    return .handled
+  }
 
   /// Handle dropped image files
   private func handleDrop(providers: [NSItemProvider]) -> Bool {

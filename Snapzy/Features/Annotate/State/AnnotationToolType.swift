@@ -41,7 +41,8 @@ enum AnnotationToolType: String, CaseIterable, Identifiable {
     }
   }
 
-  var shortcut: Character {
+  /// Default keyboard shortcut for this tool
+  var defaultShortcut: Character {
     switch self {
     case .selection: return "v"
     case .crop: return "c"
@@ -55,6 +56,24 @@ enum AnnotationToolType: String, CaseIterable, Identifiable {
     case .counter: return "n"
     case .pencil: return "p"
     case .mockup: return "m"
+    }
+  }
+
+  /// Display name for the tool
+  var displayName: String {
+    switch self {
+    case .selection: return "Selection"
+    case .crop: return "Crop"
+    case .rectangle: return "Rectangle"
+    case .oval: return "Oval"
+    case .arrow: return "Arrow"
+    case .line: return "Line"
+    case .text: return "Text"
+    case .highlighter: return "Highlighter"
+    case .blur: return "Blur"
+    case .counter: return "Counter"
+    case .pencil: return "Pencil"
+    case .mockup: return "Mockup"
     }
   }
 }
