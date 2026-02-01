@@ -37,6 +37,12 @@ struct ShortcutConfig: Equatable, Codable {
     modifiers: UInt32(cmdKey | shiftKey)
   )
 
+  /// Cmd + Shift + 2
+  static let defaultOCR = ShortcutConfig(
+    keyCode: UInt32(kVK_ANSI_2),
+    modifiers: UInt32(cmdKey | shiftKey)
+  )
+
   /// Cmd + Shift + A
   static let defaultAnnotate = ShortcutConfig(
     keyCode: UInt32(kVK_ANSI_A),
@@ -150,6 +156,7 @@ struct ShortcutConfig: Equatable, Codable {
 enum ShortcutAction {
   case captureFullscreen
   case captureArea
+  case captureOCR
   case recordVideo
   case openAnnotate
   case openVideoEditor
@@ -173,6 +180,7 @@ final class KeyboardShortcutManager {
   private(set) var recordingShortcut: ShortcutConfig
   private(set) var annotateShortcut: ShortcutConfig
   private(set) var videoEditorShortcut: ShortcutConfig
+  private(set) var ocrShortcut: ShortcutConfig
   private(set) var isEnabled: Bool = false
 
   private var fullscreenHotkeyRef: EventHotKeyRef?
@@ -180,6 +188,7 @@ final class KeyboardShortcutManager {
   private var recordingHotkeyRef: EventHotKeyRef?
   private var annotateHotkeyRef: EventHotKeyRef?
   private var videoEditorHotkeyRef: EventHotKeyRef?
+  private var ocrHotkeyRef: EventHotKeyRef?
 
   // Hotkey IDs
   private let fullscreenHotkeyID = EventHotKeyID(signature: OSType(0x5A53_4631), id: 1)  // "ZSF1"
@@ -187,6 +196,7 @@ final class KeyboardShortcutManager {
   private let recordingHotkeyID = EventHotKeyID(signature: OSType(0x5A53_4633), id: 3)  // "ZSF3"
   private let annotateHotkeyID = EventHotKeyID(signature: OSType(0x5A53_4634), id: 4)  // "ZSF4"
   private let videoEditorHotkeyID = EventHotKeyID(signature: OSType(0x5A53_4635), id: 5)  // "ZSF5"
+  private let ocrHotkeyID = EventHotKeyID(signature: OSType(0x5A53_4636), id: 6)  // "ZSF6"
 
   private var eventHandler: EventHandlerRef?
 
@@ -196,6 +206,7 @@ final class KeyboardShortcutManager {
   private let recordingShortcutKey = "recordingShortcut"
   private let annotateShortcutKey = "annotateShortcut"
   private let videoEditorShortcutKey = "videoEditorShortcut"
+  private let ocrShortcutKey = "ocrShortcut"
   private let shortcutsEnabledKey = "shortcutsEnabled"
 
   private init() {
@@ -204,6 +215,7 @@ final class KeyboardShortcutManager {
     recordingShortcut = .defaultRecording
     annotateShortcut = .defaultAnnotate
     videoEditorShortcut = .defaultVideoEditor
+    ocrShortcut = .defaultOCR
     loadShortcuts()
     setupEventHandler()
 
@@ -258,6 +270,15 @@ final class KeyboardShortcutManager {
     if wasEnabled { enable() }
   }
 
+  /// Update OCR shortcut
+  func setOCRShortcut(_ config: ShortcutConfig) {
+    let wasEnabled = isEnabled
+    if wasEnabled { disable() }
+    ocrShortcut = config
+    saveShortcuts()
+    if wasEnabled { enable() }
+  }
+
   // MARK: - Persistence
 
   private func saveShortcuts() {
@@ -276,6 +297,9 @@ final class KeyboardShortcutManager {
     }
     if let videoEditorData = try? encoder.encode(videoEditorShortcut) {
       UserDefaults.standard.set(videoEditorData, forKey: videoEditorShortcutKey)
+    }
+    if let ocrData = try? encoder.encode(ocrShortcut) {
+      UserDefaults.standard.set(ocrData, forKey: ocrShortcutKey)
     }
   }
 
@@ -305,6 +329,11 @@ final class KeyboardShortcutManager {
       let config = try? decoder.decode(ShortcutConfig.self, from: videoEditorData)
     {
       videoEditorShortcut = config
+    }
+    if let ocrData = UserDefaults.standard.data(forKey: ocrShortcutKey),
+      let config = try? decoder.decode(ShortcutConfig.self, from: ocrData)
+    {
+      ocrShortcut = config
     }
   }
 
@@ -359,6 +388,8 @@ final class KeyboardShortcutManager {
       delegate?.shortcutTriggered(.openAnnotate)
     case videoEditorHotkeyID.id:
       delegate?.shortcutTriggered(.openVideoEditor)
+    case ocrHotkeyID.id:
+      delegate?.shortcutTriggered(.captureOCR)
     default:
       break
     }
@@ -419,6 +450,17 @@ final class KeyboardShortcutManager {
       0,
       &videoEditorHotkeyRef
     )
+
+    // Register OCR shortcut
+    let ocrID = ocrHotkeyID
+    RegisterEventHotKey(
+      ocrShortcut.keyCode,
+      ocrShortcut.modifiers,
+      ocrID,
+      GetApplicationEventTarget(),
+      0,
+      &ocrHotkeyRef
+    )
   }
 
   private func unregisterAllShortcuts() {
@@ -441,6 +483,10 @@ final class KeyboardShortcutManager {
     if let ref = videoEditorHotkeyRef {
       UnregisterEventHotKey(ref)
       videoEditorHotkeyRef = nil
+    }
+    if let ref = ocrHotkeyRef {
+      UnregisterEventHotKey(ref)
+      ocrHotkeyRef = nil
     }
   }
 }

@@ -135,6 +135,8 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
       captureFullscreen()
     case .captureArea:
       captureArea()
+    case .captureOCR:
+      captureOCR()
     case .recordVideo:
       startRecordingFlow()
     case .openAnnotate:
@@ -292,5 +294,65 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
 
   private func playScreenshotSound() {
     NSSound(named: "Glass")?.play()
+  }
+
+  // MARK: - OCR Capture
+
+  func captureOCR() {
+    // Prevent multiple area captures
+    if isAreaSelectionActive {
+      return
+    }
+
+    // Hide main window
+    NSApp.hide(nil)
+
+    // Minimal delay to ensure window is hidden
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+      guard let self = self else { return }
+
+      guard !self.isAreaSelectionActive else { return }
+      self.isAreaSelectionActive = true
+
+      AreaSelectionController.shared.startSelection { [weak self] rect in
+        guard let self = self else { return }
+
+        guard let selectedRect = rect else {
+          self.isAreaSelectionActive = false
+          return
+        }
+
+        Task { @MainActor in
+          // Delay to ensure overlay windows are fully hidden
+          try? await Task.sleep(nanoseconds: 100_000_000)  // 100ms
+
+          do {
+            // Capture the screen region
+            guard let image = try await self.captureManager.captureAreaAsImage(rect: selectedRect) else {
+              QuickAccessSound.failed.play()
+              self.isAreaSelectionActive = false
+              return
+            }
+
+            // Perform OCR
+            let text = try await OCRService.shared.recognizeText(from: image)
+
+            // Copy to clipboard
+            let pasteboard = NSPasteboard.general
+            pasteboard.clearContents()
+            pasteboard.setString(text, forType: .string)
+
+            // Success feedback
+            QuickAccessSound.complete.play()
+
+          } catch {
+            // Error feedback
+            QuickAccessSound.failed.play()
+          }
+
+          self.isAreaSelectionActive = false
+        }
+      }
+    }
   }
 }

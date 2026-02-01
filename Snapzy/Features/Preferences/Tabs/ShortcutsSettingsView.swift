@@ -10,6 +10,7 @@ import SwiftUI
 struct ShortcutsSettingsView: View {
   @State private var fullscreenShortcut: ShortcutConfig
   @State private var areaShortcut: ShortcutConfig
+  @State private var ocrShortcut: ShortcutConfig
   @State private var shortcutsEnabled: Bool
 
   private let manager = KeyboardShortcutManager.shared
@@ -17,6 +18,7 @@ struct ShortcutsSettingsView: View {
   init() {
     _fullscreenShortcut = State(initialValue: KeyboardShortcutManager.shared.fullscreenShortcut)
     _areaShortcut = State(initialValue: KeyboardShortcutManager.shared.areaShortcut)
+    _ocrShortcut = State(initialValue: KeyboardShortcutManager.shared.ocrShortcut)
     _shortcutsEnabled = State(initialValue: KeyboardShortcutManager.shared.isEnabled)
   }
 
@@ -52,6 +54,12 @@ struct ShortcutsSettingsView: View {
             label: "Capture Area",
             shortcut: $areaShortcut,
             onShortcutChanged: { manager.setAreaShortcut($0) }
+          )
+
+          ShortcutRecorderView(
+            label: "Capture Text (OCR)",
+            shortcut: $ocrShortcut,
+            onShortcutChanged: { manager.setOCRShortcut($0) }
           )
 
           Text("Click a shortcut button to record new keys. Press Esc to cancel.")
@@ -111,8 +119,10 @@ struct ShortcutsSettingsView: View {
   private func resetToDefaults() {
     fullscreenShortcut = .defaultFullscreen
     areaShortcut = .defaultArea
+    ocrShortcut = .defaultOCR
     manager.setFullscreenShortcut(.defaultFullscreen)
     manager.setAreaShortcut(.defaultArea)
+    manager.setOCRShortcut(.defaultOCR)
   }
 }
 

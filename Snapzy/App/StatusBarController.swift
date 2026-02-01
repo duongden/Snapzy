@@ -215,6 +215,17 @@ final class StatusBarController: ObservableObject {
     captureFullscreenItem.isEnabled = viewModel.hasPermission
     menu?.addItem(captureFullscreenItem)
 
+    let captureOCRItem = NSMenuItem(
+      title: "Capture Text (OCR)",
+      action: #selector(captureOCRAction),
+      keyEquivalent: "2"
+    )
+    captureOCRItem.keyEquivalentModifierMask = [.command, .shift]
+    captureOCRItem.target = self
+    captureOCRItem.image = NSImage(systemSymbolName: "text.viewfinder", accessibilityDescription: nil)
+    captureOCRItem.isEnabled = viewModel.hasPermission
+    menu?.addItem(captureOCRItem)
+
     menu?.addItem(NSMenuItem.separator())
 
     // Recording
@@ -315,6 +326,10 @@ final class StatusBarController: ObservableObject {
 
   @objc private func captureFullscreenAction() {
     viewModel?.captureFullscreen()
+  }
+
+  @objc private func captureOCRAction() {
+    viewModel?.captureOCR()
   }
 
   @objc private func recordScreenAction() {

@@ -362,6 +362,92 @@ final class ScreenCaptureManager: ObservableObject {
       return []
     }
   }
+
+  /// Capture a specific area and return as CGImage (for OCR)
+  func captureAreaAsImage(rect: CGRect) async throws -> CGImage? {
+    if !hasPermission {
+      let granted = await requestPermission()
+      if !granted {
+        throw CaptureError.permissionDenied
+      }
+    }
+
+    let content = try await SCShareableContent.current
+
+    // Find the display containing the rect
+    var targetScreen: NSScreen?
+    for screen in NSScreen.screens {
+      if screen.frame.intersects(rect) {
+        targetScreen = screen
+        break
+      }
+    }
+
+    let targetDisplayID: CGDirectDisplayID
+    if let screen = targetScreen,
+       let displayID = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID {
+      targetDisplayID = displayID
+    } else {
+      targetDisplayID = CGMainDisplayID()
+    }
+
+    guard let display = content.displays.first(where: { $0.displayID == Int(targetDisplayID) })
+            ?? content.displays.first
+    else {
+      throw CaptureError.noDisplayFound
+    }
+
+    let filter = SCContentFilter(display: display, excludingWindows: [])
+    let config = SCStreamConfiguration()
+    config.pixelFormat = kCVPixelFormatType_32BGRA
+    config.showsCursor = false
+
+    let scaleFactor: CGFloat
+    if let screen = targetScreen {
+      scaleFactor = screen.backingScaleFactor
+    } else {
+      scaleFactor = 2.0
+    }
+
+    guard let matchingScreen = targetScreen ?? NSScreen.screens.first(where: {
+      Int($0.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID ?? 0)
+        == display.displayID
+    }) else {
+      throw CaptureError.noDisplayFound
+    }
+
+    let screenFrame = matchingScreen.frame
+
+    let relativeRect = CGRect(
+      x: rect.origin.x - screenFrame.origin.x,
+      y: rect.origin.y - screenFrame.origin.y,
+      width: rect.width,
+      height: rect.height
+    )
+
+    let screenBounds = CGRect(x: 0, y: 0, width: screenFrame.width, height: screenFrame.height)
+    let clampedRect = relativeRect.intersection(screenBounds)
+
+    guard !clampedRect.isEmpty else {
+      throw CaptureError.captureFailed("Selection area is outside display bounds")
+    }
+
+    let flippedY = screenFrame.height - clampedRect.origin.y - clampedRect.height
+    let sourceRect = CGRect(
+      x: clampedRect.origin.x,
+      y: flippedY,
+      width: clampedRect.width,
+      height: clampedRect.height
+    )
+    config.sourceRect = sourceRect
+    config.width = Int(ceil(clampedRect.width * scaleFactor))
+    config.height = Int(ceil(clampedRect.height * scaleFactor))
+
+    return try await SCScreenshotManager.captureImage(
+      contentFilter: filter,
+      configuration: config
+    )
+  }
 }
 
 // MARK: - Image Format
