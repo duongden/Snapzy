@@ -214,6 +214,10 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
         Task { @MainActor in
           self.isCapturing = true
 
+          // Delay to ensure overlay windows are fully hidden from screen buffer
+          // This prevents the dim layer/crosshair shadow from bleeding into the capture
+          try? await Task.sleep(nanoseconds: 100_000_000)  // 100ms
+
           let result = await self.captureManager.captureArea(
             rect: selectedRect,
             saveDirectory: self.saveDirectory,
