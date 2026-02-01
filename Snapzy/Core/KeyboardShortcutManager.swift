@@ -279,6 +279,24 @@ final class KeyboardShortcutManager {
     if wasEnabled { enable() }
   }
 
+  /// Update annotate shortcut
+  func setAnnotateShortcut(_ config: ShortcutConfig) {
+    let wasEnabled = isEnabled
+    if wasEnabled { disable() }
+    annotateShortcut = config
+    saveShortcuts()
+    if wasEnabled { enable() }
+  }
+
+  /// Update video editor shortcut
+  func setVideoEditorShortcut(_ config: ShortcutConfig) {
+    let wasEnabled = isEnabled
+    if wasEnabled { disable() }
+    videoEditorShortcut = config
+    saveShortcuts()
+    if wasEnabled { enable() }
+  }
+
   // MARK: - Persistence
 
   private func saveShortcuts() {

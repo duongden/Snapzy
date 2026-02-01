@@ -11,26 +11,57 @@ import SwiftUI
 /// A view that allows users to record custom keyboard shortcuts
 struct ShortcutRecorderView: View {
   let label: String
+  let icon: String
+  let description: String
   @Binding var shortcut: ShortcutConfig
   let onShortcutChanged: (ShortcutConfig) -> Void
 
   @State private var isRecording = false
   @State private var eventMonitor: Any?
 
+  init(
+    label: String,
+    icon: String = "command",
+    description: String = "",
+    shortcut: Binding<ShortcutConfig>,
+    onShortcutChanged: @escaping (ShortcutConfig) -> Void
+  ) {
+    self.label = label
+    self.icon = icon
+    self.description = description
+    self._shortcut = shortcut
+    self.onShortcutChanged = onShortcutChanged
+  }
+
   var body: some View {
-    HStack {
-      Text(label)
-        .font(.body)
+    HStack(spacing: 12) {
+      Image(systemName: icon)
+        .font(.title2)
+        .foregroundColor(.secondary)
+        .frame(width: 28)
+
+      VStack(alignment: .leading, spacing: 2) {
+        Text(label)
+          .fontWeight(.medium)
+        if !description.isEmpty {
+          Text(description)
+            .font(.caption)
+            .foregroundColor(.secondary)
+        }
+      }
+
+      Spacer()
 
       Button {
         startRecording()
       } label: {
         Text(isRecording ? "Press keys..." : shortcut.displayString)
           .font(.system(.body, design: .monospaced))
-          .frame(minWidth: 80)
+          .frame(minWidth: 100)
       }
       .buttonStyle(ShortcutButtonStyle(isRecording: isRecording))
     }
+    .padding(.vertical, 4)
     .onDisappear {
       stopRecording()
     }

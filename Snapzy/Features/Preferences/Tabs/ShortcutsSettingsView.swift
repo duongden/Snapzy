@@ -11,6 +11,9 @@ struct ShortcutsSettingsView: View {
   @State private var fullscreenShortcut: ShortcutConfig
   @State private var areaShortcut: ShortcutConfig
   @State private var ocrShortcut: ShortcutConfig
+  @State private var recordingShortcut: ShortcutConfig
+  @State private var annotateShortcut: ShortcutConfig
+  @State private var videoEditorShortcut: ShortcutConfig
   @State private var shortcutsEnabled: Bool
 
   private let manager = KeyboardShortcutManager.shared
@@ -19,6 +22,9 @@ struct ShortcutsSettingsView: View {
     _fullscreenShortcut = State(initialValue: KeyboardShortcutManager.shared.fullscreenShortcut)
     _areaShortcut = State(initialValue: KeyboardShortcutManager.shared.areaShortcut)
     _ocrShortcut = State(initialValue: KeyboardShortcutManager.shared.ocrShortcut)
+    _recordingShortcut = State(initialValue: KeyboardShortcutManager.shared.recordingShortcut)
+    _annotateShortcut = State(initialValue: KeyboardShortcutManager.shared.annotateShortcut)
+    _videoEditorShortcut = State(initialValue: KeyboardShortcutManager.shared.videoEditorShortcut)
     _shortcutsEnabled = State(initialValue: KeyboardShortcutManager.shared.isEnabled)
   }
 
@@ -46,20 +52,54 @@ struct ShortcutsSettingsView: View {
         Section("Capture Shortcuts") {
           ShortcutRecorderView(
             label: "Capture Fullscreen",
+            icon: "rectangle.dashed.and.paperclip",
+            description: "Capture entire screen instantly",
             shortcut: $fullscreenShortcut,
             onShortcutChanged: { manager.setFullscreenShortcut($0) }
           )
 
           ShortcutRecorderView(
             label: "Capture Area",
+            icon: "rectangle.dashed",
+            description: "Select a region to capture",
             shortcut: $areaShortcut,
             onShortcutChanged: { manager.setAreaShortcut($0) }
           )
 
           ShortcutRecorderView(
             label: "Capture Text (OCR)",
+            icon: "text.viewfinder",
+            description: "Extract text from screen region",
             shortcut: $ocrShortcut,
             onShortcutChanged: { manager.setOCRShortcut($0) }
+          )
+        }
+
+        Section("Recording Shortcuts") {
+          ShortcutRecorderView(
+            label: "Record Video",
+            icon: "record.circle",
+            description: "Start screen recording",
+            shortcut: $recordingShortcut,
+            onShortcutChanged: { manager.setRecordingShortcut($0) }
+          )
+        }
+
+        Section("Tools Shortcuts") {
+          ShortcutRecorderView(
+            label: "Open Annotate",
+            icon: "pencil.and.scribble",
+            description: "Open image annotation editor",
+            shortcut: $annotateShortcut,
+            onShortcutChanged: { manager.setAnnotateShortcut($0) }
+          )
+
+          ShortcutRecorderView(
+            label: "Open Video Editor",
+            icon: "film",
+            description: "Open video editing tools",
+            shortcut: $videoEditorShortcut,
+            onShortcutChanged: { manager.setVideoEditorShortcut($0) }
           )
 
           Text("Click a shortcut button to record new keys. Press Esc to cancel.")
@@ -120,13 +160,20 @@ struct ShortcutsSettingsView: View {
     fullscreenShortcut = .defaultFullscreen
     areaShortcut = .defaultArea
     ocrShortcut = .defaultOCR
+    recordingShortcut = .defaultRecording
+    annotateShortcut = .defaultAnnotate
+    videoEditorShortcut = .defaultVideoEditor
+
     manager.setFullscreenShortcut(.defaultFullscreen)
     manager.setAreaShortcut(.defaultArea)
     manager.setOCRShortcut(.defaultOCR)
+    manager.setRecordingShortcut(.defaultRecording)
+    manager.setAnnotateShortcut(.defaultAnnotate)
+    manager.setVideoEditorShortcut(.defaultVideoEditor)
   }
 }
 
 #Preview {
   ShortcutsSettingsView()
-    .frame(width: 600, height: 400)
+    .frame(width: 600, height: 500)
 }
