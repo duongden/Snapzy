@@ -26,6 +26,49 @@ final class RecordingCoordinator: ObservableObject {
 
   private init() {}
 
+  // MARK: - Recording Area Persistence
+
+  /// Save recording area rect to UserDefaults
+  private func saveLastAreaRect(_ rect: CGRect) {
+    let rectDict: [String: CGFloat] = [
+      "x": rect.origin.x,
+      "y": rect.origin.y,
+      "width": rect.width,
+      "height": rect.height
+    ]
+    UserDefaults.standard.set(rectDict, forKey: PreferencesKeys.recordingLastAreaRect)
+  }
+
+  /// Load last recording area rect from UserDefaults
+  func loadLastAreaRect() -> CGRect? {
+    guard let rectDict = UserDefaults.standard.dictionary(forKey: PreferencesKeys.recordingLastAreaRect),
+          let x = rectDict["x"] as? CGFloat,
+          let y = rectDict["y"] as? CGFloat,
+          let width = rectDict["width"] as? CGFloat,
+          let height = rectDict["height"] as? CGFloat else {
+      return nil
+    }
+
+    let rect = CGRect(x: x, y: y, width: width, height: height)
+
+    // Validate rect is still visible on current screens
+    guard isRectVisibleOnScreen(rect) else {
+      return nil
+    }
+
+    return rect
+  }
+
+  /// Check if rect is visible on any connected screen
+  private func isRectVisibleOnScreen(_ rect: CGRect) -> Bool {
+    for screen in NSScreen.screens {
+      if screen.frame.intersects(rect) {
+        return true
+      }
+    }
+    return false
+  }
+
   // MARK: - Public API
 
   /// Start recording flow after area selection
@@ -33,6 +76,9 @@ final class RecordingCoordinator: ObservableObject {
     guard !isActive else { return }
     isActive = true
     selectedRect = rect
+
+    // Save rect for next time
+    saveLastAreaRect(rect)
 
     toolbarWindow = RecordingToolbarWindow(anchorRect: rect)
     toolbarWindow?.onRecord = { [weak self] in
@@ -459,6 +505,8 @@ final class RecordingCoordinator: ObservableObject {
   /// Update the selected rect and sync all overlays + toolbar
   private func updateSelectedRect(_ rect: CGRect) {
     selectedRect = rect
+    // Save updated rect for next time
+    saveLastAreaRect(rect)
     for overlay in regionOverlayWindows {
       overlay.updateHighlightRect(rect)
     }

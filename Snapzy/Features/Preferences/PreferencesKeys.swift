@@ -41,4 +41,5 @@ enum PreferencesKeys {
   static let recordingCaptureAudio = "recording.captureAudio"
   static let recordingCaptureMicrophone = "recording.captureMicrophone"
   static let recordingShortcut = "recordingShortcut"
+  static let recordingLastAreaRect = "recording.lastAreaRect"
 }

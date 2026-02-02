@@ -272,6 +272,16 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
     // Small delay to ensure window is hidden
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
       guard let self = self else { return }
+
+      // Check for saved recording area - restore if available
+      if let savedRect = RecordingCoordinator.shared.loadLastAreaRect() {
+        Task { @MainActor in
+          RecordingCoordinator.shared.showToolbar(for: savedRect)
+        }
+        return
+      }
+
+      // No saved rect - start area selection
       self.isAreaSelectionActive = true
 
       AreaSelectionController.shared.startSelection(mode: .recording) { [weak self] rect, mode in
