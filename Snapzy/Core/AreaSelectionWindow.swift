@@ -666,19 +666,11 @@ final class AreaSelectionOverlayView: NSView {
     let size = crosshairIndicatorSize
     let path = CGMutablePath()
 
-    // Center circle
-    path.addEllipse(in: CGRect(
-      x: point.x - crosshairIndicatorCenterRadius,
-      y: point.y - crosshairIndicatorCenterRadius,
-      width: crosshairIndicatorCenterRadius * 2,
-      height: crosshairIndicatorCenterRadius * 2
-    ))
-
-    // Vertical line (crosses through circle)
+    // Vertical line
     path.move(to: CGPoint(x: point.x, y: point.y - size))
     path.addLine(to: CGPoint(x: point.x, y: point.y + size))
 
-    // Horizontal line (crosses through circle)
+    // Horizontal line
     path.move(to: CGPoint(x: point.x - size, y: point.y))
     path.addLine(to: CGPoint(x: point.x + size, y: point.y))
 
