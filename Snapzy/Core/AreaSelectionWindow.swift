@@ -298,6 +298,7 @@ final class AreaSelectionWindow: NSWindow {
     self.isReleasedWhenClosed = false
     self.hasShadow = false
     self.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
+    self.animationBehavior = .none  // Disable window animations for instant appearance
 
     // Set up content view
     self.contentView = overlayView

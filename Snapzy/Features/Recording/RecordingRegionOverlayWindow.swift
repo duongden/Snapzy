@@ -64,6 +64,7 @@ final class RecordingRegionOverlayWindow: NSWindow {
     hasShadow = false
     isReleasedWhenClosed = false
     collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
+    animationBehavior = .none  // Disable window animations for instant appearance
   }
 
   func updateHighlightRect(_ rect: CGRect) {
