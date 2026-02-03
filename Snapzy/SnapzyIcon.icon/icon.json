@@ -1,94 +1,34 @@
 {
   "fill" : {
-    "solid" : "display-p3:0.22282,0.62825,1.00000,1.00000"
+    "linear-gradient" : [
+      "display-p3:0.06752,0.22210,1.00000,1.00000",
+      "display-p3:0.22555,0.37395,1.12074,1.00000"
+    ],
+    "orientation" : {
+      "start" : {
+        "x" : 0.5,
+        "y" : 0
+      },
+      "stop" : {
+        "x" : 0.5,
+        "y" : 0.7
+      }
+    }
   },
   "groups" : [
-    {
-      "layers" : [
-        {
-          "blend-mode" : "normal",
-          "fill-specializations" : [
-            {
-              "value" : {
-                "solid" : "display-p3:1.00000,0.98264,0.94460,1.00000"
-              }
-            },
-            {
-              "appearance" : "dark",
-              "value" : {
-                "solid" : "display-p3:0.83136,1.00000,0.17094,1.00000"
-              }
-            }
-          ],
-          "hidden" : false,
-          "image-name" : "Icon.png",
-          "name" : "Icon",
-          "position" : {
-            "scale" : 0.75,
-            "translation-in-points" : [
-              0,
-              0
-            ]
-          }
-        }
-      ],
-      "shadow" : {
-        "kind" : "neutral",
-        "opacity" : 0.5
-      },
-      "translucency" : {
-        "enabled" : true,
-        "value" : 0.5
-      }
-    },
     {
       "hidden" : false,
       "layers" : [
         {
-          "blend-mode" : "normal",
-          "fill-specializations" : [
-            {
-              "value" : {
-                "linear-gradient" : [
-                  "display-p3:0.65884,1.00000,0.29448,1.00000",
-                  "extended-srgb:0.00000,0.53333,1.00000,1.00000"
-                ],
-                "orientation" : {
-                  "start" : {
-                    "x" : 0.5,
-                    "y" : 0
-                  },
-                  "stop" : {
-                    "x" : 0.5,
-                    "y" : 0.7
-                  }
-                }
-              }
-            },
-            {
-              "appearance" : "dark",
-              "value" : {
-                "linear-gradient" : [
-                  "display-p3:0.83136,1.00000,0.17094,1.00000",
-                  "display-p3:0.45133,0.62160,0.96783,1.00000"
-                ],
-                "orientation" : {
-                  "start" : {
-                    "x" : 0.5,
-                    "y" : 0
-                  },
-                  "stop" : {
-                    "x" : 0.5,
-                    "y" : 0.7
-                  }
-                }
-              }
-            }
-          ],
-          "image-name" : "Icon.png",
+          "blend-mode" : "darken",
+          "fill" : "automatic",
+          "glass" : true,
+          "hidden" : false,
+          "image-name" : "SnapzyIcon.png",
           "name" : "Icon",
+          "opacity" : 1,
           "position" : {
-            "scale" : 0.75,
+            "scale" : 0.24,
             "translation-in-points" : [
               0,
               0

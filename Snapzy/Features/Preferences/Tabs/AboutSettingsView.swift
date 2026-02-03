@@ -38,16 +38,16 @@ struct AboutSettingsView: View {
     VStack(spacing: Spacing.md) {
       // App Icon with subtle glow
       ZStack {
-        Circle()
-          .fill(
-            RadialGradient(
-              colors: [Color.accentColor.opacity(0.3), Color.clear],
-              center: .center,
-              startRadius: 40,
-              endRadius: 80
-            )
-          )
-          .frame(width: 160, height: 160)
+        // Circle()
+        //   .fill(
+        //     RadialGradient(
+        //       colors: [Color.accentColor.opacity(0.3), Color.clear],
+        //       center: .center,
+        //       startRadius: 40,
+        //       endRadius: 80
+        //     )
+        //   )
+        //   .frame(width: 160, height: 160)
 
         Image(nsImage: NSApp.applicationIconImage)
           .resizable()

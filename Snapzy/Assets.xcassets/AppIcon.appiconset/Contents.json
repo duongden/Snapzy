@@ -7,7 +7,7 @@
       "size" : "16x16"
     },
     {
-      "filename" : "SnapzyIcon-macOS-Default-32x32@1x 1.png",
+      "filename" : "SnapzyIcon-macOS-Default-16x16@2x.png",
       "idiom" : "mac",
       "scale" : "2x",
       "size" : "16x16"
@@ -31,13 +31,13 @@
       "size" : "128x128"
     },
     {
-      "filename" : "SnapzyIcon-macOS-Default-256x256@1x.png",
+      "filename" : "SnapzyIcon-macOS-Default-128x128@2x 1.png",
       "idiom" : "mac",
       "scale" : "2x",
       "size" : "128x128"
     },
     {
-      "filename" : "SnapzyIcon-macOS-Default-128x128@2x.png",
+      "filename" : "SnapzyIcon-macOS-Default-256x256@1x.png",
       "idiom" : "mac",
       "scale" : "1x",
       "size" : "256x256"
