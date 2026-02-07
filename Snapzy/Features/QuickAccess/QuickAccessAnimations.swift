@@ -26,8 +26,8 @@ enum QuickAccessAnimations {
 
   // MARK: - Card Animations
 
-  /// Card insertion animation
-  static let cardInsert = Animation.spring(response: 0.4, dampingFraction: 0.7)
+  /// Card insertion animation — smooth easeOut to avoid bouncy repositioning
+  static let cardInsert = Animation.easeOut(duration: 0.25)
 
   /// Card removal animation
   static let cardRemove = Animation.spring(response: 0.35, dampingFraction: 0.8)

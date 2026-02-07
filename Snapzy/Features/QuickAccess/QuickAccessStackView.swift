@@ -7,13 +7,14 @@
 
 import SwiftUI
 
-/// Displays a vertical stack of quick access cards
+/// Displays a vertical stack of quick access cards, bottom-aligned in fixed-size panel
 struct QuickAccessStackView: View {
   @ObservedObject var manager: QuickAccessManager
   @Environment(\.accessibilityReduceMotion) var reduceMotion
 
   var body: some View {
     VStack(spacing: QuickAccessLayout.cardSpacing) {
+      Spacer(minLength: 0)
       ForEach(manager.items) { item in
         QuickAccessCardView(
           item: item,
@@ -37,11 +38,9 @@ struct QuickAccessStackView: View {
     }
     return .asymmetric(
       insertion: .move(edge: .trailing)
+        .combined(with: .opacity),
+      removal: .move(edge: .trailing)
         .combined(with: .opacity)
-        .combined(with: .scale(scale: 0.9)),
-      removal: .move(edge: .leading)
-        .combined(with: .opacity)
-        .combined(with: .scale(scale: 0.85))
     )
   }
 }

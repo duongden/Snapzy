@@ -341,7 +341,11 @@ struct QuickAccessCardView: View {
         HStack {
           Spacer()
           QuickAccessIconButton(icon: "xmark") {
-            manager.removeScreenshot(id: item.id)
+            isDismissing = true
+            QuickAccessSound.dismiss.play(reduceMotion: reduceMotion)
+            withAnimation(QuickAccessAnimations.cardSwipeDismiss) {
+              manager.removeScreenshot(id: item.id)
+            }
           }
           .transition(cornerButtonTransition(delay: 2))
           .padding(6)

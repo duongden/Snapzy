@@ -67,7 +67,6 @@ final class QuickAccessManager: ObservableObject {
 
   private let panelController = QuickAccessPanelController()
   private var dismissTimers: [UUID: Task<Void, Never>] = [:]
-  private var cancellables = Set<AnyCancellable>()
 
   // MARK: - UserDefaults Keys (preserved for backward compatibility)
 
@@ -85,7 +84,6 @@ final class QuickAccessManager: ObservableObject {
 
   private init() {
     loadSettings()
-    setupBindings()
   }
 
   private func loadSettings() {
@@ -109,16 +107,6 @@ final class QuickAccessManager: ObservableObject {
       UserDefaults.standard.object(forKey: Keys.showCloudUpload) as? Bool ?? true
   }
 
-  private func setupBindings() {
-    // Update panel size when items change
-    $items
-      .receive(on: DispatchQueue.main)
-      .sink { [weak self] items in
-        self?.updatePanelSize()
-      }
-      .store(in: &cancellables)
-  }
-
   // MARK: - Public Methods
 
   /// Add a new screenshot to the quick access stack
@@ -129,11 +117,10 @@ final class QuickAccessManager: ObservableObject {
 
     let item = QuickAccessItem(url: url, thumbnail: thumbnail)
 
-    // Remove oldest if at max capacity (oldest is now at the end)
-    if items.count >= maxVisibleItems {
-      if let oldestId = items.last?.id {
-        removeScreenshot(id: oldestId)
-      }
+    // Batch eviction + insertion in a single mutation to avoid competing animations
+    if items.count >= maxVisibleItems, let oldestId = items.last?.id {
+      cancelDismissTimer(for: oldestId)
+      items.removeLast()
     }
 
     let wasEmpty = items.isEmpty
@@ -159,10 +146,10 @@ final class QuickAccessManager: ObservableObject {
     // Use actual duration or nil (will show no badge if duration unavailable)
     let item = QuickAccessItem(url: url, thumbnail: thumbnail, duration: result.duration ?? 0)
 
-    if items.count >= maxVisibleItems {
-      if let oldestId = items.last?.id {
-        removeItem(id: oldestId)
-      }
+    // Batch eviction + insertion in a single mutation to avoid competing animations
+    if items.count >= maxVisibleItems, let oldestId = items.last?.id {
+      cancelDismissTimer(for: oldestId)
+      items.removeLast()
     }
 
     let wasEmpty = items.isEmpty
@@ -273,18 +260,13 @@ final class QuickAccessManager: ObservableObject {
 
   private func showPanel() {
     let stackView = QuickAccessStackView(manager: self)
-    let size = calculatePanelSize()
+    let size = calculateMaxPanelSize()
     panelController.show(stackView, size: size)
   }
 
-  private func updatePanelSize() {
-    guard !items.isEmpty else { return }
-    let size = calculatePanelSize()
-    panelController.updateSize(size)
-  }
-
-  private func calculatePanelSize() -> CGSize {
-    let itemCount = max(1, items.count)
+  /// Fixed max-size panel — never resizes, prevents SwiftUI re-layout jitter
+  private func calculateMaxPanelSize() -> CGSize {
+    let itemCount = maxVisibleItems
     let height =
       CGFloat(itemCount) * QuickAccessLayout.cardHeight
       + CGFloat(itemCount - 1) * QuickAccessLayout.cardSpacing

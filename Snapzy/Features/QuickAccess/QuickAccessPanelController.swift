@@ -84,22 +84,13 @@ final class QuickAccessPanelController {
     repositionPanel()
   }
 
-  /// Resize panel and reposition with animation
+  /// Resize panel and reposition instantly to avoid fighting SwiftUI card animations
   func updateSize(_ size: CGSize) {
     guard let panel = panel, !isAnimating else { return }
     let screen = NSScreen.main ?? NSScreen.screens.first!
     let origin = position.calculateOrigin(for: size, on: screen, padding: padding)
     let targetFrame = NSRect(origin: origin, size: size)
-
-    if reduceMotion {
-      panel.setFrame(targetFrame, display: true, animate: false)
-    } else {
-      NSAnimationContext.runAnimationGroup { context in
-        context.duration = 0.25
-        context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-        panel.animator().setFrame(targetFrame, display: true)
-      }
-    }
+    panel.setFrame(targetFrame, display: true, animate: false)
   }
 
   /// Hide panel with slide-out animation
