@@ -154,7 +154,8 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
     fps: Int = 30,
     captureSystemAudio: Bool = true,
     captureMicrophone: Bool = false,
-    saveDirectory: URL
+    saveDirectory: URL,
+    excludeDesktopIcons: Bool = false
   ) async throws {
     guard state == .idle else { return }
     state = .preparing
@@ -179,11 +180,18 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
     }
 
     // Find own app to exclude from capture (hides toolbar/status bar from recording)
-    let excludedApps: [SCRunningApplication]
+    var excludedApps: [SCRunningApplication] = []
     if let bundleID = Bundle.main.bundleIdentifier {
       excludedApps = content.applications.filter { $0.bundleIdentifier == bundleID }
-    } else {
-      excludedApps = []
+    }
+
+    // Also exclude Finder (desktop icons) if user preference is enabled
+    // Keep open Finder windows visible via exceptingWindows
+    var exceptedWindows: [SCWindow] = []
+    if excludeDesktopIcons {
+      let iconManager = DesktopIconManager.shared
+      excludedApps += iconManager.getFinderApps(from: content)
+      exceptedWindows = iconManager.getVisibleFinderWindows(from: content)
     }
 
     // Find the display containing the rect using NSScreen (same coordinate system as input rect)
@@ -239,7 +247,7 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
     try setupAssetWriter(width: outputWidth, height: outputHeight, captureSystemAudio: captureSystemAudio, captureMicrophone: captureMicrophone)
 
     // Setup SCStream with app exclusion to hide toolbar/status bar from capture
-    try await setupStream(display: display, rect: rect, scaleFactor: scaleFactor, captureSystemAudio: captureSystemAudio, captureMicrophone: captureMicrophone, excludedApps: excludedApps)
+    try await setupStream(display: display, rect: rect, scaleFactor: scaleFactor, captureSystemAudio: captureSystemAudio, captureMicrophone: captureMicrophone, excludedApps: excludedApps, exceptedWindows: exceptedWindows)
   }
 
   /// Start the recording
@@ -429,10 +437,10 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
     }
   }
 
-  private func setupStream(display: SCDisplay, rect: CGRect, scaleFactor: CGFloat, captureSystemAudio: Bool, captureMicrophone: Bool, excludedApps: [SCRunningApplication]) async throws {
-    // Exclude own app from capture to hide toolbar/status bar from recording output
-    // This works on macOS 14, 15, and future versions (API available since macOS 12.3)
-    let filter = SCContentFilter(display: display, excludingApplications: excludedApps, exceptingWindows: [])
+  private func setupStream(display: SCDisplay, rect: CGRect, scaleFactor: CGFloat, captureSystemAudio: Bool, captureMicrophone: Bool, excludedApps: [SCRunningApplication], exceptedWindows: [SCWindow] = []) async throws {
+    // Exclude apps from capture (own app + optionally Finder for desktop icon hiding)
+    // Open Finder windows preserved via exceptedWindows
+    let filter = SCContentFilter(display: display, excludingApplications: excludedApps, exceptingWindows: exceptedWindows)
 
     let config = SCStreamConfiguration()
     config.width = Int(ceil(rect.width * scaleFactor))

@@ -24,10 +24,6 @@ final class RecordingCoordinator: ObservableObject {
   private var globalEscapeMonitor: Any?
   private var isShowingConfirmationDialog = false
 
-  private var shouldHideDesktopIcons: Bool {
-    UserDefaults.standard.bool(forKey: PreferencesKeys.hideDesktopIcons)
-  }
-
   private init() {}
 
   // MARK: - Recording Area Persistence
@@ -283,25 +279,19 @@ final class RecordingCoordinator: ObservableObject {
           fps: fps,
           captureSystemAudio: savedCaptureAudio,
           captureMicrophone: savedCaptureMicrophone,
-          saveDirectory: saveDirectory
+          saveDirectory: saveDirectory,
+          excludeDesktopIcons: DesktopIconManager.shared.isEnabled
         )
 
         try await recorder.startRecording()
-
-        // Re-hide desktop icons for restarted recording
-        if shouldHideDesktopIcons {
-          await DesktopIconManager.shared.hideIcons()
-        }
 
         // Play sound to indicate restart
         NSSound(named: "Purr")?.play()
 
       } catch let error as RecordingError {
-        DesktopIconManager.shared.restoreIconsSync()
         showErrorAlert(error)
         cancel()
       } catch {
-        DesktopIconManager.shared.restoreIconsSync()
         showErrorAlert(.setupFailed(error.localizedDescription))
         cancel()
       }
@@ -368,15 +358,11 @@ final class RecordingCoordinator: ObservableObject {
           fps: fps,
           captureSystemAudio: captureSystemAudio,
           captureMicrophone: captureMicrophone,
-          saveDirectory: saveDirectory
+          saveDirectory: saveDirectory,
+          excludeDesktopIcons: DesktopIconManager.shared.isEnabled
         )
 
         try await recorder.startRecording()
-
-        // Hide desktop icons before recording starts (after stream begins)
-        if shouldHideDesktopIcons {
-          await DesktopIconManager.shared.hideIcons()
-        }
 
         // Hide border on overlay (would appear in video)
         // Disable interaction during recording
@@ -389,11 +375,9 @@ final class RecordingCoordinator: ObservableObject {
         window.showRecordingStatusBar(recorder: recorder)
 
       } catch let error as RecordingError {
-        DesktopIconManager.shared.restoreIconsSync()
         showErrorAlert(error)
         cancel()
       } catch {
-        DesktopIconManager.shared.restoreIconsSync()
         showErrorAlert(.setupFailed(error.localizedDescription))
         cancel()
       }
@@ -469,7 +453,8 @@ final class RecordingCoordinator: ObservableObject {
           fps: fps,
           captureSystemAudio: captureSystemAudio,
           captureMicrophone: false,
-          saveDirectory: saveDirectory
+          saveDirectory: saveDirectory,
+          excludeDesktopIcons: DesktopIconManager.shared.isEnabled
         )
         try await recorder.startRecording()
 
@@ -505,9 +490,6 @@ final class RecordingCoordinator: ObservableObject {
   }
 
   private func cleanup() {
-    // Restore desktop icons (safe to call even if not hidden)
-    DesktopIconManager.shared.restoreIconsSync()
-
     // Remove escape monitors
     removeEscapeMonitors()
 

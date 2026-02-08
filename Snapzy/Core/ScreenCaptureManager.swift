@@ -111,7 +111,8 @@ final class ScreenCaptureManager: ObservableObject {
     saveDirectory: URL,
     fileName: String? = nil,
     displayID: CGDirectDisplayID? = nil,
-    format: ImageFormat = .png
+    format: ImageFormat = .png,
+    excludeDesktopIcons: Bool = false
   ) async -> CaptureResult {
 
     if !hasPermission {
@@ -136,8 +137,8 @@ final class ScreenCaptureManager: ObservableObject {
         return .failure(.noDisplayFound)
       }
 
-      // Configure capture
-      let filter = SCContentFilter(display: display, excludingWindows: [])
+      // Configure capture — exclude Finder (desktop icons) if requested
+      let filter = buildFilter(display: display, content: content, excludeDesktopIcons: excludeDesktopIcons)
       let config = SCStreamConfiguration()
       config.width = display.width * 2  // Retina resolution
       config.height = display.height * 2
@@ -171,7 +172,8 @@ final class ScreenCaptureManager: ObservableObject {
     rect: CGRect,
     saveDirectory: URL,
     fileName: String? = nil,
-    format: ImageFormat = .png
+    format: ImageFormat = .png,
+    excludeDesktopIcons: Bool = false
   ) async -> CaptureResult {
 
     if !hasPermission {
@@ -225,8 +227,8 @@ final class ScreenCaptureManager: ObservableObject {
         return .failure(.noDisplayFound)
       }
 
-      // Configure capture for the full display first
-      let filter = SCContentFilter(display: display, excludingWindows: [])
+      // Configure capture — exclude Finder (desktop icons) if requested
+      let filter = buildFilter(display: display, content: content, excludeDesktopIcons: excludeDesktopIcons)
       let config = SCStreamConfiguration()
       config.pixelFormat = kCVPixelFormatType_32BGRA
       config.showsCursor = false
@@ -364,7 +366,7 @@ final class ScreenCaptureManager: ObservableObject {
   }
 
   /// Capture a specific area and return as CGImage (for OCR)
-  func captureAreaAsImage(rect: CGRect) async throws -> CGImage? {
+  func captureAreaAsImage(rect: CGRect, excludeDesktopIcons: Bool = false) async throws -> CGImage? {
     if !hasPermission {
       let granted = await requestPermission()
       if !granted {
@@ -397,7 +399,7 @@ final class ScreenCaptureManager: ObservableObject {
       throw CaptureError.noDisplayFound
     }
 
-    let filter = SCContentFilter(display: display, excludingWindows: [])
+    let filter = buildFilter(display: display, content: content, excludeDesktopIcons: excludeDesktopIcons)
     let config = SCStreamConfiguration()
     config.pixelFormat = kCVPixelFormatType_32BGRA
     config.showsCursor = false
@@ -447,6 +449,25 @@ final class ScreenCaptureManager: ObservableObject {
       contentFilter: filter,
       configuration: config
     )
+  }
+
+  // MARK: - Filter Builder
+
+  /// Build SCContentFilter, optionally excluding Finder (desktop icons).
+  /// Open Finder windows are preserved via exceptingWindows.
+  /// Wallpaper is preserved because it's rendered by Dock/WallpaperAgent, not Finder.
+  private func buildFilter(
+    display: SCDisplay,
+    content: SCShareableContent,
+    excludeDesktopIcons: Bool
+  ) -> SCContentFilter {
+    if excludeDesktopIcons {
+      let iconManager = DesktopIconManager.shared
+      let finderApps = iconManager.getFinderApps(from: content)
+      let visibleFinderWindows = iconManager.getVisibleFinderWindows(from: content)
+      return SCContentFilter(display: display, excludingApplications: finderApps, exceptingWindows: visibleFinderWindows)
+    }
+    return SCContentFilter(display: display, excludingWindows: [])
   }
 }
 
