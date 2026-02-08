@@ -85,20 +85,20 @@ struct RecordingToolbarDivider: View {
   }
 }
 
-// MARK: - Stop Button Style
+// MARK: - Stop Button Style (native monochrome, no red pill)
 
 struct StopButtonStyle: ButtonStyle {
   func makeBody(configuration: Configuration) -> some View {
     configuration.label
-      .font(.system(size: 12, weight: .semibold))
-      .foregroundColor(.white)
-      .padding(.horizontal, 10)
-      .padding(.vertical, 5)
+      .font(.system(size: 13, weight: .regular))
+      .foregroundColor(.primary)
+      .padding(.horizontal, 12)
+      .padding(.vertical, 6)
       .background(
         RoundedRectangle(cornerRadius: ToolbarConstants.buttonCornerRadius)
-          .fill(Color.red)
+          .fill(Color.primary.opacity(configuration.isPressed ? 0.12 : 0))
       )
-      .opacity(configuration.isPressed ? 0.85 : 1.0)
+      .contentShape(RoundedRectangle(cornerRadius: ToolbarConstants.buttonCornerRadius))
       .animation(ToolbarConstants.pressAnimation, value: configuration.isPressed)
   }
 }

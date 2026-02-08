@@ -5,6 +5,8 @@
 //  Status bar shown during active recording with timer and controls
 //  Styled to match Apple's native macOS recording toolbar aesthetic
 //
+//  Layout: [● 00:00:00] | [⏸] | [↺] | [🗑] | [Stop]
+//
 
 import SwiftUI
 
@@ -18,31 +20,24 @@ struct RecordingStatusBarView: View {
 
   var body: some View {
     HStack(spacing: ToolbarConstants.itemSpacing) {
-      // Recording indicator (pulsing red dot)
-      Circle()
-        .fill(.red)
-        .frame(width: 10, height: 10)
-        .opacity(recorder.isPaused ? 0.4 : indicatorOpacity)
-        .animation(
-          .easeInOut(duration: 0.8).repeatForever(autoreverses: true),
-          value: indicatorOpacity
-        )
-        .onAppear { indicatorOpacity = 0.3 }
-        .accessibilityLabel(recorder.isPaused ? "Recording paused" : "Recording in progress")
+      // Recording indicator (pulsing red dot) + Timer
+      HStack(spacing: 8) {
+        Circle()
+          .fill(.red)
+          .frame(width: 8, height: 8)
+          .opacity(recorder.isPaused ? 0.4 : indicatorOpacity)
+          .animation(
+            .easeInOut(duration: 0.8).repeatForever(autoreverses: true),
+            value: indicatorOpacity
+          )
+          .onAppear { indicatorOpacity = 0.3 }
+          .accessibilityLabel(recorder.isPaused ? "Recording paused" : "Recording in progress")
 
-      // Timer display with integrated Stop action
-      Button(action: onStop) {
-        HStack(spacing: 6) {
-          Text(recorder.formattedDuration)
-            .font(.system(.body, design: .monospaced))
-            .foregroundColor(recorder.isPaused ? .secondary : .primary)
-          Image(systemName: "stop.fill")
-        }
+        Text(recorder.formattedDuration)
+          .font(.system(size: 13, weight: .medium, design: .monospaced))
+          .foregroundColor(recorder.isPaused ? .primary.opacity(0.5) : .primary)
       }
-      .buttonStyle(StopButtonStyle())
-      .fixedSize()
-      .accessibilityLabel("Stop recording - Duration: \(recorder.formattedDuration)")
-      .accessibilityHint("Stops and saves the recording")
+      .padding(.horizontal, 8)
 
       RecordingToolbarDivider()
 
@@ -62,14 +57,23 @@ struct RecordingStatusBarView: View {
         accessibilityLabel: "Restart recording"
       )
 
-      RecordingToolbarDivider()
-
       // Delete button
       ToolbarIconButton(
         systemName: "trash",
         action: onDelete,
         accessibilityLabel: "Delete recording"
       )
+
+      RecordingToolbarDivider()
+
+      // Stop button (native text style)
+      Button(action: onStop) {
+        Text("Stop")
+      }
+      .buttonStyle(StopButtonStyle())
+      .fixedSize()
+      .accessibilityLabel("Stop recording - Duration: \(recorder.formattedDuration)")
+      .accessibilityHint("Stops and saves the recording")
     }
     .padding(.horizontal, ToolbarConstants.horizontalPadding)
     .padding(.vertical, ToolbarConstants.verticalPadding)
