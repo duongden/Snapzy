@@ -214,6 +214,8 @@ final class RecordingToolbarWindow: NSWindow {
     orderFrontRegardless()
   }
 
+  override var canBecomeKey: Bool { true }
+
   func updateAnchorRect(_ rect: CGRect) {
     anchorRect = rect
     positionBelowRect(rect)
