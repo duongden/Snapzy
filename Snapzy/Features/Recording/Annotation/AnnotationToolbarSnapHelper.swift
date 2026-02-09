@@ -52,18 +52,28 @@ final class AnnotationToolbarSnapHelper {
     var snapX: CGFloat
     var snapY: CGFloat
 
-    if relX < 0.5 {
-      snapX = sf.minX + margin
+    if snapDir == .horizontal {
+      // Center horizontally for top/bottom snap
+      snapX = sf.midX - size.width / 2
+      if relY < 0.5 {
+        snapY = sf.minY + margin
+      } else {
+        snapY = sf.maxY - size.height - margin
+      }
     } else {
-      snapX = sf.maxX - size.width - margin
-    }
-
-    if relY < 0.35 {
-      snapY = sf.minY + margin
-    } else if relY > 0.65 {
-      snapY = sf.maxY - size.height - margin
-    } else {
-      snapY = center.y - size.height / 2
+      // Left/right edge snap
+      if relX < 0.5 {
+        snapX = sf.minX + margin
+      } else {
+        snapX = sf.maxX - size.width - margin
+      }
+      if relY < 0.35 {
+        snapY = sf.minY + margin
+      } else if relY > 0.65 {
+        snapY = sf.maxY - size.height - margin
+      } else {
+        snapY = center.y - size.height / 2
+      }
     }
 
     snapX = max(sf.minX + margin, min(snapX, sf.maxX - size.width - margin))
