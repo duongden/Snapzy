@@ -44,8 +44,6 @@ struct RecordingAnnotationToolbarView: View {
 
   @ViewBuilder
   private var toolbarContent: some View {
-    dragHandle
-    divider
     toolButtons
     divider
     colorPickers
@@ -163,14 +161,6 @@ struct RecordingAnnotationToolbarView: View {
         }
       }
     }
-  }
-
-  // MARK: - Drag Handle (visual only — drag handled by NSWindow)
-  private var dragHandle: some View {
-    Image(systemName: "line.3.horizontal")
-      .font(.system(size: 10, weight: .bold))
-      .foregroundColor(.primary.opacity(0.3))
-      .frame(width: 20, height: 20)
   }
 
   // MARK: - Divider

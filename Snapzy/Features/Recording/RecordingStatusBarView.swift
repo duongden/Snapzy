@@ -5,10 +5,19 @@
 //  Status bar shown during active recording with timer and controls
 //  Styled to match Apple's native macOS recording toolbar aesthetic
 //
-//  Layout: [● 00:00:00] | [⏸] [✏️] | [↺] | [🗑] | [Stop]
+//  Layout: [≡] | [● 00:00:00] | [⏸] [✏️] | [↺] | [🗑] | [Stop]
 //
 
 import SwiftUI
+
+// MARK: - Preference Key for annotate button position
+
+private struct AnnotateButtonCenterXKey: PreferenceKey {
+  static var defaultValue: CGFloat = 0
+  static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+    value = nextValue()
+  }
+}
 
 struct RecordingStatusBarView: View {
   @ObservedObject var recorder: ScreenRecordingManager
@@ -17,10 +26,21 @@ struct RecordingStatusBarView: View {
   let onRestart: () -> Void
   let onStop: () -> Void
 
+  /// Reports the center-X of the annotate button in local coordinate space
+  var onAnnotateButtonLayout: ((CGFloat) -> Void)?
+
   @State private var indicatorOpacity: Double = 1.0
 
   var body: some View {
     HStack(spacing: ToolbarConstants.itemSpacing) {
+      // Drag handle (visual only — drag handled by NSWindow)
+      Image(systemName: "line.3.horizontal")
+        .font(.system(size: 10, weight: .bold))
+        .foregroundColor(.primary.opacity(0.3))
+        .frame(width: 20, height: 20)
+
+      RecordingToolbarDivider()
+
       // Recording indicator (pulsing red dot) + Timer
       HStack(spacing: 8) {
         Circle()
@@ -58,6 +78,14 @@ struct RecordingStatusBarView: View {
         accessibilityLabel: annotationState.isAnnotationEnabled
           ? "Disable annotations" : "Enable annotations"
       )
+      .background(
+        GeometryReader { geo in
+          Color.clear.preference(
+            key: AnnotateButtonCenterXKey.self,
+            value: geo.frame(in: .named("statusBar")).midX
+          )
+        }
+      )
 
       RecordingToolbarDivider()
 
@@ -86,9 +114,13 @@ struct RecordingStatusBarView: View {
       .accessibilityLabel("Stop recording - Duration: \(recorder.formattedDuration)")
       .accessibilityHint("Stops and saves the recording")
     }
+    .coordinateSpace(name: "statusBar")
     .padding(.horizontal, ToolbarConstants.horizontalPadding)
     .padding(.vertical, ToolbarConstants.verticalPadding)
     .shadow(color: .black.opacity(0.15), radius: 12, y: 4)
+    .onPreferenceChange(AnnotateButtonCenterXKey.self) { centerX in
+      onAnnotateButtonLayout?(centerX)
+    }
     .accessibilityElement(children: .contain)
     .accessibilityLabel("Recording status bar")
   }

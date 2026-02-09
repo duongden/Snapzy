@@ -532,9 +532,19 @@ final class RecordingCoordinator: ObservableObject {
     overlayWindow.orderFrontRegardless()
     annotationOverlayWindow = overlayWindow
 
-    // Create floating annotation toolbar
+    // Create popover-style annotation toolbar anchored to the status bar
     let toolbarWin = RecordingAnnotationToolbarWindow(annotationState: annotationState)
+    toolbarWin.anchorWindow = window
+    toolbarWin.anchorButtonCenterXOffset = window.annotateButtonCenterXOffset
     annotationToolbarWindow = toolbarWin
+
+    // Update popover anchor offset when SwiftUI layout reports button position
+    window.onAnnotateButtonOffsetChanged = { [weak toolbarWin] offset in
+      toolbarWin?.anchorButtonCenterXOffset = offset
+      if annotationState.isAnnotationEnabled {
+        toolbarWin?.positionRelativeToAnchor()
+      }
+    }
 
     // Start auto-clear timer
     annotationState.startCleanupTimer()

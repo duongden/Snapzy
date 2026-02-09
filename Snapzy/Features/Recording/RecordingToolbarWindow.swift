@@ -71,6 +71,12 @@ final class RecordingToolbarWindow: NSWindow {
   var onRestart: (() -> Void)?
   var onStop: (() -> Void)?
 
+  /// Called when annotate button layout position is determined
+  var onAnnotateButtonOffsetChanged: ((CGFloat) -> Void)?
+
+  /// Center X offset of the annotate button relative to this window's left edge
+  private(set) var annotateButtonCenterXOffset: CGFloat = 0
+
   // Observable state for SwiftUI
   let state = RecordingToolbarState()
   let annotationState = RecordingAnnotationState()
@@ -151,11 +157,21 @@ final class RecordingToolbarWindow: NSWindow {
       annotationState: annotationState,
       onDelete: { [weak self] in self?.onDelete?() },
       onRestart: { [weak self] in self?.onRestart?() },
-      onStop: { [weak self] in self?.onStop?() }
+      onStop: { [weak self] in self?.onStop?() },
+      onAnnotateButtonLayout: { [weak self] centerX in
+        // centerX is relative to the SwiftUI view's coordinate space
+        // Add horizontal padding to get offset relative to window edge
+        let offset = centerX + ToolbarConstants.horizontalPadding
+        self?.annotateButtonCenterXOffset = offset
+        self?.onAnnotateButtonOffsetChanged?(offset)
+      }
     )
 
     setContent(AnyView(view))
     positionBelowRect(anchorRect)
+
+    // Enable dragging in recording mode
+    isMovableByWindowBackground = true
   }
 
   private func setContent(_ view: AnyView) {
