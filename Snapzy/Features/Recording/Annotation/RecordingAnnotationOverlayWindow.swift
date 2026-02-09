@@ -18,6 +18,13 @@ final class RecordingAnnotationOverlayWindow: NSWindow {
   private var toolCancellable: AnyCancellable?
   private var refreshCancellable: AnyCancellable?
 
+  // Shortcut mode activation
+  private let shortcutConfig = RecordingAnnotationShortcutConfig.shared
+  private var globalFlagsMonitor: Any?
+  private var localFlagsMonitor: Any?
+  private var holdTimer: Timer?
+  private var isModifierHeld = false
+
   init(recordingRect: CGRect, annotationState: RecordingAnnotationState) {
     self.annotationState = annotationState
     self.canvasView = RecordingAnnotationCanvasView(state: annotationState)
@@ -32,6 +39,14 @@ final class RecordingAnnotationOverlayWindow: NSWindow {
     configureWindow()
     setupCanvas()
     observeState()
+    startModifierMonitor()
+  }
+
+  deinit {
+    // NSEvent.removeMonitor is thread-safe, safe from nonisolated deinit
+    if let m = globalFlagsMonitor { NSEvent.removeMonitor(m) }
+    if let m = localFlagsMonitor { NSEvent.removeMonitor(m) }
+    holdTimer?.invalidate()
   }
 
   // MARK: - Configuration
@@ -85,6 +100,53 @@ final class RecordingAnnotationOverlayWindow: NSWindow {
   /// The CGWindowID used for ScreenCaptureKit exceptingWindows
   var overlayWindowID: CGWindowID {
     CGWindowID(windowNumber)
+  }
+
+  // MARK: - Modifier Hold Detection
+
+  private func startModifierMonitor() {
+    // Global monitor — works when overlay is NOT key window
+    globalFlagsMonitor = NSEvent.addGlobalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
+      Task { @MainActor in self?.handleFlagsChanged(event) }
+    }
+    // Local monitor — works when overlay IS key window
+    localFlagsMonitor = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
+      Task { @MainActor in self?.handleFlagsChanged(event) }
+      return event
+    }
+  }
+
+  func stopModifierMonitor() {
+    if let m = globalFlagsMonitor { NSEvent.removeMonitor(m); globalFlagsMonitor = nil }
+    if let m = localFlagsMonitor { NSEvent.removeMonitor(m); localFlagsMonitor = nil }
+    holdTimer?.invalidate()
+    holdTimer = nil
+    annotationState.isShortcutModeActive = false
+  }
+
+  private func handleFlagsChanged(_ event: NSEvent) {
+    let requiredFlag = shortcutConfig.modifier.flag
+    let isPressed = event.modifierFlags.contains(requiredFlag)
+
+    if isPressed {
+      // Modifier just pressed — start hold timer
+      guard !isModifierHeld else { return }
+      isModifierHeld = true
+
+      let duration = shortcutConfig.holdDuration
+      holdTimer?.invalidate()
+      holdTimer = Timer.scheduledTimer(withTimeInterval: duration, repeats: false) { [weak self] _ in
+        Task { @MainActor in
+          self?.annotationState.isShortcutModeActive = true
+        }
+      }
+    } else {
+      // Modifier released — deactivate shortcut mode
+      isModifierHeld = false
+      holdTimer?.invalidate()
+      holdTimer = nil
+      annotationState.isShortcutModeActive = false
+    }
   }
 
   override var canBecomeKey: Bool { true }

@@ -50,6 +50,7 @@ final class RecordingAnnotationState: ObservableObject {
   @Published var strokeWidth: CGFloat = 3
   @Published var isAnnotationEnabled: Bool = false
   @Published var toolClearModes: [AnnotationToolType: AnnotationClearMode] = [:]
+  @Published var isShortcutModeActive: Bool = false
 
   private var cleanupTimer: Timer?
 

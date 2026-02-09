@@ -130,8 +130,9 @@ final class RecordingAnnotationCanvasView: NSView {
   }
 
   override func keyDown(with event: NSEvent) {
-    // Tool shortcuts — use configured shortcuts from AnnotateShortcutManager
-    if let char = event.characters?.lowercased().first {
+    // Tool shortcuts — only when shortcut mode is active (modifier held)
+    if state.isShortcutModeActive,
+       let char = event.characters?.lowercased().first {
       let tools = RecordingAnnotationState.availableTools
       if let matchedTool = shortcutManager.tool(for: char),
          tools.contains(matchedTool) {

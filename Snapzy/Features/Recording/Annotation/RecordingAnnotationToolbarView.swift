@@ -66,6 +66,22 @@ struct RecordingAnnotationToolbarView: View {
         isSelected: state.selectedTool == tool,
         action: { state.selectedTool = tool }
       )
+      .overlay(alignment: .bottomTrailing) {
+        if state.isShortcutModeActive {
+          Text(shortcutLabel(for: tool))
+            .font(.system(size: 8, weight: .bold, design: .monospaced))
+            .foregroundColor(.white)
+            .padding(.horizontal, 3)
+            .padding(.vertical, 1)
+            .background(
+              RoundedRectangle(cornerRadius: 3)
+                .fill(Color.accentColor)
+            )
+            .offset(x: 4, y: 4)
+            .transition(.scale.combined(with: .opacity))
+        }
+      }
+      .animation(.easeInOut(duration: 0.15), value: state.isShortcutModeActive)
       .help("\(tool.displayName) (\(shortcutLabel(for: tool)))")
     }
   }

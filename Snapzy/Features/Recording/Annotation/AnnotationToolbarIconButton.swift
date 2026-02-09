@@ -19,7 +19,7 @@ struct AnnotationToolbarIconButton: View {
     Button(action: action) {
       Image(systemName: systemName)
         .font(.system(size: 13, weight: .medium))
-        .foregroundColor(isSelected ? .accentColor : .primary.opacity(isHovered ? 1.0 : 0.85))
+        .foregroundColor(.primary.opacity(isSelected || isHovered ? 1.0 : 0.85))
         .frame(width: 28, height: 28)
         .background(
           RoundedRectangle(cornerRadius: 6)
@@ -34,7 +34,7 @@ struct AnnotationToolbarIconButton: View {
 
   private var backgroundColor: Color {
     if isSelected {
-      return Color.accentColor.opacity(0.2)
+      return Color.primary.opacity(0.12)
     } else if isHovered {
       return Color.primary.opacity(0.1)
     }
