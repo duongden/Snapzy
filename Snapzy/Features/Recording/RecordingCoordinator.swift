@@ -88,6 +88,9 @@ final class RecordingCoordinator: ObservableObject {
     toolbarWindow?.onRecord = { [weak self] in
       self?.startRecording()
     }
+    toolbarWindow?.onCapture = { [weak self] in
+      self?.captureScreenshot()
+    }
     toolbarWindow?.onCancel = { [weak self] in
       self?.cancel()
     }
@@ -499,6 +502,59 @@ final class RecordingCoordinator: ObservableObject {
     }
   }
 
+  /// Capture a screenshot of the selected area and close the toolbar
+  private func captureScreenshot() {
+    guard let rect = selectedRect else { return }
+
+    // Get save directory
+    let saveDirectory: URL
+    if let path = UserDefaults.standard.string(forKey: PreferencesKeys.exportLocation),
+      !path.isEmpty
+    {
+      saveDirectory = URL(fileURLWithPath: path)
+    } else {
+      saveDirectory =
+        FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first!
+        .appendingPathComponent("Snapzy")
+    }
+
+    // Hide overlay windows and toolbar so they don't appear in the screenshot
+    for overlay in regionOverlayWindows {
+      overlay.orderOut(nil)
+    }
+    toolbarWindow?.orderOut(nil)
+
+    let captureManager = ScreenCaptureManager.shared
+
+    Task {
+      // Brief delay to ensure windows are fully hidden before capture
+      try? await Task.sleep(nanoseconds: 50_000_000) // 50ms
+
+      let result = await captureManager.captureArea(
+        rect: rect,
+        saveDirectory: saveDirectory,
+        excludeDesktopIcons: DesktopIconManager.shared.isIconHidingEnabled,
+        excludeDesktopWidgets: DesktopIconManager.shared.isWidgetHidingEnabled
+      )
+
+      switch result {
+      case .success:
+        NSSound(named: "Glass")?.play()
+        // PostCaptureActionHandler is triggered automatically via
+        // ScreenCaptureManager.captureCompletedPublisher → ScreenCaptureViewModel
+      case .failure(let error):
+        let alert = NSAlert()
+        alert.messageText = "Screenshot Failed"
+        alert.informativeText = error.localizedDescription
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
+      }
+
+      cleanup()
+    }
+  }
+
   private func cleanup() {
     // Remove escape monitors
     removeEscapeMonitors()
@@ -601,6 +657,7 @@ final class RecordingCoordinator: ObservableObject {
         self.toolbarWindow = RecordingToolbarWindow(anchorRect: rect)
         self.toolbarWindow?.selectedFormat = savedFormat
         self.toolbarWindow?.onRecord = { [weak self] in self?.startRecording() }
+        self.toolbarWindow?.onCapture = { [weak self] in self?.captureScreenshot() }
         self.toolbarWindow?.onCancel = { [weak self] in self?.cancel() }
         self.toolbarWindow?.onDelete = { [weak self] in self?.deleteRecording() }
         self.toolbarWindow?.onRestart = { [weak self] in self?.restartRecording() }

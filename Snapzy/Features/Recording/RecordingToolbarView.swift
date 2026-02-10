@@ -5,7 +5,7 @@
 //  Pre-record toolbar with options menu and record/cancel buttons
 //  Styled to match Apple's native macOS recording toolbar aesthetic
 //
-//  Layout: [✕] | [□ □] | [🎙] | [Options▾] [Record]
+//  Layout: [✕] | [📷] | [□ □] | [🎙] | [Options▾] [Record]
 //
 
 import SwiftUI
@@ -13,6 +13,7 @@ import SwiftUI
 struct RecordingToolbarView: View {
   @ObservedObject var state: RecordingToolbarState
   let onRecord: () -> Void
+  let onCapture: () -> Void
   let onCancel: () -> Void
 
   @State private var isRecordHovered = false
@@ -24,6 +25,15 @@ struct RecordingToolbarView: View {
         systemName: "xmark",
         action: onCancel,
         accessibilityLabel: "Cancel recording"
+      )
+
+      RecordingToolbarDivider()
+
+      // Capture screenshot button
+      ToolbarIconButton(
+        systemName: "camera",
+        action: onCapture,
+        accessibilityLabel: "Capture screenshot"
       )
 
       RecordingToolbarDivider()
@@ -63,6 +73,7 @@ struct RecordingToolbarView: View {
   RecordingToolbarView(
     state: RecordingToolbarState(),
     onRecord: {},
+    onCapture: {},
     onCancel: {}
   )
   .padding()
