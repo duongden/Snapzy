@@ -11,76 +11,69 @@ struct CompletionView: View {
   let onComplete: () -> Void
 
   var body: some View {
-    VStack(spacing: 24) {
+    VStack(spacing: 20) {
       Spacer()
 
-      // Success Icon
-      ZStack {
-        Circle()
-          .fill(Color.green.opacity(0.15))
-          .frame(width: 100, height: 100)
-
-        Image(systemName: "checkmark.circle.fill")
-          .font(.system(size: 64))
-          .foregroundColor(.green)
-      }
+      // Success Icon — refined, smaller, consistent with other screens
+      Image(systemName: "checkmark.circle")
+        .font(.system(size: 48, weight: .light))
+        .foregroundColor(.green.opacity(0.85))
 
       // Title
-      Text("Ready to go!")
+      Text("You're all set!")
         .vsHeading()
 
       // Subtitle
-      Text("You can access Snapzy through the menu bar icon or by using the keyboard shortcuts you configured.")
+      Text("Snapzy is ready. Access it from the menu bar or use your keyboard shortcuts.")
         .vsBody()
         .multilineTextAlignment(.center)
         .frame(maxWidth: 340)
 
-      // Menu bar hint
-      HStack(spacing: 8) {
-        Image(systemName: "menubar.arrow.up.rectangle")
-          .font(.system(size: 16))
-          .foregroundColor(.white.opacity(0.7))
+      // Quick reference cards
+      VStack(spacing: 10) {
+        CompletionHintRow(
+          icon: "menubar.arrow.up.rectangle",
+          title: "Menu Bar",
+          description: "Look for the camera icon in your menu bar"
+        )
 
-        Text("Look for the camera icon in your menu bar")
-          .font(.system(size: 13))
-          .foregroundColor(.white.opacity(0.6))
+        CompletionHintRow(
+          icon: "keyboard",
+          title: "Shortcuts",
+          description: "Use ⇧⌘3, ⇧⌘4, ⇧⌘5 to capture anytime"
+        )
+
+        CompletionHintRow(
+          icon: "gearshape",
+          title: "Preferences",
+          description: "Customize shortcuts, output format, and more"
+        )
       }
-      .padding(.horizontal, 16)
-      .padding(.vertical, 10)
-      .background(
-        RoundedRectangle(cornerRadius: 8)
-          .fill(Color.white.opacity(0.08))
-      )
-      .overlay(
-        RoundedRectangle(cornerRadius: 8)
-          .stroke(.white.opacity(0.15), lineWidth: 1)
-      )
+      .frame(maxWidth: 380)
 
       Spacer()
 
-      // Actions
-      VStack(spacing: 12) {
+      // Actions — "Get Started" is primary, "Open Preferences" is secondary
+      VStack(spacing: 10) {
+        Button("Get Started") {
+          onComplete()
+        }
+        .buttonStyle(VSDesignSystem.SuccessButtonStyle())
+        .keyboardShortcut(.return, modifiers: [])
+
         SettingsLink {
           Text("Open Preferences")
-            .font(.system(size: 14, weight: .semibold))
-            .foregroundColor(.white)
-            .padding(.vertical, 8)
-            .padding(.horizontal, 20)
-            .background(
-              Capsule()
-                .fill(Color.white.opacity(0.2))
-            )
-            .overlay(Capsule().stroke(.white.opacity(0.3), lineWidth: 1))
+            .font(.system(size: 13, weight: .medium))
+            .foregroundColor(.white.opacity(0.55))
         }
         .buttonStyle(.plain)
         .simultaneousGesture(TapGesture().onEnded {
           onComplete()
         })
 
-        Button("Get Started") {
-          onComplete()
-        }
-        .buttonStyle(VSDesignSystem.SecondaryButtonStyle())
+        Text("Press Enter ↵")
+          .font(.system(size: 11))
+          .foregroundStyle(.white.opacity(0.3))
       }
 
       Spacer()
@@ -91,10 +84,49 @@ struct CompletionView: View {
   }
 }
 
+// MARK: - Completion Hint Row
+
+private struct CompletionHintRow: View {
+  let icon: String
+  let title: String
+  let description: String
+
+  var body: some View {
+    HStack(spacing: 12) {
+      Image(systemName: icon)
+        .font(.system(size: 14))
+        .foregroundColor(.white.opacity(0.6))
+        .frame(width: 24, alignment: .center)
+
+      VStack(alignment: .leading, spacing: 2) {
+        Text(title)
+          .font(.system(size: 13, weight: .medium))
+          .foregroundColor(.white.opacity(0.85))
+
+        Text(description)
+          .font(.system(size: 12))
+          .foregroundColor(.white.opacity(0.5))
+      }
+
+      Spacer()
+    }
+    .padding(.horizontal, 14)
+    .padding(.vertical, 10)
+    .background(
+      RoundedRectangle(cornerRadius: 8)
+        .fill(Color.white.opacity(0.06))
+    )
+    .overlay(
+      RoundedRectangle(cornerRadius: 8)
+        .stroke(Color.white.opacity(0.1), lineWidth: 1)
+    )
+  }
+}
+
 #Preview {
   CompletionView(
     onComplete: {}
   )
-  .frame(width: 500, height: 450)
+  .frame(width: 500, height: 520)
   .background(.black.opacity(0.5))
 }

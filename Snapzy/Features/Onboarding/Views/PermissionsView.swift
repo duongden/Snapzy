@@ -99,6 +99,7 @@ struct PermissionsView: View {
           onNext()
         }
         .buttonStyle(VSDesignSystem.PrimaryButtonStyle())
+        .keyboardShortcut(.return, modifiers: [])
       }
 
       Spacer()
