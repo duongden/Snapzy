@@ -10,7 +10,7 @@ import AVFoundation
 import Foundation
 import os.log
 
-private let logger = Logger(subsystem: "com.zapshot", category: "ThumbnailGenerator")
+private let logger = Logger(subsystem: "Snapzy", category: "ThumbnailGenerator")
 
 /// Result of thumbnail generation containing optional thumbnail and duration
 struct ThumbnailResult {
@@ -46,40 +46,72 @@ enum ThumbnailGenerator {
     return await generateFromImage(url: url, maxSize: maxSize)
   }
 
+  /// Generate a simple placeholder thumbnail for failed loads
+  static func placeholderThumbnail(size: CGFloat = 200) -> NSImage {
+    let thumbSize = NSSize(width: size, height: size)
+    let image = NSImage(size: thumbSize)
+    image.lockFocus()
+    NSColor.systemGray.withAlphaComponent(0.3).setFill()
+    NSBezierPath(roundedRect: NSRect(origin: .zero, size: thumbSize), xRadius: 8, yRadius: 8).fill()
+    let iconRect = NSRect(x: size * 0.3, y: size * 0.3, width: size * 0.4, height: size * 0.4)
+    NSColor.systemGray.withAlphaComponent(0.5).setFill()
+    NSBezierPath(ovalIn: iconRect).fill()
+    image.unlockFocus()
+    return image
+  }
+
   // MARK: - Private Methods
 
   private static func generateFromImage(url: URL, maxSize: CGFloat) async -> NSImage? {
-    guard let image = NSImage(contentsOf: url) else { return nil }
+    // Retry with backoff: 0ms, 100ms, 300ms
+    let delays: [UInt64] = [0, 100, 300]
 
-    let originalSize = image.size
-    guard originalSize.width > 0, originalSize.height > 0 else { return nil }
+    for (attempt, delayMs) in delays.enumerated() {
+      if delayMs > 0 {
+        try? await Task.sleep(nanoseconds: delayMs * 1_000_000)
+      }
 
-    let scale: CGFloat
-    if originalSize.width > originalSize.height {
-      scale = min(maxSize / originalSize.width, 1.0)
-    } else {
-      scale = min(maxSize / originalSize.height, 1.0)
+      guard FileManager.default.fileExists(atPath: url.path) else {
+        logger.warning("File not found on attempt \(attempt + 1): \(url.lastPathComponent)")
+        continue
+      }
+
+      if let image = NSImage(contentsOf: url) {
+        let originalSize = image.size
+        guard originalSize.width > 0, originalSize.height > 0 else { return nil }
+
+        let scale: CGFloat
+        if originalSize.width > originalSize.height {
+          scale = min(maxSize / originalSize.width, 1.0)
+        } else {
+          scale = min(maxSize / originalSize.height, 1.0)
+        }
+
+        if scale >= 1.0 { return image }
+
+        let newSize = CGSize(
+          width: originalSize.width * scale,
+          height: originalSize.height * scale
+        )
+
+        let thumbnail = NSImage(size: newSize)
+        thumbnail.lockFocus()
+        NSGraphicsContext.current?.imageInterpolation = .high
+        image.draw(
+          in: NSRect(origin: .zero, size: newSize),
+          from: NSRect(origin: .zero, size: originalSize),
+          operation: .copy,
+          fraction: 1.0
+        )
+        thumbnail.unlockFocus()
+        return thumbnail
+      }
+
+      logger.warning("NSImage load failed on attempt \(attempt + 1): \(url.lastPathComponent)")
     }
 
-    if scale >= 1.0 { return image }
-
-    let newSize = CGSize(
-      width: originalSize.width * scale,
-      height: originalSize.height * scale
-    )
-
-    let thumbnail = NSImage(size: newSize)
-    thumbnail.lockFocus()
-    NSGraphicsContext.current?.imageInterpolation = .high
-    image.draw(
-      in: NSRect(origin: .zero, size: newSize),
-      from: NSRect(origin: .zero, size: originalSize),
-      operation: .copy,
-      fraction: 1.0
-    )
-    thumbnail.unlockFocus()
-
-    return thumbnail
+    logger.error("Thumbnail generation failed after \(delays.count) attempts: \(url.lastPathComponent)")
+    return nil
   }
 
   private static func generateFromVideo(url: URL, maxSize: CGFloat) async -> ThumbnailResult {

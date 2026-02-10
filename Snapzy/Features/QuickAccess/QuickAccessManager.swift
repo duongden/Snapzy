@@ -8,7 +8,10 @@
 import AppKit
 import Combine
 import Foundation
+import os.log
 import SwiftUI
+
+private let logger = Logger(subsystem: "Snapzy", category: "QuickAccessManager")
 
 /// Manages the quick access screenshot preview stack
 @MainActor
@@ -113,7 +116,18 @@ final class QuickAccessManager: ObservableObject {
   func addScreenshot(url: URL) async {
     guard isEnabled else { return }
     let result = await ThumbnailGenerator.generate(from: url)
-    guard let thumbnail = result.thumbnail else { return }
+
+    // Use placeholder if thumbnail generation failed
+    let thumbnail: NSImage
+    let needsRetry: Bool
+    if let generated = result.thumbnail {
+      thumbnail = generated
+      needsRetry = false
+    } else {
+      logger.warning("Thumbnail failed for \(url.lastPathComponent), using placeholder")
+      thumbnail = ThumbnailGenerator.placeholderThumbnail()
+      needsRetry = true
+    }
 
     let item = QuickAccessItem(url: url, thumbnail: thumbnail)
 
@@ -136,13 +150,29 @@ final class QuickAccessManager: ObservableObject {
     if autoDismissEnabled {
       startDismissTimer(for: item.id)
     }
+
+    // Schedule background thumbnail retry if needed
+    if needsRetry {
+      scheduleThumbnailRetry(for: item.id, url: url)
+    }
   }
 
   /// Add a new video recording to the quick access stack
   func addVideo(url: URL) async {
     guard isEnabled else { return }
     let result = await ThumbnailGenerator.generate(from: url)
-    guard let thumbnail = result.thumbnail else { return }
+
+    // Use placeholder if thumbnail generation failed
+    let thumbnail: NSImage
+    let needsRetry: Bool
+    if let generated = result.thumbnail {
+      thumbnail = generated
+      needsRetry = false
+    } else {
+      logger.warning("Video thumbnail failed for \(url.lastPathComponent), using placeholder")
+      thumbnail = ThumbnailGenerator.placeholderThumbnail()
+      needsRetry = true
+    }
 
     // Use actual duration or nil (will show no badge if duration unavailable)
     let item = QuickAccessItem(url: url, thumbnail: thumbnail, duration: result.duration ?? 0)
@@ -163,6 +193,11 @@ final class QuickAccessManager: ObservableObject {
 
     if autoDismissEnabled {
       startDismissTimer(for: item.id)
+    }
+
+    // Schedule background thumbnail retry if needed
+    if needsRetry {
+      scheduleThumbnailRetry(for: item.id, url: url)
     }
   }
 
@@ -292,5 +327,34 @@ final class QuickAccessManager: ObservableObject {
   private func cancelDismissTimer(for id: UUID) {
     dismissTimers[id]?.cancel()
     dismissTimers.removeValue(forKey: id)
+  }
+
+  /// Retry thumbnail generation in background and update item if successful
+  private func scheduleThumbnailRetry(for id: UUID, url: URL) {
+    Task {
+      // Wait 500ms then retry
+      try? await Task.sleep(nanoseconds: 500_000_000)
+      guard !Task.isCancelled else { return }
+      guard items.contains(where: { $0.id == id }) else { return }
+
+      let result = await ThumbnailGenerator.generate(from: url)
+      guard let newThumbnail = result.thumbnail else {
+        logger.error("Thumbnail retry also failed for \(url.lastPathComponent)")
+        return
+      }
+
+      if let index = items.firstIndex(where: { $0.id == id }) {
+        let existing = items[index]
+        items[index] = QuickAccessItem(
+          id: existing.id,
+          url: existing.url,
+          thumbnail: newThumbnail,
+          capturedAt: existing.capturedAt,
+          itemType: existing.itemType,
+          duration: existing.duration
+        )
+        logger.info("Thumbnail retry succeeded for \(url.lastPathComponent)")
+      }
+    }
   }
 }

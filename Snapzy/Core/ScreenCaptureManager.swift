@@ -9,7 +9,10 @@ import AppKit
 import Combine
 import CoreGraphics
 import Foundation
+import os.log
 import ScreenCaptureKit
+
+private let logger = Logger(subsystem: "Snapzy", category: "ScreenCaptureManager")
 
 /// Result type for capture operations
 enum CaptureResult {
@@ -153,7 +156,7 @@ final class ScreenCaptureManager: ObservableObject {
       )
 
       // Save the image
-      return saveImage(image, to: saveDirectory, fileName: fileName, format: format)
+      return await saveImage(image, to: saveDirectory, fileName: fileName, format: format)
 
     } catch {
       return .failure(.captureFailed(error.localizedDescription))
@@ -297,7 +300,7 @@ final class ScreenCaptureManager: ObservableObject {
       )
 
       // Save the image
-      return saveImage(image, to: saveDirectory, fileName: fileName, format: format)
+      return await saveImage(image, to: saveDirectory, fileName: fileName, format: format)
 
     } catch {
       return .failure(.captureFailed(error.localizedDescription))
@@ -306,52 +309,94 @@ final class ScreenCaptureManager: ObservableObject {
 
   // MARK: - Image Saving
 
-  /// Save a CGImage to disk
+  /// Save a CGImage to disk with write verification
   private func saveImage(
     _ image: CGImage,
     to directory: URL,
     fileName: String?,
     format: ImageFormat
-  ) -> CaptureResult {
+  ) async -> CaptureResult {
 
-    // Create directory if needed
-    do {
-      try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-    } catch {
-      return .failure(.saveFailed("Could not create directory: \(error.localizedDescription)"))
-    }
-
-    // Generate filename
+    // Generate filename on main actor (uses Date())
     let name = fileName ?? generateFileName()
     let fileURL = directory.appendingPathComponent("\(name).\(format.fileExtension)")
 
-    // Create image destination
-    guard
-      let destination = CGImageDestinationCreateWithURL(
-        fileURL as CFURL,
-        format.utType,
-        1,
-        nil
-      )
-    else {
-      return .failure(.saveFailed("Could not create image destination"))
-    }
+    logger.info("Saving capture to \(directory.lastPathComponent)/\(name).\(format.fileExtension)")
 
-    // Add image and write
-    CGImageDestinationAddImage(destination, image, nil)
+    // Capture format properties before entering detached task
+    let utType = format.utType
 
-    if CGImageDestinationFinalize(destination) {
-      captureCompletedSubject.send(fileURL)
-      return .success(fileURL)
-    } else {
-      return .failure(.saveFailed("Failed to write image to disk"))
+    // Move file I/O to background thread to avoid blocking main thread
+    let writeResult: Result<URL, CaptureError> = await Task.detached {
+      // Create directory if needed
+      do {
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+      } catch {
+        return .failure(.saveFailed("Could not create directory: \(error.localizedDescription)"))
+      }
+
+      // Create image destination
+      guard
+        let destination = CGImageDestinationCreateWithURL(
+          fileURL as CFURL,
+          utType,
+          1,
+          nil
+        )
+      else {
+        return .failure(.saveFailed("Could not create image destination"))
+      }
+
+      // Add image and write
+      CGImageDestinationAddImage(destination, image, nil)
+
+      guard CGImageDestinationFinalize(destination) else {
+        return .failure(.saveFailed("Failed to write image to disk"))
+      }
+
+      // Verify file is fully written
+      let verified = await Self.verifyFileWritten(at: fileURL)
+      if verified {
+        return .success(fileURL)
+      } else {
+        return .failure(.saveFailed("File write verification failed for \(fileURL.lastPathComponent)"))
+      }
+    }.value
+
+    switch writeResult {
+    case .success(let url):
+      captureCompletedSubject.send(url)
+      return .success(url)
+    case .failure(let error):
+      logger.error("Save failed: \(error.localizedDescription)")
+      return .failure(error)
     }
+  }
+
+  /// Verify file exists on disk with non-zero size, retrying up to maxAttempts.
+  /// Runs on caller's thread (designed for background execution).
+  private nonisolated static func verifyFileWritten(at url: URL, maxAttempts: Int = 3, delayMs: UInt64 = 50) async -> Bool {
+    for attempt in 1...maxAttempts {
+      if FileManager.default.fileExists(atPath: url.path) {
+        let attrs = try? FileManager.default.attributesOfItem(atPath: url.path)
+        let size = attrs?[.size] as? UInt64 ?? 0
+        if size > 0 {
+          logger.debug("File verified on attempt \(attempt): \(url.lastPathComponent) (\(size) bytes)")
+          return true
+        }
+      }
+      if attempt < maxAttempts {
+        try? await Task.sleep(nanoseconds: delayMs * 1_000_000)
+      }
+    }
+    logger.error("File verification failed after \(maxAttempts) attempts: \(url.lastPathComponent)")
+    return false
   }
 
   /// Generate a timestamp-based filename
   private func generateFileName() -> String {
     let formatter = DateFormatter()
-    formatter.dateFormat = "yyyy-MM-dd_HH-mm-ss"
+    formatter.dateFormat = "yyyy-MM-dd_HH-mm-ss-SSS"
     return "Snapzy_\(formatter.string(from: Date()))"
   }
 

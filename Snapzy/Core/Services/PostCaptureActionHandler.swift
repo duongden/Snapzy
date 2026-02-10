@@ -7,6 +7,9 @@
 
 import AppKit
 import Foundation
+import os.log
+
+private let logger = Logger(subsystem: "Snapzy", category: "PostCaptureActionHandler")
 
 /// Handles execution of post-capture actions based on user preferences
 @MainActor
@@ -34,8 +37,13 @@ final class PostCaptureActionHandler {
   // MARK: - Private
 
   private func executeActions(for captureType: CaptureType, url: URL) async {
-    // Save action is handled by the capture managers themselves (file already saved)
-    // We just need to execute the other enabled actions
+    // Validate file exists before processing
+    guard FileManager.default.fileExists(atPath: url.path) else {
+      logger.error("Capture file missing at \(url.lastPathComponent), skipping post-capture actions")
+      return
+    }
+
+    logger.info("Executing post-capture actions for \(captureType == .screenshot ? "screenshot" : "recording"): \(url.lastPathComponent)")
 
     // Show Quick Access Overlay
     if preferencesManager.isActionEnabled(.showQuickAccess, for: captureType) {
@@ -45,11 +53,13 @@ final class PostCaptureActionHandler {
       case .recording:
         await quickAccessManager.addVideo(url: url)
       }
+      logger.debug("Quick access overlay shown for \(url.lastPathComponent)")
     }
 
     // Copy file to clipboard
     if preferencesManager.isActionEnabled(.copyFile, for: captureType) {
       copyToClipboard(url: url, isVideo: captureType == .recording)
+      logger.debug("Clipboard copy executed for \(url.lastPathComponent)")
     }
   }
 
@@ -59,12 +69,12 @@ final class PostCaptureActionHandler {
     pasteboard.clearContents()
 
     if isVideo {
-      // For videos, copy the file URL
       pasteboard.writeObjects([url as NSURL])
     } else {
-      // For images, copy the actual image data
       if let image = NSImage(contentsOf: url) {
         pasteboard.writeObjects([image])
+      } else {
+        logger.error("Failed to load image for clipboard: \(url.lastPathComponent)")
       }
     }
 

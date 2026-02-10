@@ -57,6 +57,16 @@ struct QuickAccessItem: Identifiable, Equatable {
     self.duration = duration
   }
 
+  /// Initializer with explicit id (used for thumbnail retry updates)
+  init(id: UUID, url: URL, thumbnail: NSImage, capturedAt: Date, itemType: QuickAccessItemType, duration: TimeInterval?) {
+    self.id = id
+    self.url = url
+    self.thumbnail = thumbnail
+    self.capturedAt = capturedAt
+    self.itemType = itemType
+    self.duration = duration
+  }
+
   static func == (lhs: QuickAccessItem, rhs: QuickAccessItem) -> Bool {
     lhs.id == rhs.id && lhs.processingState == rhs.processingState
   }
