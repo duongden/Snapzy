@@ -17,6 +17,12 @@ enum SplashScreen: Equatable {
   case completion
 }
 
+// MARK: - Navigation Direction
+
+private enum NavigationDirection {
+  case forward, backward
+}
+
 // MARK: - SplashOnboardingRootView
 
 struct SplashOnboardingRootView: View {
@@ -25,6 +31,7 @@ struct SplashOnboardingRootView: View {
 
   @State private var currentScreen: SplashScreen = .splash
   @State private var contentOpacity: Double = 1
+  @State private var navigationDirection: NavigationDirection = .forward
   @ObservedObject private var screenCaptureManager = ScreenCaptureManager.shared
 
   // Onboarding steps (excluding splash)
@@ -56,30 +63,34 @@ struct SplashOnboardingRootView: View {
           PermissionsView(
             screenCaptureManager: screenCaptureManager,
             onQuit: { NSApplication.shared.terminate(nil) },
-            onNext: { navigateTo(.shortcuts) }
+            onNext: { navigateForward(to: .shortcuts) }
           )
           .transition(stepTransition)
 
         case .shortcuts:
           ShortcutsView(
-            onDecline: { navigateTo(.completion) },
+            onBack: { navigateBack(to: .permissions) },
+            onDecline: { navigateForward(to: .completion) },
             onAccept: {
               KeyboardShortcutManager.shared.enable()
-              navigateTo(.completion)
+              navigateForward(to: .completion)
             }
           )
           .transition(stepTransition)
 
         case .skipConfirmation:
           SkipConfirmationView(
-            onGoBack: { navigateTo(.shortcuts) },
+            onGoBack: { navigateBack(to: .shortcuts) },
             onConfirmSkip: { handleComplete() }
           )
           .transition(stepTransition)
 
         case .completion:
-          CompletionView(onComplete: handleComplete)
-            .transition(stepTransition)
+          CompletionView(
+            onBack: { navigateBack(to: .shortcuts) },
+            onComplete: handleComplete
+          )
+          .transition(stepTransition)
         }
       }
       .opacity(contentOpacity)
@@ -90,7 +101,7 @@ struct SplashOnboardingRootView: View {
           HStack {
             Spacer()
             Button("Skip") {
-              navigateTo(.skipConfirmation)
+              navigateForward(to: .skipConfirmation)
             }
             .buttonStyle(.plain)
             .font(.system(size: 13, weight: .medium))
@@ -144,17 +155,25 @@ struct SplashOnboardingRootView: View {
   // MARK: - Transitions
 
   private var stepTransition: AnyTransition {
-    .asymmetric(
-      insertion: .move(edge: .trailing).combined(with: .opacity),
-      removal: .move(edge: .leading).combined(with: .opacity)
-    )
+    switch navigationDirection {
+    case .forward:
+      return .asymmetric(
+        insertion: .move(edge: .trailing).combined(with: .opacity),
+        removal: .move(edge: .leading).combined(with: .opacity)
+      )
+    case .backward:
+      return .asymmetric(
+        insertion: .move(edge: .leading).combined(with: .opacity),
+        removal: .move(edge: .trailing).combined(with: .opacity)
+      )
+    }
   }
 
   // MARK: - Navigation
 
   private func handleSplashContinue() {
     if needsOnboarding {
-      navigateTo(.permissions)
+      navigateForward(to: .permissions)
     } else {
       // No onboarding needed — fade out and dismiss
       withAnimation(.easeIn(duration: 0.3)) {
@@ -166,7 +185,15 @@ struct SplashOnboardingRootView: View {
     }
   }
 
-  private func navigateTo(_ screen: SplashScreen) {
+  private func navigateForward(to screen: SplashScreen) {
+    navigationDirection = .forward
+    withAnimation(.easeInOut(duration: 0.4)) {
+      currentScreen = screen
+    }
+  }
+
+  private func navigateBack(to screen: SplashScreen) {
+    navigationDirection = .backward
     withAnimation(.easeInOut(duration: 0.4)) {
       currentScreen = screen
     }

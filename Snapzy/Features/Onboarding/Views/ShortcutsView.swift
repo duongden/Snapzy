@@ -8,79 +8,100 @@
 import SwiftUI
 
 struct ShortcutsView: View {
+  var onBack: (() -> Void)? = nil
   let onDecline: () -> Void
   let onAccept: () -> Void
 
   var body: some View {
-    VStack(spacing: 20) {
-      Spacer()
+    ZStack {
+      VStack(spacing: 20) {
+        Spacer()
 
-      // Header icon
-      Image(systemName: "keyboard")
-        .font(.system(size: 44))
-        .foregroundColor(.white.opacity(0.8))
+        // Header icon
+        Image(systemName: "keyboard")
+          .font(.system(size: 44))
+          .foregroundColor(.white.opacity(0.8))
 
-      // Title
-      Text("Set as default screenshot tool?")
-        .vsHeading()
+        // Title
+        Text("Set as default screenshot tool?")
+          .vsHeading()
 
-      // Subtitle
-      Text("Assign system shortcuts to Snapzy for quick access.")
-        .vsBody()
-        .multilineTextAlignment(.center)
-        .frame(maxWidth: 340)
+        // Subtitle
+        Text("Assign system shortcuts to Snapzy for quick access.")
+          .vsBody()
+          .multilineTextAlignment(.center)
+          .frame(maxWidth: 340)
 
-      // Shortcut groups
-      VStack(spacing: 14) {
-        ShortcutGroup(title: "Capture", shortcuts: [
-          ShortcutItem(keys: "⇧⌘3", action: "Capture Fullscreen"),
-          ShortcutItem(keys: "⇧⌘4", action: "Capture Area"),
-          ShortcutItem(keys: "⇧⌘2", action: "Capture Text (OCR)"),
-        ])
+        // Shortcut groups
+        VStack(spacing: 14) {
+          ShortcutGroup(title: "Capture", shortcuts: [
+            ShortcutItem(keys: "⇧⌘3", action: "Capture Fullscreen"),
+            ShortcutItem(keys: "⇧⌘4", action: "Capture Area"),
+            ShortcutItem(keys: "⇧⌘2", action: "Capture Text (OCR)"),
+          ])
 
-        ShortcutGroup(title: "Recording", shortcuts: [
-          ShortcutItem(keys: "⇧⌘5", action: "Record Screen"),
-        ])
+          ShortcutGroup(title: "Recording", shortcuts: [
+            ShortcutItem(keys: "⇧⌘5", action: "Record Screen"),
+          ])
 
-        ShortcutGroup(title: "Tools", shortcuts: [
-          ShortcutItem(keys: "⇧⌘A", action: "Open Annotate"),
-          ShortcutItem(keys: "⇧⌘E", action: "Open Video Editor"),
-        ])
-      }
-      .frame(maxWidth: 380)
-
-      // Settings hint
-      HStack(spacing: 8) {
-        Image(systemName: "gearshape")
-          .font(.system(size: 12))
-          .foregroundColor(.white.opacity(0.45))
-
-        Text("You can customize shortcuts anytime in Preferences → Shortcuts.")
-          .font(.system(size: 12))
-          .foregroundColor(.white.opacity(0.45))
-      }
-      .padding(.top, 4)
-
-      Spacer()
-
-      // Actions
-      HStack(spacing: 16) {
-        Button("No, thanks") {
-          onDecline()
+          ShortcutGroup(title: "Tools", shortcuts: [
+            ShortcutItem(keys: "⇧⌘A", action: "Open Annotate"),
+            ShortcutItem(keys: "⇧⌘E", action: "Open Video Editor"),
+          ])
         }
-        .buttonStyle(VSDesignSystem.SecondaryButtonStyle())
+        .frame(maxWidth: 380)
 
-        Button("Yes, enable shortcuts") {
-          onAccept()
+        // Settings hint
+        HStack(spacing: 8) {
+          Image(systemName: "gearshape")
+            .font(.system(size: 12))
+            .foregroundColor(.white.opacity(0.45))
+
+          Text("You can customize shortcuts anytime in Preferences → Shortcuts.")
+            .font(.system(size: 12))
+            .foregroundColor(.white.opacity(0.45))
         }
-        .buttonStyle(VSDesignSystem.PrimaryButtonStyle())
-        .keyboardShortcut(.return, modifiers: [])
-      }
+        .padding(.top, 4)
 
-      Spacer()
-        .frame(height: 40)
+        Spacer()
+
+        // Actions
+        HStack(spacing: 16) {
+          Button("No, thanks") {
+            onDecline()
+          }
+          .buttonStyle(VSDesignSystem.SecondaryButtonStyle())
+
+          Button("Yes, enable shortcuts") {
+            onAccept()
+          }
+          .buttonStyle(VSDesignSystem.PrimaryButtonStyle())
+          .keyboardShortcut(.return, modifiers: [])
+        }
+
+        Spacer()
+          .frame(height: 40)
+      }
+      .padding(40)
+
+      // Back arrow — center-left
+      if let onBack {
+        HStack {
+          Button {
+            onBack()
+          } label: {
+            Image(systemName: "arrow.left")
+              .font(.system(size: 16, weight: .medium))
+              .foregroundColor(.white.opacity(0.5))
+          }
+          .buttonStyle(.plain)
+          .contentShape(Rectangle())
+          .padding(.leading, 24)
+
+          Spacer()
+        }
+      }
     }
-    .padding(40)
     .frame(maxWidth: .infinity, maxHeight: .infinity)
   }
 }
