@@ -15,7 +15,7 @@ struct QuickAccessSettingsView: View {
   var body: some View {
     Form {
       Section("Position") {
-        settingRow(icon: "rectangle.leadinghalf.inset.filled", title: "Screen Edge", description: "Where the overlay appears") {
+        SettingRow(icon: "rectangle.leadinghalf.inset.filled", title: "Screen Edge", description: "Where the overlay appears") {
           Picker("", selection: $positionIsLeft) {
             Text("Left").tag(true)
             Text("Right").tag(false)
@@ -30,7 +30,7 @@ struct QuickAccessSettingsView: View {
       }
 
       Section("Appearance") {
-        settingRow(icon: "arrow.up.left.and.arrow.down.right", title: "Overlay Size", description: "Adjust the floating preview size") {
+        SettingRow(icon: "arrow.up.left.and.arrow.down.right", title: "Overlay Size", description: "Adjust the floating preview size") {
           HStack(spacing: 8) {
             Text("S")
               .font(.caption)
@@ -45,12 +45,12 @@ struct QuickAccessSettingsView: View {
       }
 
       Section("Behaviors") {
-        settingRow(icon: "square.on.square", title: "Floating Overlay", description: "Show preview after capture") {
+        SettingRow(icon: "square.on.square", title: "Floating Overlay", description: "Show preview after capture") {
           Toggle("", isOn: $manager.isEnabled)
             .labelsHidden()
         }
 
-        settingRow(icon: "timer", title: "Auto-close", description: autoCloseDescription) {
+        SettingRow(icon: "timer", title: "Auto-close", description: autoCloseDescription) {
           Toggle("", isOn: $manager.autoDismissEnabled)
             .labelsHidden()
         }
@@ -78,12 +78,12 @@ struct QuickAccessSettingsView: View {
           .padding(.vertical, 4)
         }
 
-        settingRow(icon: "hand.draw", title: "Drag & Drop", description: "Drag captures to other apps") {
+        SettingRow(icon: "hand.draw", title: "Drag & Drop", description: "Drag captures to other apps") {
           Toggle("", isOn: $manager.dragDropEnabled)
             .labelsHidden()
         }
 
-        settingRow(icon: "cloud.fill", title: "Cloud Upload", description: "Show upload button on overlay") {
+        SettingRow(icon: "cloud.fill", title: "Cloud Upload", description: "Show upload button on overlay") {
           Toggle("", isOn: $manager.showCloudUpload)
             .labelsHidden()
         }
@@ -93,37 +93,6 @@ struct QuickAccessSettingsView: View {
     .onAppear {
       positionIsLeft = manager.position.isLeftSide
     }
-  }
-
-  // MARK: - Setting Row Helper
-
-  @ViewBuilder
-  private func settingRow<Content: View>(
-    icon: String,
-    title: String,
-    description: String?,
-    @ViewBuilder content: () -> Content
-  ) -> some View {
-    HStack(spacing: 12) {
-      Image(systemName: icon)
-        .font(.title2)
-        .foregroundColor(.secondary)
-        .frame(width: 28)
-
-      VStack(alignment: .leading, spacing: 2) {
-        Text(title)
-          .fontWeight(.medium)
-        if let description {
-          Text(description)
-            .font(.caption)
-            .foregroundColor(.secondary)
-        }
-      }
-
-      Spacer()
-      content()
-    }
-    .padding(.vertical, 4)
   }
 
   // MARK: - Helpers

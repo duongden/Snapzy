@@ -1,14 +1,19 @@
 //
-//  RecordingSettingsView.swift
+//  CaptureSettingsView.swift
 //  Snapzy
 //
-//  Recording preferences tab with format, quality, and audio settings
+//  Capture preferences tab combining screenshot behavior, recording settings, and post-capture actions
 //
 
 import AVFoundation
 import SwiftUI
 
-struct RecordingSettingsView: View {
+struct CaptureSettingsView: View {
+  // Screenshot behavior
+  @AppStorage(PreferencesKeys.hideDesktopIcons) private var hideDesktopIcons = false
+  @AppStorage(PreferencesKeys.hideDesktopWidgets) private var hideDesktopWidgets = false
+
+  // Recording settings
   @AppStorage(PreferencesKeys.recordingFormat) private var format = "mov"
   @AppStorage(PreferencesKeys.recordingFPS) private var fps = 30
   @AppStorage(PreferencesKeys.recordingQuality) private var quality = "high"
@@ -27,8 +32,24 @@ struct RecordingSettingsView: View {
 
   var body: some View {
     Form {
-      Section("Format") {
-        settingRow(icon: "film", title: "Video Format", description: "MOV offers better quality. MP4 provides wider compatibility.") {
+      // MARK: - Desktop
+
+      Section("Desktop") {
+        SettingRow(icon: "eye.slash", title: "Hide desktop icons", description: "Temporarily hide icons during capture") {
+          Toggle("", isOn: $hideDesktopIcons)
+            .labelsHidden()
+        }
+
+        SettingRow(icon: "widget.small", title: "Hide desktop widgets", description: "Temporarily hide widgets during capture") {
+          Toggle("", isOn: $hideDesktopWidgets)
+            .labelsHidden()
+        }
+      }
+
+      // MARK: - Recording
+
+      Section("Recording Format") {
+        SettingRow(icon: "film", title: "Video Format", description: "MOV offers better quality. MP4 provides wider compatibility.") {
           Picker("", selection: $format) {
             Text("MOV").tag("mov")
             Text("MP4").tag("mp4")
@@ -39,8 +60,8 @@ struct RecordingSettingsView: View {
         }
       }
 
-      Section("Quality") {
-        settingRow(icon: "gauge.with.dots.needle.33percent", title: "Frame Rate", description: "Higher FPS for smoother motion") {
+      Section("Recording Quality") {
+        SettingRow(icon: "gauge.with.dots.needle.33percent", title: "Frame Rate", description: "Higher FPS for smoother motion") {
           Picker("", selection: $fps) {
             Text("30 FPS").tag(30)
             Text("60 FPS").tag(60)
@@ -50,7 +71,7 @@ struct RecordingSettingsView: View {
           .frame(width: 140)
         }
 
-        settingRow(icon: "sparkles", title: "Quality", description: "Higher quality = larger file size") {
+        SettingRow(icon: "sparkles", title: "Quality", description: "Higher quality = larger file size") {
           Picker("", selection: $quality) {
             Text("High").tag("high")
             Text("Medium").tag("medium")
@@ -62,20 +83,20 @@ struct RecordingSettingsView: View {
         }
       }
 
-      Section("Behavior") {
-        settingRow(icon: "rectangle.dashed", title: "Remember Last Area", description: "Restore previous recording area on next capture") {
+      Section("Recording Behavior") {
+        SettingRow(icon: "rectangle.dashed", title: "Remember Last Area", description: "Restore previous recording area on next capture") {
           Toggle("", isOn: $rememberLastArea)
             .labelsHidden()
         }
       }
 
       Section("Audio") {
-        settingRow(icon: "speaker.wave.3.fill", title: "System Audio", description: "Capture sounds from apps") {
+        SettingRow(icon: "speaker.wave.3.fill", title: "System Audio", description: "Capture sounds from apps") {
           Toggle("", isOn: $captureAudio)
             .labelsHidden()
         }
 
-        settingRow(icon: "mic.fill", title: "Microphone", description: microphoneDescription) {
+        SettingRow(icon: "mic.fill", title: "Microphone", description: microphoneDescription) {
           Toggle("", isOn: Binding(
             get: { captureMicrophone },
             set: { newValue in
@@ -99,46 +120,13 @@ struct RecordingSettingsView: View {
         Text("Snapzy needs microphone permission. Please enable it in System Settings > Privacy & Security > Microphone.")
       }
 
-      Section("Save Location") {
-        settingRow(icon: "folder.fill", title: "Recording Location", description: "Same as screenshots") {
-          Text("See General tab")
-            .font(.caption)
-            .foregroundColor(.accentColor)
-        }
+      // MARK: - After Capture
+
+      Section("After Capture") {
+        AfterCaptureMatrixView()
       }
     }
     .formStyle(.grouped)
-  }
-
-  // MARK: - Setting Row Helper
-
-  @ViewBuilder
-  private func settingRow<Content: View>(
-    icon: String,
-    title: String,
-    description: String?,
-    @ViewBuilder content: () -> Content
-  ) -> some View {
-    HStack(spacing: 12) {
-      Image(systemName: icon)
-        .font(.title2)
-        .foregroundColor(.secondary)
-        .frame(width: 28)
-
-      VStack(alignment: .leading, spacing: 2) {
-        Text(title)
-          .fontWeight(.medium)
-        if let description {
-          Text(description)
-            .font(.caption)
-            .foregroundColor(.secondary)
-        }
-      }
-
-      Spacer()
-      content()
-    }
-    .padding(.vertical, 4)
   }
 
   // MARK: - Helpers
@@ -182,6 +170,6 @@ struct RecordingSettingsView: View {
 }
 
 #Preview {
-  RecordingSettingsView()
-    .frame(width: 600, height: 400)
+  CaptureSettingsView()
+    .frame(width: 600, height: 550)
 }

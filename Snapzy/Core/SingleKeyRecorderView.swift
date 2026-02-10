@@ -8,25 +8,32 @@
 import AppKit
 import SwiftUI
 
+/// A single context badge for annotation tool availability
+struct AnnotationToolBadge: Hashable {
+  let label: String
+  let color: Color
+
+  func hash(into hasher: inout Hasher) { hasher.combine(label) }
+  static func == (lhs: Self, rhs: Self) -> Bool { lhs.label == rhs.label }
+}
+
 /// Context where an annotation tool is available
 enum AnnotationToolContext {
   case screenshotOnly
   case recordingOnly
   case both
 
-  var label: String {
+  var badges: [AnnotationToolBadge] {
     switch self {
-    case .screenshotOnly: return "Screenshot"
-    case .recordingOnly: return "Recording"
-    case .both: return "Screenshot & Recording"
-    }
-  }
-
-  var color: Color {
-    switch self {
-    case .screenshotOnly: return .blue
-    case .recordingOnly: return .orange
-    case .both: return .green
+    case .screenshotOnly:
+      return [AnnotationToolBadge(label: "Screenshot", color: .blue)]
+    case .recordingOnly:
+      return [AnnotationToolBadge(label: "Recording", color: .orange)]
+    case .both:
+      return [
+        AnnotationToolBadge(label: "Screenshot", color: .blue),
+        AnnotationToolBadge(label: "Recording", color: .orange),
+      ]
     }
   }
 }
@@ -49,18 +56,22 @@ struct SingleKeyRecorderView: View {
         .foregroundColor(.secondary)
         .frame(width: 24)
 
-      VStack(alignment: .leading, spacing: 2) {
+      VStack(alignment: .leading, spacing: 4) {
         Text(tool.displayName)
-        Text(context.label)
-          .font(.system(size: 9, weight: .medium))
-          .foregroundColor(context.color)
-          .padding(.horizontal, 5)
-          .padding(.vertical, 1)
-          .background(
-            Capsule().fill(context.color.opacity(0.15))
-          )
+        HStack(spacing: 4) {
+          ForEach(context.badges, id: \.label) { badge in
+            Text(badge.label)
+              .font(.system(size: 9, weight: .medium))
+              .foregroundColor(badge.color)
+              .padding(.horizontal, 5)
+              .padding(.vertical, 1)
+              .background(
+                Capsule().fill(badge.color.opacity(0.15))
+              )
+          }
+        }
       }
-      .frame(width: 100, alignment: .leading)
+      .frame(minWidth: 100, alignment: .leading)
 
       Spacer()
 

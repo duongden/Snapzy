@@ -15,23 +15,17 @@ struct PreferencesView: View {
       GeneralSettingsView()
         .tabItem { Label("General", systemImage: "gear") }
 
-//      PlaceholderSettingsView.wallpaper
-//        .tabItem { Label("Wallpaper", systemImage: "photo") }
-
-      ShortcutsSettingsView()
-        .tabItem { Label("Shortcuts", systemImage: "keyboard") }
+      CaptureSettingsView()
+        .tabItem { Label("Capture", systemImage: "camera.viewfinder") }
 
       QuickAccessSettingsView()
         .tabItem { Label("Quick Access", systemImage: "square.stack") }
 
-      RecordingSettingsView()
-        .tabItem { Label("Recording", systemImage: "video") }
+      ShortcutsSettingsView()
+        .tabItem { Label("Shortcuts", systemImage: "keyboard") }
 
-//      PlaceholderSettingsView.cloud
-//        .tabItem { Label("Cloud", systemImage: "cloud") }
-
-      AdvancedSettingsView()
-        .tabItem { Label("Advanced", systemImage: "slider.horizontal.3") }
+      PermissionsSettingsView()
+        .tabItem { Label("Permissions", systemImage: "lock.shield") }
 
       AboutSettingsView()
         .tabItem { Label("About", systemImage: "info.circle") }

@@ -2,7 +2,7 @@
 //  GeneralSettingsView.swift
 //  Snapzy
 //
-//  General preferences tab with startup, sounds, export, and after-capture settings
+//  General preferences tab with startup, appearance, storage, updates, and help
 //
 
 import SwiftUI
@@ -11,14 +11,11 @@ import Sparkle
 struct GeneralSettingsView: View {
   @AppStorage(PreferencesKeys.playSounds) private var playSounds = true
   @AppStorage(PreferencesKeys.exportLocation) private var exportLocation = ""
-  @AppStorage(PreferencesKeys.hideDesktopIcons) private var hideDesktopIcons = false
-  @AppStorage(PreferencesKeys.hideDesktopWidgets) private var hideDesktopWidgets = false
   @Environment(\.openWindow) private var openWindow
   @ObservedObject private var themeManager = ThemeManager.shared
 
   @State private var startAtLogin = LoginItemManager.isEnabled
 
-  // Use shared updater manager
   private var updater: SPUUpdater {
     UpdaterManager.shared.updater
   }
@@ -26,7 +23,7 @@ struct GeneralSettingsView: View {
   var body: some View {
     Form {
       Section("Startup") {
-        settingRow(icon: "power.circle", title: "Start at login", description: "Launch Snapzy when you log in") {
+        SettingRow(icon: "power.circle", title: "Start at login", description: "Launch Snapzy when you log in") {
           Toggle("", isOn: $startAtLogin)
             .labelsHidden()
             .onChange(of: startAtLogin) { _, newValue in
@@ -34,7 +31,7 @@ struct GeneralSettingsView: View {
             }
         }
 
-        settingRow(icon: "speaker.wave.2", title: "Play sounds", description: "Audio feedback for captures") {
+        SettingRow(icon: "speaker.wave.2", title: "Play sounds", description: "Audio feedback for captures") {
           Toggle("", isOn: $playSounds)
             .labelsHidden()
         }
@@ -46,7 +43,7 @@ struct GeneralSettingsView: View {
       }
 
       Section("Storage") {
-        settingRow(icon: "folder.fill", title: "Save location", description: exportLocationDisplay) {
+        SettingRow(icon: "folder.fill", title: "Save location", description: exportLocationDisplay) {
           Button("Choose...") {
             chooseExportLocation()
           }
@@ -55,34 +52,8 @@ struct GeneralSettingsView: View {
         }
       }
 
-      Section("Capture") {
-        settingRow(icon: "eye.slash", title: "Hide desktop icons", description: "Temporarily hide icons during capture") {
-          Toggle("", isOn: $hideDesktopIcons)
-            .labelsHidden()
-        }
-
-        settingRow(icon: "widget.small", title: "Hide desktop widgets", description: "Temporarily hide widgets during capture") {
-          Toggle("", isOn: $hideDesktopWidgets)
-            .labelsHidden()
-        }
-      }
-
-      Section("Post-Capture Actions") {
-        AfterCaptureMatrixView()
-      }
-
-      Section("Help") {
-        settingRow(icon: "arrow.counterclockwise.circle", title: "Restart Onboarding", description: "Show the welcome tutorial again") {
-          Button("Restart") {
-            restartOnboarding()
-          }
-          .buttonStyle(.bordered)
-          .controlSize(.small)
-        }
-      }
-
       Section("Software Updates") {
-        settingRow(icon: "arrow.triangle.2.circlepath", title: "Check automatically", description: "Look for updates on launch") {
+        SettingRow(icon: "arrow.triangle.2.circlepath", title: "Check automatically", description: "Look for updates on launch") {
           Toggle("", isOn: Binding(
             get: { updater.automaticallyChecksForUpdates },
             set: { updater.automaticallyChecksForUpdates = $0 }
@@ -90,7 +61,7 @@ struct GeneralSettingsView: View {
           .labelsHidden()
         }
 
-        settingRow(icon: "arrow.down.circle", title: "Download automatically", description: "Download updates in background") {
+        SettingRow(icon: "arrow.down.circle", title: "Download automatically", description: "Download updates in background") {
           Toggle("", isOn: Binding(
             get: { updater.automaticallyDownloadsUpdates },
             set: { updater.automaticallyDownloadsUpdates = $0 }
@@ -98,7 +69,7 @@ struct GeneralSettingsView: View {
           .labelsHidden()
         }
 
-        settingRow(icon: "clock", title: "Last checked", description: nil) {
+        SettingRow(icon: "clock", title: "Last checked", description: nil) {
           if let lastCheck = updater.lastUpdateCheckDate {
             Text(lastCheck, style: .relative)
               .font(.caption)
@@ -110,43 +81,22 @@ struct GeneralSettingsView: View {
           }
         }
       }
+
+      Section("Help") {
+        SettingRow(icon: "arrow.counterclockwise.circle", title: "Restart Onboarding", description: "Show the welcome tutorial again") {
+          Button("Restart") {
+            restartOnboarding()
+          }
+          .buttonStyle(.bordered)
+          .controlSize(.small)
+        }
+      }
     }
     .formStyle(.grouped)
     .onAppear {
       startAtLogin = LoginItemManager.isEnabled
       initializeExportLocation()
     }
-  }
-
-  // MARK: - Setting Row Helper
-
-  @ViewBuilder
-  private func settingRow<Content: View>(
-    icon: String,
-    title: String,
-    description: String?,
-    @ViewBuilder content: () -> Content
-  ) -> some View {
-    HStack(spacing: 12) {
-      Image(systemName: icon)
-        .font(.title2)
-        .foregroundColor(.secondary)
-        .frame(width: 28)
-
-      VStack(alignment: .leading, spacing: 2) {
-        Text(title)
-          .fontWeight(.medium)
-        if let description {
-          Text(description)
-            .font(.caption)
-            .foregroundColor(.secondary)
-        }
-      }
-
-      Spacer()
-      content()
-    }
-    .padding(.vertical, 4)
   }
 
   // MARK: - Helpers
@@ -187,7 +137,6 @@ struct GeneralSettingsView: View {
     NSApp.keyWindow?.close()
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
       NSApp.activate(ignoringOtherApps: true)
-      // openWindow(id: "onboarding")
     }
   }
 }

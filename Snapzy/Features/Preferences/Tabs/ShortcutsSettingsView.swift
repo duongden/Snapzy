@@ -38,7 +38,7 @@ struct ShortcutsSettingsView: View {
           .font(.caption)
           .foregroundColor(.secondary)
 
-        settingRow(icon: "keyboard", title: "Enable Shortcuts", description: "Capture from any app") {
+        SettingRow(icon: "keyboard", title: "Enable Shortcuts", description: "Capture from any app") {
           Toggle("", isOn: $shortcutsEnabled)
             .labelsHidden()
             .onChange(of: shortcutsEnabled) { _, newValue in
@@ -162,37 +162,6 @@ struct ShortcutsSettingsView: View {
         .padding()
       }
     }
-  }
-
-  // MARK: - Setting Row Helper
-
-  @ViewBuilder
-  private func settingRow<Content: View>(
-    icon: String,
-    title: String,
-    description: String?,
-    @ViewBuilder content: () -> Content
-  ) -> some View {
-    HStack(spacing: 12) {
-      Image(systemName: icon)
-        .font(.title2)
-        .foregroundColor(.secondary)
-        .frame(width: 28)
-
-      VStack(alignment: .leading, spacing: 2) {
-        Text(title)
-          .fontWeight(.medium)
-        if let description {
-          Text(description)
-            .font(.caption)
-            .foregroundColor(.secondary)
-        }
-      }
-
-      Spacer()
-      content()
-    }
-    .padding(.vertical, 4)
   }
 
   // MARK: - Actions

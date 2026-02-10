@@ -1,8 +1,8 @@
 //
-//  AdvancedSettingsView.swift
+//  PermissionsSettingsView.swift
 //  Snapzy
 //
-//  Advanced preferences tab with permissions status and system settings links
+//  Permissions status tab showing system permission states and settings links
 //
 
 import AppKit
@@ -10,7 +10,7 @@ import AVFoundation
 import ScreenCaptureKit
 import SwiftUI
 
-struct AdvancedSettingsView: View {
+struct PermissionsSettingsView: View {
   @State private var screenRecordingGranted = false
   @State private var microphoneGranted = false
   @State private var accessibilityGranted = false
@@ -96,13 +96,11 @@ struct AdvancedSettingsView: View {
     settingsURL: String
   ) -> some View {
     HStack(spacing: 12) {
-      // Icon
       Image(systemName: icon)
         .font(.title2)
         .foregroundColor(.secondary)
         .frame(width: 28)
 
-      // Name and description
       VStack(alignment: .leading, spacing: 2) {
         HStack(spacing: 6) {
           Text(name)
@@ -124,7 +122,6 @@ struct AdvancedSettingsView: View {
 
       Spacer()
 
-      // Status badge
       HStack(spacing: 4) {
         Image(systemName: isGranted ? "checkmark.circle.fill" : "xmark.circle.fill")
           .foregroundColor(isGranted ? .green : .orange)
@@ -137,7 +134,6 @@ struct AdvancedSettingsView: View {
       .background(isGranted ? Color.green.opacity(0.1) : Color.orange.opacity(0.1))
       .cornerRadius(6)
 
-      // Open Settings button
       Button("Open Settings") {
         openSystemSettings(settingsURL)
       }
@@ -152,13 +148,9 @@ struct AdvancedSettingsView: View {
   private func checkAllPermissions() {
     isChecking = true
 
-    // Check microphone (sync)
     checkMicrophonePermission()
-
-    // Check accessibility (sync)
     checkAccessibilityPermission()
 
-    // Check screen recording (async)
     Task {
       await checkScreenRecordingPermission()
       await MainActor.run {
@@ -199,6 +191,6 @@ struct AdvancedSettingsView: View {
 }
 
 #Preview {
-  AdvancedSettingsView()
+  PermissionsSettingsView()
     .frame(width: 600, height: 400)
 }
