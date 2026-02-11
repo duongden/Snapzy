@@ -45,10 +45,6 @@ struct VideoTimelineView: View {
         }
         .frame(height: frameStripHeight)
         .clipShape(RoundedRectangle(cornerRadius: 6))
-        .overlay(
-          RoundedRectangle(cornerRadius: 6)
-            .strokeBorder(Color.yellow, lineWidth: 3)
-        )
         .contentShape(Rectangle())
         .gesture(scrubGesture(timelineWidth: timelineWidth))
 

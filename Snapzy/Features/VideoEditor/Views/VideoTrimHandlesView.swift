@@ -32,6 +32,17 @@ struct VideoTrimHandlesView: View {
         .frame(width: timelineWidth - endHandleOffset)
         .offset(x: endHandleOffset)
 
+      // Yellow rounded border between trim handles
+      let leftEdge = max(0, min(startHandleOffset - handleWidth / 2, timelineWidth - handleWidth))
+      let rightEdge = max(0, min(endHandleOffset - handleWidth / 2, timelineWidth - handleWidth)) + handleWidth
+      let borderWidth = max(0, rightEdge - leftEdge)
+
+      RoundedRectangle(cornerRadius: 6)
+        .strokeBorder(Color.yellow, lineWidth: 3)
+        .frame(width: borderWidth, height: handleHeight)
+        .offset(x: leftEdge)
+        .allowsHitTesting(false)
+
       // Start handle — clamped so it stays fully visible within timeline
       TrimHandle(isStart: true, isDragging: isDraggingStart)
         .offset(x: max(0, min(startHandleOffset - handleWidth / 2, timelineWidth - handleWidth)))
@@ -111,10 +122,6 @@ private struct TrimHandle: View {
         Image(systemName: isStart ? "chevron.compact.left" : "chevron.compact.right")
           .font(.system(size: 16, weight: .bold))
           .foregroundColor(.black.opacity(0.5))
-      )
-      .overlay(
-        RoundedRectangle(cornerRadius: 3)
-          .strokeBorder(Color.black.opacity(0.3), lineWidth: 1)
       )
       .shadow(color: .black.opacity(0.3), radius: 2, x: 0, y: 1)
       .contentShape(Rectangle().inset(by: -10))
