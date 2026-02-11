@@ -61,6 +61,12 @@ final class VideoEditorState: ObservableObject {
   }
   private var initialIsMuted: Bool = false
 
+  /// Sync player preview mute with export audio mode
+  func syncPlayerMuteWithExportSettings() {
+    player.isMuted = exportSettings.audioMode == .mute
+    isMuted = exportSettings.audioMode == .mute
+  }
+
   // MARK: - Frame Thumbnails
 
   @Published private(set) var frameThumbnails: [NSImage] = []
@@ -645,6 +651,7 @@ final class VideoEditorState: ObservableObject {
   /// Update export settings and recalculate file size
   func updateExportSettings(_ settings: ExportSettings) {
     exportSettings = settings
+    syncPlayerMuteWithExportSettings()
     recalculateEstimatedFileSize()
   }
 
