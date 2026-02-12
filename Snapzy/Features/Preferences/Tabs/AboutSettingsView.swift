@@ -90,6 +90,34 @@ struct AboutSettingsView: View {
       }
       .buttonStyle(.borderedProminent)
       .controlSize(.regular)
+
+      // Contact Links
+      HStack(spacing: Spacing.md) {
+        Link(destination: URL(string: "https://snapzy.app")!) {
+          Image(systemName: "globe")
+            .font(.system(size: 14))
+            .foregroundColor(.secondary)
+        }
+        .buttonStyle(.plain)
+        .help("Website")
+
+        Link(destination: URL(string: "https://github.com/duongductrong")!) {
+          Image(systemName: "person.crop.circle")
+            .font(.system(size: 14))
+            .foregroundColor(.secondary)
+        }
+        .buttonStyle(.plain)
+        .help("GitHub")
+
+        Link(destination: URL(string: "https://github.com/duongductrong/Snapzy/issues")!) {
+          Image(systemName: "ant.fill")
+            .font(.system(size: 14))
+            .foregroundColor(.secondary)
+        }
+        .buttonStyle(.plain)
+        .help("Report a Bug")
+      }
+      .padding(.top, Spacing.xs)
     }
     .frame(maxWidth: .infinity)
     .padding(.vertical, Spacing.md)
