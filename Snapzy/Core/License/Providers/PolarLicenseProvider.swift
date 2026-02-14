@@ -6,13 +6,21 @@ final class PolarLicenseProvider {
     private let decoder: JSONDecoder
     private let encoder: JSONEncoder
 
-    // Sandbox mode toggle - set to true for testing
+    // Sandbox mode toggle — automatically set based on build configuration.
     // IMPORTANT: Sandbox and Production use DIFFERENT organizations!
+    #if DEBUG
     static var isSandbox: Bool = true {
         didSet {
             shared.updateBaseURL()
         }
     }
+    #else
+    static var isSandbox: Bool = false {
+        didSet {
+            shared.updateBaseURL()
+        }
+    }
+    #endif
 
     private static var sandboxBaseURL: String = SecretsConfig.polarSandboxApiBaseURL
     private static var productionBaseURL: String = SecretsConfig.polarApiBaseURL

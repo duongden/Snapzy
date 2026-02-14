@@ -97,6 +97,7 @@ if LicenseManager.shared.canAccessFeature(.videoEditing) {
 ## Security Features
 
 ### Device Fingerprinting
+
 - Generates unique device identifier from:
   - Hardware UUID
   - Device model
@@ -105,25 +106,27 @@ if LicenseManager.shared.canAccessFeature(.videoEditing) {
 - Verified on cache load
 
 ### Time-Shifting Prevention
+
 - Compares local time with server timestamp
 - Max allowed drift: 5 minutes
 - Grace period: 24 hours (max 2 uses)
 - Time manipulation detection
 
 ### License Caching
+
 - Encrypted storage in UserDefaults + Keychain
 - Valid for 24 hours (with grace period)
 - Fingerprint verification prevents restore attacks
 
 ## Anti-Cheat Summary
 
-| Threat | Mitigation |
-|--------|-----------|
+| Threat            | Mitigation                               |
+| ----------------- | ---------------------------------------- |
 | Time manipulation | Server time validation + drift detection |
-| License sharing | Device fingerprint + activation binding |
-| Offline abuse | Grace period limits + telemetry |
-| Cache tampering | Encryption + fingerprint verification |
-| API abuse | Rate limiting (Polar enforced) |
+| License sharing   | Device fingerprint + activation binding  |
+| Offline abuse     | Grace period limits + telemetry          |
+| Cache tampering   | Encryption + fingerprint verification    |
+| API abuse         | Rate limiting (Polar enforced)           |
 
 ## Error Handling
 
