@@ -28,7 +28,8 @@ struct License: Codable, Equatable {
 
     var remainingActivations: Int? {
         guard let limit = limitActivations else { return nil }
-        return limit - usage
+        // Approximate — actual enforcement is at the API level via /activate.
+        return max(0, limit - usage)
     }
 
     struct Activation: Codable, Equatable {

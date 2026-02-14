@@ -242,6 +242,8 @@ final class PolarLicenseProvider {
             return
         case 400:
             throw LicenseError.invalidLicenseKey
+        case 422:
+            throw LicenseError.noActivationsRemaining
         case 401, 403:
             throw LicenseError.validationFailed("Unauthorized")
         case 404:

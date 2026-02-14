@@ -99,10 +99,8 @@ final class LicenseManager: ObservableObject {
 
         switch response.status {
         case "granted":
-            // Check activation limit
-            if let limit = response.limitActivations, response.usage >= limit {
-                throw LicenseError.noActivationsRemaining
-            }
+            // Activation limit is enforced server-side by the /activate endpoint.
+            // No need to check here — usage ≠ activation count.
             return response
         case "revoked":
             throw LicenseError.licenseRevoked
