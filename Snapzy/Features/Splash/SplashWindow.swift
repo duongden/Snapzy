@@ -14,9 +14,18 @@ import SwiftUI
 final class SplashWindow: NSWindow {
 
   init(screen: NSScreen) {
+    // Size to ~85% of visible screen (max 1200×800) for a normal window feel
+    let windowSize = NSSize(
+      width: min(screen.visibleFrame.width * 0.85, 1200),
+      height: min(screen.visibleFrame.height * 0.85, 800)
+    )
+    let origin = NSPoint(
+      x: screen.visibleFrame.midX - windowSize.width / 2,
+      y: screen.visibleFrame.midY - windowSize.height / 2
+    )
     super.init(
-      contentRect: screen.visibleFrame,
-      styleMask: [.titled, .closable, .miniaturizable, .fullSizeContentView],
+      contentRect: NSRect(origin: origin, size: windowSize),
+      styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
       backing: .buffered,
       defer: false
     )
@@ -32,6 +41,7 @@ final class SplashWindow: NSWindow {
     level = .normal
     hasShadow = true
     isReleasedWhenClosed = false
+    minSize = NSSize(width: 700, height: 500)
     collectionBehavior = [.managed, .participatesInCycle]
     animationBehavior = .none
 
@@ -103,6 +113,41 @@ final class SplashWindowController: NSObject, NSWindowDelegate {
       onDismiss: { [weak self] in
         self?.dismiss()
       }
+    )
+    window.attachContent(rootView)
+
+    // Show window and activate
+    window.makeKeyAndOrderFront(nil)
+    NSApp.activate(ignoringOtherApps: true)
+
+    // Fade in
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+      self?.animateIn()
+    }
+  }
+
+  /// Show the license activation screen directly (no splash, no skip).
+  /// The window is non-closable to prevent bypassing license activation.
+  func showLicenseActivation() {
+    // Prevent opening multiple license windows
+    if let existing = splashWindow, existing.isVisible { return }
+
+    guard let screen = NSScreen.main else { return }
+
+    // Show app in Cmd+Tab switcher
+    NSApp.setActivationPolicy(.regular)
+
+    let window = SplashWindow(screen: screen)
+    window.delegate = self
+    self.splashWindow = window
+
+    let rootView = LicenseOnboardingRootView(
+      needsOnboarding: false,
+      onDismiss: { [weak self] in
+        self?.dismiss()
+      },
+      startScreen: .license,
+      licenseOnly: true
     )
     window.attachContent(rootView)
 

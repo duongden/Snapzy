@@ -29,6 +29,11 @@ struct PreferencesView: View {
 
       AboutSettingsView()
         .tabItem { Label("About", systemImage: "info.circle") }
+
+      #if DEBUG
+      LicenseDebugSettingsView()
+        .tabItem { Label("License", systemImage: "ant.fill") }
+      #endif
     }
     .frame(width: 700, height: 550)
   }

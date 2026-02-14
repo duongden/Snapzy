@@ -14,8 +14,8 @@ final class PolarLicenseProvider {
         }
     }
 
-    private static var sandboxBaseURL: String = "https://sandbox-api.polar.sh/v1/customer-portal"
-    private static var productionBaseURL: String = "https://api.polar.sh/v1/customer-portal"
+    private static var sandboxBaseURL: String = SecretsConfig.polarSandboxApiBaseURL
+    private static var productionBaseURL: String = SecretsConfig.polarApiBaseURL
 
     // Use lazy initialization to ensure isSandbox is set first
     static let shared: PolarLicenseProvider = {

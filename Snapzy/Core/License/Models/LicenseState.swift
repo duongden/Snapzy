@@ -1,9 +1,7 @@
 import Foundation
 
 enum LicenseState: Equatable {
-    case trial(daysRemaining: Int)
     case licensed(license: License)
-    case trialExpired
     case invalid(reason: InvalidReason)
     case loading
     case noLicense
@@ -15,7 +13,6 @@ enum LicenseState: Equatable {
         case noActivationsRemaining
         case networkError
         case validationFailed
-        case timeManipulationDetected
         case invalidLicenseKey
         case maximumDevicesReached
         case licenseDisabled
@@ -24,20 +21,9 @@ enum LicenseState: Equatable {
 
     var isValid: Bool {
         switch self {
-        case .trial:
-            return true
         case .licensed(let license):
             return license.isValid
-        case .trialExpired, .invalid, .loading, .noLicense:
-            return false
-        }
-    }
-
-    var isTrial: Bool {
-        switch self {
-        case .trial:
-            return true
-        default:
+        case .invalid, .loading, .noLicense:
             return false
         }
     }
@@ -53,8 +39,6 @@ enum LicenseState: Equatable {
 
     var daysRemaining: Int? {
         switch self {
-        case .trial(let days):
-            return days
         case .licensed(let license):
             if let expiresAt = license.expiresAt {
                 let days = Calendar.current.dateComponents([.day], from: Date(), to: expiresAt).day
@@ -68,8 +52,6 @@ enum LicenseState: Equatable {
 
     var statusDescription: String {
         switch self {
-        case .trial(let days):
-            return "Trial - \(days) days remaining"
         case .licensed(let license):
             switch license.status {
             case .granted:
@@ -88,8 +70,6 @@ enum LicenseState: Equatable {
             case .disabled:
                 return "Disabled"
             }
-        case .trialExpired:
-            return "Trial expired"
         case .invalid(let reason):
             return "Invalid - \(reasonDescription(reason))"
         case .loading:
@@ -113,8 +93,6 @@ enum LicenseState: Equatable {
             return "Network error - please check your connection"
         case .validationFailed:
             return "License validation failed"
-        case .timeManipulationDetected:
-            return "Time manipulation detected"
         case .invalidLicenseKey:
             return "Invalid license key"
         case .maximumDevicesReached:
@@ -128,12 +106,8 @@ enum LicenseState: Equatable {
 
     static func == (lhs: LicenseState, rhs: LicenseState) -> Bool {
         switch (lhs, rhs) {
-        case (.trial(let days1), .trial(let days2)):
-            return days1 == days2
         case (.licensed(let l1), .licensed(let l2)):
             return l1 == l2
-        case (.trialExpired, .trialExpired):
-            return true
         case (.invalid(let r1), .invalid(let r2)):
             return r1 == r2
         case (.loading, .loading):
@@ -149,29 +123,14 @@ enum LicenseState: Equatable {
 extension LicenseState: CustomStringConvertible {
     var description: String {
         switch self {
-        case .trial(let days):
-            return "Trial(\(days) days)"
         case .licensed(let license):
             return "Licensed(\(license.displayKey))"
-        case .trialExpired:
-            return "TrialExpired"
         case .invalid(let reason):
             return "Invalid(\(reason))"
         case .loading:
             return "Loading"
         case .noLicense:
             return "NoLicense"
-        }
-    }
-}
-
-extension LicenseState {
-    var entitlements: LicenseEntitlements {
-        switch self {
-        case .trial, .licensed:
-            return .pro
-        default:
-            return .free
         }
     }
 }

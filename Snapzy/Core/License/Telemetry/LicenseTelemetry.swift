@@ -2,19 +2,15 @@ import Foundation
 
 enum LicenseEvent: String {
     case appLaunched = "app_launched"
-    case trialStarted = "trial_started"
-    case trialExpired = "trial_expired"
+
     case licenseActivated = "license_activated"
     case licenseValidated = "license_validated"
     case licenseRevoked = "license_revoked"
     case licenseExpired = "license_expired"
     case validationFailed = "validation_failed"
-    case timeManipulationDetected = "time_manipulation"
     case deviceLimitExceeded = "device_limit_exceeded"
     case activationAttempted = "activation_attempted"
     case deactivationAttempted = "deactivation_attempted"
-    case gracePeriodUsed = "grace_period_used"
-    case gracePeriodExceeded = "grace_period_exceeded"
 }
 
 final class LicenseTelemetry {
@@ -96,15 +92,11 @@ extension LicenseTelemetry {
 
         let eventCounts: [(String, String)] = [
             (LicenseEvent.appLaunched.rawValue, "App Launches"),
-            (LicenseEvent.trialStarted.rawValue, "Trial Started"),
-            (LicenseEvent.trialExpired.rawValue, "Trial Expired"),
+
             (LicenseEvent.licenseActivated.rawValue, "License Activations"),
             (LicenseEvent.licenseValidated.rawValue, "Validations"),
             (LicenseEvent.licenseRevoked.rawValue, "Revocations"),
-            (LicenseEvent.validationFailed.rawValue, "Validation Failures"),
-            (LicenseEvent.timeManipulationDetected.rawValue, "Time Manipulation"),
-            (LicenseEvent.gracePeriodUsed.rawValue, "Grace Period Uses"),
-            (LicenseEvent.gracePeriodExceeded.rawValue, "Grace Period Exceeded")
+            (LicenseEvent.validationFailed.rawValue, "Validation Failures")
         ]
 
         for (eventId, name) in eventCounts {

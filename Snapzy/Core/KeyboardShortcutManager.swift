@@ -395,6 +395,9 @@ final class KeyboardShortcutManager {
   }
 
   private func handleHotkey(id: UInt32) {
+    // Block all hotkeys when the app is not licensed
+    guard LicenseManager.shared.isLicensed else { return }
+
     switch id {
     case fullscreenHotkeyID.id:
       delegate?.shortcutTriggered(.captureFullscreen)

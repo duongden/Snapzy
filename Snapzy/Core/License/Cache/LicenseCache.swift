@@ -5,17 +5,14 @@ final class LicenseCache {
     private let defaults = UserDefaults.standard
 
     private let licenseCacheKey = "com.snapzy.license.cache"
-    private let trialStartKey = "com.snapzy.trial.start"
-    private let trialStartedKey = "com.snapzy.trial.started"
-    private let graceCountKey = "com.snapzy.grace.count"
-    private let lastValidationTimeKey = "com.snapzy.validation.time"
+
     private let licenseKeyKey = "com.snapzy.license.key"
+
 
     struct CacheEntry: Codable {
         let license: License
         let deviceFingerprint: String
         let cachedAt: Date
-        let graceCount: Int
     }
 
     func saveLicense(_ response: ActivateResponse) throws {
@@ -25,8 +22,7 @@ final class LicenseCache {
         let entry = CacheEntry(
             license: license,
             deviceFingerprint: fingerprint,
-            cachedAt: Date(),
-            graceCount: 0
+            cachedAt: Date()
         )
 
         try saveCacheEntry(entry)
@@ -39,13 +35,11 @@ final class LicenseCache {
     func saveLicense(_ response: ValidateResponse) throws {
         let license = License(from: response)
         let fingerprint = DeviceFingerprint.shared.generate()
-        let currentGraceCount = getGraceCount()
 
         let entry = CacheEntry(
             license: license,
             deviceFingerprint: fingerprint,
-            cachedAt: Date(),
-            graceCount: currentGraceCount
+            cachedAt: Date()
         )
 
         try saveCacheEntry(entry)
@@ -98,51 +92,13 @@ final class LicenseCache {
         try keychain.save(data: key.data(using: .utf8)!, forKey: licenseKeyKey)
     }
 
-    func setTrialStart(_ date: Date) {
-        defaults.set(date, forKey: trialStartKey)
-        defaults.set(true, forKey: trialStartedKey)
-    }
 
-    func getTrialStart() -> Date? {
-        return defaults.object(forKey: trialStartKey) as? Date
-    }
 
-    func isTrialStarted() -> Bool {
-        return defaults.bool(forKey: trialStartedKey)
-    }
-
-    func incrementGraceCount() {
-        let count = getGraceCount() + 1
-        defaults.set(count, forKey: graceCountKey)
-    }
-
-    func getGraceCount() -> Int {
-        return defaults.integer(forKey: graceCountKey)
-    }
-
-    func setLastValidationTime(_ date: Date) {
-        defaults.set(date, forKey: lastValidationTimeKey)
-    }
-
-    func getLastValidationTime() -> Date? {
-        return defaults.object(forKey: lastValidationTimeKey) as? Date
-    }
 
     func clear() throws {
         defaults.removeObject(forKey: licenseCacheKey)
-        defaults.removeObject(forKey: trialStartKey)
-        defaults.removeObject(forKey: trialStartedKey)
-        defaults.removeObject(forKey: graceCountKey)
-        defaults.removeObject(forKey: lastValidationTimeKey)
 
         try? keychain.delete(forKey: "activation_id")
         try? keychain.delete(forKey: licenseKeyKey)
-    }
-
-    func isCacheValid() -> Bool {
-        guard let entry = load() else { return false }
-
-        let maxCacheAge: TimeInterval = 82800
-        return Date().timeIntervalSince(entry.cachedAt) < maxCacheAge
     }
 }

@@ -29,6 +29,8 @@ private enum NavigationDirection {
 struct LicenseOnboardingRootView: View {
     let needsOnboarding: Bool
     let onDismiss: () -> Void
+    var startScreen: OnboardingScreen = .splash
+    var licenseOnly: Bool = false
 
     @State private var currentScreen: OnboardingScreen = .splash
     @State private var contentOpacity: Double = 1
@@ -62,7 +64,12 @@ struct LicenseOnboardingRootView: View {
 
                 case .license:
                     LicenseActivationView(onContinue: {
-                        navigateForward(to: .permissions)
+                        if licenseOnly {
+                            // License-only mode: dismiss after activation
+                            handleComplete()
+                        } else {
+                            navigateForward(to: .permissions)
+                        }
                     })
                     .transition(.opacity)
 
@@ -158,6 +165,9 @@ struct LicenseOnboardingRootView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(.top, 28)
+        .onAppear {
+            currentScreen = startScreen
+        }
     }
 
     // MARK: - Transitions
@@ -197,14 +207,14 @@ struct LicenseOnboardingRootView: View {
 
     private var needsLicenseScreen: Bool {
         // Show license screen if Organization ID is not configured
-        // or if no valid license/trial exists
+        // or if no valid license exists
         guard LicenseManager.shared.getOrganizationId() != nil else {
             return true
         }
 
-        // Check if user has a valid trial or license
+        // Check if user has a valid license
         switch LicenseManager.shared.state {
-        case .trial, .licensed:
+        case .licensed:
             return false
         default:
             return true

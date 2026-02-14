@@ -12,7 +12,6 @@ enum LicenseError: Error, LocalizedError {
     case licenseDisabled
     case activationFailed(String)
     case deactivationFailed(String)
-    case timeManipulationDetected
     case noActivationsRemaining
     case invalidResponse
     case decodingError(Error)
@@ -42,8 +41,6 @@ enum LicenseError: Error, LocalizedError {
             return "Activation failed: \(message)"
         case .deactivationFailed(let message):
             return "Deactivation failed: \(message)"
-        case .timeManipulationDetected:
-            return "Time manipulation detected. Please check your system clock."
         case .noActivationsRemaining:
             return "No activations remaining on this license."
         case .invalidResponse:

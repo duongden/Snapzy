@@ -12,6 +12,7 @@ struct LicenseActivationView: View {
 
     @State private var licenseKey: String = ""
     @State private var isValidating = false
+    @State private var isActivating = false
     @State private var errorMessage: String?
     @State private var showError = false
 
@@ -123,28 +124,42 @@ struct LicenseActivationView: View {
             Button {
                 activateLicense()
             } label: {
-                HStack(spacing: 8) {
-                    if isValidating {
+                ZStack {
+                    // Hidden "Activating..." layout to reserve max width
+                    HStack(spacing: 8) {
                         ProgressView()
                             .progressViewStyle(CircularProgressViewStyle(tint: .white))
                             .scaleEffect(0.8)
+                            .frame(width: 14, height: 14)
+                        Text("Activating...")
                     }
-                    Text(isValidating ? "Activating..." : "Continue")
+                    .hidden()
+
+                    // Visible content
+                    HStack(spacing: 8) {
+                        if isValidating || isActivating {
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                .scaleEffect(0.8)
+                                .frame(width: 14, height: 14)
+                        }
+                        Text(buttonLabel)
+                    }
                 }
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundColor(.white)
-                .padding(.horizontal, 32)
+                .padding(.horizontal, 20)
                 .padding(.vertical, 10)
                 .background(
                     Capsule()
-                        .fill(licenseKey.isEmpty || isValidating ? Color.white.opacity(0.1) : Color.white.opacity(0.2))
+                        .fill(isProcessing || licenseKey.isEmpty ? Color.white.opacity(0.1) : Color.white.opacity(0.2))
                 )
                 .overlay(
                     Capsule().stroke(Color.white.opacity(0.3), lineWidth: 1)
                 )
             }
             .buttonStyle(.plain)
-            .disabled(licenseKey.isEmpty || isValidating)
+            .disabled(licenseKey.isEmpty || isProcessing)
             .keyboardShortcut(.return, modifiers: [])
 
             // Hint
@@ -159,6 +174,18 @@ struct LicenseActivationView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
+
+    /// Whether any async operation is in progress
+    private var isProcessing: Bool {
+        isValidating || isActivating
+    }
+
+    /// Dynamic button label based on current phase
+    private var buttonLabel: String {
+        if isValidating { return "Validating..." }
+        if isActivating { return "Activating..." }
+        return "Continue"
+    }
 
     private func activateLicense() {
         guard !licenseKey.isEmpty else { return }
@@ -178,21 +205,33 @@ struct LicenseActivationView: View {
         print("=============================")
         #endif
 
-        isValidating = true
         showError = false
 
         Task {
             do {
-                try await LicenseManager.shared.activateLicense(key: cleanedKey)
+                // Phase 1: Validate the key before activating
+                isValidating = true
+                _ = try await LicenseManager.shared.validateLicenseKey(key: cleanedKey)
                 isValidating = false
+
+                #if DEBUG
+                print("=== LICENSE VALIDATION PASSED — proceeding to activate ===")
+                #endif
+
+                // Phase 2: Activate the validated key
+                isActivating = true
+                try await LicenseManager.shared.activateLicense(key: cleanedKey)
+                isActivating = false
+
                 await MainActor.run {
                     onContinue()
                 }
             } catch {
                 #if DEBUG
-                print("Activation error: \(error.localizedDescription)")
+                print("License error: \(error.localizedDescription)")
                 #endif
                 isValidating = false
+                isActivating = false
                 await MainActor.run {
                     errorMessage = formatError(error)
                     showError = true
@@ -202,7 +241,11 @@ struct LicenseActivationView: View {
     }
 
     private func formatError(_ error: Error) -> String {
-        let message = error.localizedDescription ?? "Unknown error"
+        if let licenseError = error as? LicenseError {
+            return licenseError.localizedDescription
+        }
+
+        let message = error.localizedDescription
 
         if message.contains("404") || message.lowercased().contains("not found") {
             return "License not found. Please check your license key."

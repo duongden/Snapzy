@@ -52,9 +52,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
       name: .showOnboarding,
       object: nil
     )
+
+    // Force license screen when license is invalidated (revoked/disabled/tampered)
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(handleLicenseInvalidated),
+      name: .licenseInvalidated,
+      object: nil
+    )
   }
 
   @objc private func handleShowOnboarding() {
     SplashWindowController.shared.show(forceOnboarding: true)
+  }
+
+  @objc private func handleLicenseInvalidated() {
+    SplashWindowController.shared.showLicenseActivation()
   }
 }

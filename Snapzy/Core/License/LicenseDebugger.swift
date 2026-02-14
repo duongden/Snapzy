@@ -41,7 +41,7 @@ final class LicenseDebugger {
 
         info += "\n\nLicense State:"
         info += "\n  State: \(LicenseManager.shared.state.description)"
-        info += "\n  Is Valid: \(LicenseManager.shared.shouldShowProFeatures())"
+        info += "\n  Is Valid: \(LicenseManager.shared.isLicensed)"
 
         return info
     }

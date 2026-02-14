@@ -137,39 +137,61 @@ struct AboutSettingsView: View {
   // MARK: - License Management
 
   private var licenseSection: some View {
-    VStack(spacing: Spacing.sm) {
-      // License status badge
+    VStack(spacing: 0) {
+      // Top: Status row
       HStack(spacing: Spacing.sm) {
-        Circle()
-          .fill(licenseStatusColor)
-          .frame(width: 7, height: 7)
+        // State icon
+        licenseIconView
+          .frame(width: 28, height: 28)
 
-        Text(licenseStatusText)
-          .font(.caption)
-          .foregroundColor(.secondary)
+        // Title + subtitle
+        VStack(alignment: .leading, spacing: 2) {
+          Text(licenseTitle)
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundColor(.primary)
+
+          Text(licenseSubtitle)
+            .font(.system(size: 11))
+            .foregroundColor(.secondary)
+        }
+
+        Spacer()
+
+        // Masked license key (only when licensed)
+        if case .licensed(let license) = licenseManager.state {
+          Text(license.displayKey)
+            .font(.system(size: 11, design: .monospaced))
+            .foregroundColor(.secondary.opacity(0.7))
+        }
       }
       .padding(.horizontal, Spacing.md)
-      .padding(.vertical, Spacing.xs)
-      .background(Color.primary.opacity(0.05))
-      .clipShape(Capsule())
+      .padding(.vertical, Spacing.sm + 2)
 
-      // Action buttons
+      // Divider
+      Rectangle()
+        .fill(licenseStateColor.opacity(0.12))
+        .frame(height: 0.5)
+
+      // Bottom: Action buttons
       HStack(spacing: Spacing.sm) {
-        // License Manager — re-open the activation flow
         Button {
           showLicenseActivation = true
         } label: {
           HStack(spacing: 4) {
             Image(systemName: "key.fill")
-              .font(.system(size: 11))
+              .font(.system(size: 10))
             Text("License Manager")
           }
-          .font(.system(size: 12))
+          .font(.system(size: 11, weight: .medium))
+          .foregroundColor(licenseStateColor)
         }
-        .controlSize(.small)
+        .buttonStyle(.plain)
 
-        // Deactivate Device — only when licensed
         if case .licensed = licenseManager.state {
+          Circle()
+            .fill(Color.secondary.opacity(0.3))
+            .frame(width: 3, height: 3)
+
           Button(role: .destructive) {
             showDeactivateConfirm = true
           } label: {
@@ -177,48 +199,31 @@ struct AboutSettingsView: View {
               if isProcessing {
                 ProgressView()
                   .controlSize(.small)
-                  .scaleEffect(0.7)
+                  .scaleEffect(0.6)
               }
               Image(systemName: "xmark.circle")
-                .font(.system(size: 11))
+                .font(.system(size: 10))
               Text("Deactivate Device")
             }
-            .font(.system(size: 12))
+            .font(.system(size: 11, weight: .medium))
+            .foregroundColor(.secondary)
           }
-          .controlSize(.small)
+          .buttonStyle(.plain)
           .disabled(isProcessing)
         }
-
-        // DEBUG ONLY: Clear all license data
-        #if DEBUG
-        Button(role: .destructive) {
-          Task {
-            try? await licenseManager.clearLicense()
-          }
-        } label: {
-          HStack(spacing: 4) {
-            Image(systemName: "trash")
-              .font(.system(size: 11))
-            Text("Clear Cache")
-          }
-          .font(.system(size: 12))
-        }
-        .controlSize(.small)
-
-        Button {
-          licenseManager.printDebugInfo()
-        } label: {
-          HStack(spacing: 4) {
-            Image(systemName: "info.circle")
-              .font(.system(size: 11))
-            Text("Debug Info")
-          }
-          .font(.system(size: 12))
-        }
-        .controlSize(.small)
-        #endif
       }
+      .padding(.horizontal, Spacing.md)
+      .padding(.vertical, Spacing.sm)
     }
+    .background(
+      RoundedRectangle(cornerRadius: Size.radiusLg)
+        .fill(licenseStateColor.opacity(0.05))
+        .overlay(
+          RoundedRectangle(cornerRadius: Size.radiusLg)
+            .strokeBorder(licenseStateColor.opacity(0.15), lineWidth: 0.5)
+        )
+    )
+    .frame(maxWidth: 340)
     .alert("Deactivate Device", isPresented: $showDeactivateConfirm) {
       Button("Cancel", role: .cancel) {}
       Button("Deactivate", role: .destructive) {
@@ -242,30 +247,59 @@ struct AboutSettingsView: View {
 
   // MARK: - License Helpers
 
-  private var licenseStatusColor: Color {
+  @ViewBuilder
+  private var licenseIconView: some View {
+    switch licenseManager.state {
+    case .licensed:
+      Image(systemName: "checkmark.shield.fill")
+        .font(.system(size: 18))
+        .foregroundStyle(.green)
+    case .invalid:
+      Image(systemName: "exclamationmark.shield.fill")
+        .font(.system(size: 18))
+        .foregroundStyle(.red)
+    case .noLicense:
+      Image(systemName: "shield.slash")
+        .font(.system(size: 18))
+        .foregroundStyle(.secondary)
+    case .loading:
+      ProgressView()
+        .controlSize(.small)
+    }
+  }
+
+  private var licenseStateColor: Color {
     switch licenseManager.state {
     case .licensed: return .green
-    case .trial: return .orange
-    case .trialExpired, .invalid: return .red
+    case .invalid: return .red
     case .noLicense: return .secondary
     case .loading: return .secondary.opacity(0.5)
     }
   }
 
-  private var licenseStatusText: String {
+  private var licenseTitle: String {
     switch licenseManager.state {
-    case .licensed(let license):
-      return "Licensed \u{2014} \(license.displayKey)"
-    case .trial(let days):
-      return "Trial \u{2014} \(days) days left"
-    case .trialExpired:
-      return "Trial Expired"
+    case .licensed:
+      return "Licensed"
     case .invalid:
       return "License Invalid"
     case .noLicense:
       return "No License"
     case .loading:
       return "Checking\u{2026}"
+    }
+  }
+
+  private var licenseSubtitle: String {
+    switch licenseManager.state {
+    case .licensed:
+      return "Your device is activated"
+    case .invalid(let reason):
+      return licenseManager.state.statusDescription
+    case .noLicense:
+      return "Activate to unlock all features"
+    case .loading:
+      return "Verifying your license"
     }
   }
 
@@ -276,6 +310,10 @@ struct AboutSettingsView: View {
       do {
         try await licenseManager.deactivateLicense()
         isProcessing = false
+
+        // Close Settings window and open the license activation screen
+        NSApp.keyWindow?.close()
+        SplashWindowController.shared.showLicenseActivation()
       } catch {
         isProcessing = false
         licenseError = error.localizedDescription
