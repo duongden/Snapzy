@@ -229,9 +229,7 @@ final class AnnotateState: ObservableObject {
   @Published var selectedAnnotationId: UUID?
   @Published var editingTextAnnotationId: UUID?
 
-  // MARK: - Counter Tool State
-
-  @Published var counterValue: Int = 1
+  // MARK: - Counter Tool State (derived from annotations, not stored)
 
   // MARK: - Crop State
 
@@ -326,7 +324,7 @@ final class AnnotateState: ObservableObject {
     redoStack.removeAll()
     canUndo = false
     canRedo = false
-    counterValue = 1
+
     // Reset crop for new image
     cropRect = nil
     isCropActive = false
@@ -344,7 +342,7 @@ final class AnnotateState: ObservableObject {
     redoStack.removeAll()
     canUndo = false
     canRedo = false
-    counterValue = 1
+
     // Reset crop for new image
     cropRect = nil
     isCropActive = false
@@ -417,14 +415,14 @@ final class AnnotateState: ObservableObject {
 
   // MARK: - Counter
 
+  /// Derive next counter value from existing annotations.
+  /// This ensures undo/redo correctly adjusts future counter values.
   func nextCounterValue() -> Int {
-    let value = counterValue
-    counterValue += 1
-    return value
-  }
-
-  func resetCounter() {
-    counterValue = 1
+    let maxExisting = annotations.compactMap { annotation -> Int? in
+      if case .counter(let v) = annotation.type { return v }
+      return nil
+    }.max() ?? 0
+    return maxExisting + 1
   }
 
   // MARK: - Crop Methods
