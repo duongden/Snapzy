@@ -1,4 +1,5 @@
 import Foundation
+import AppKit
 import Combine
 
 // MARK: - License Invalidation Notification
@@ -26,6 +27,8 @@ final class LicenseManager: ObservableObject {
 
     @Published private(set) var state: LicenseState = .loading
     @Published private(set) var isActivating = false
+    @Published var showInvalidLicenseAlert = false
+    @Published var invalidLicenseMessage: String = ""
 
     // MARK: - Dependencies
 
@@ -267,19 +270,117 @@ final class LicenseManager: ObservableObject {
 
     // MARK: - Cached State (Offline-First)
 
-    /// Loads cached license on startup. Trusted indefinitely — no server check needed.
+    /// Loads cached license on startup, then validates with the server in the background.
     private func loadCachedState() {
-        // 1. Cached license exists → trust it (offline forever)
+        // 1. Cached license exists → show it immediately (no UI delay)
         if let cached = cache.load() {
             state = .licensed(license: cached.license)
             #if DEBUG
             print("=== STARTUP: Loaded cached license (offline-first) ===")
             #endif
+
+            // Validate with server in background (non-blocking)
+            Task { await validateLicenseOnStartup() }
             return
         }
 
         // 2. No data at all
         state = .noLicense
+    }
+
+    /// Validates the cached license key against the server on startup.
+    /// - If valid: refreshes the cache with the latest server data.
+    /// - If revoked/disabled: invalidates the license and forces re-activation.
+    /// - If offline/network error: silently keeps the cached license (offline-first).
+    private func validateLicenseOnStartup() async {
+        guard let orgId = organizationId,
+              let licenseKey = cache.getLicenseKey() else {
+            #if DEBUG
+            print("=== STARTUP VALIDATE: Skipped (missing orgId or cached key) ===")
+            #endif
+            return
+        }
+
+        #if DEBUG
+        print("=== STARTUP VALIDATE: Checking license with server... ===")
+        #endif
+
+        do {
+            let response = try await provider.validate(key: licenseKey, organizationId: orgId)
+
+            switch response.status {
+            case "granted":
+                // License is still valid — refresh cache with latest server data
+                try cache.saveLicense(response)
+                let license = License(from: response)
+                state = .licensed(license: license)
+                #if DEBUG
+                print("=== STARTUP VALIDATE: License confirmed valid ===")
+                #endif
+
+            case "revoked":
+                #if DEBUG
+                print("=== STARTUP VALIDATE: License REVOKED ===")
+                #endif
+                handleLicenseInvalidated(reason: .revoked)
+
+            case "disabled":
+                #if DEBUG
+                print("=== STARTUP VALIDATE: License DISABLED ===")
+                #endif
+                handleLicenseInvalidated(reason: .licenseDisabled)
+
+            default:
+                #if DEBUG
+                print("=== STARTUP VALIDATE: Unexpected status '\(response.status)' ===")
+                #endif
+                handleLicenseInvalidated(reason: .validationFailed)
+            }
+        } catch let error as LicenseError {
+            switch error {
+            case .validationFailed, .invalidLicenseKey, .licenseRevoked, .licenseDisabled, .invalidResponse:
+                // License is invalid on the server (e.g. 404, revoked, disabled)
+                #if DEBUG
+                print("=== STARTUP VALIDATE: License INVALID — \(error.localizedDescription) ===")
+                #endif
+                invalidLicenseMessage = error.localizedDescription
+                showInvalidLicenseAlert = true
+
+            case .networkError, .decodingError:
+                // TODO: Define offline behavior (user will specify later)
+                #if DEBUG
+                print("=== STARTUP VALIDATE: Network/decode error, keeping cached license ===")
+                print("  Error: \(error.localizedDescription)")
+                #endif
+
+            default:
+                // TODO: Define offline behavior (user will specify later)
+                #if DEBUG
+                print("=== STARTUP VALIDATE: Unexpected error, keeping cached license ===")
+                print("  Error: \(error.localizedDescription)")
+                #endif
+            }
+        } catch {
+            // TODO: Define offline behavior (user will specify later)
+            #if DEBUG
+            print("=== STARTUP VALIDATE: Unknown error, keeping cached license ===")
+            print("  Error: \(error.localizedDescription)")
+            #endif
+        }
+    }
+
+    /// User chose to clear the invalid license and re-activate.
+    func confirmClearInvalidLicense() {
+        try? cache.clear()
+        state = .noLicense
+        showInvalidLicenseAlert = false
+        NotificationCenter.default.post(name: .licenseInvalidated, object: nil)
+    }
+
+    /// User chose to quit the app instead of re-activating.
+    func confirmQuitApp() {
+        showInvalidLicenseAlert = false
+        NSApplication.shared.terminate(nil)
     }
 
     // MARK: - License Invalidation

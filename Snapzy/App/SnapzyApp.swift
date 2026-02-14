@@ -7,6 +7,7 @@
 
 import SwiftUI
 import Sparkle
+import Combine
 
 // MARK: - Notification Names
 
@@ -32,6 +33,7 @@ struct SnapzyApp: App {
 
 class AppDelegate: NSObject, NSApplicationDelegate {
   private let viewModel = ScreenCaptureViewModel()
+  private var cancellables = Set<AnyCancellable>()
 
   func applicationDidFinishLaunching(_ notification: Notification) {
     // Setup status bar with dependencies (uses shared UpdaterManager)
@@ -60,6 +62,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
       name: .licenseInvalidated,
       object: nil
     )
+
+    // Observe invalid license alert from startup validation
+    observeInvalidLicenseAlert()
   }
 
   @objc private func handleShowOnboarding() {
@@ -68,5 +73,40 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
   @objc private func handleLicenseInvalidated() {
     SplashWindowController.shared.showLicenseActivation()
+  }
+
+  // MARK: - Invalid License Confirmation
+
+  private func observeInvalidLicenseAlert() {
+    LicenseManager.shared.$showInvalidLicenseAlert
+      .removeDuplicates()
+      .filter { $0 }
+      .receive(on: DispatchQueue.main)
+      .sink { [weak self] _ in
+        self?.showInvalidLicenseConfirmation()
+      }
+      .store(in: &cancellables)
+  }
+
+  private func showInvalidLicenseConfirmation() {
+    let licenseManager = LicenseManager.shared
+
+    let alert = NSAlert()
+    alert.messageText = "License Invalid"
+    alert.informativeText = "\(licenseManager.invalidLicenseMessage)\n\nYou can clear the license and activate a new one, or quit the app."
+    alert.alertStyle = .critical
+    alert.addButton(withTitle: "Reactivate License")
+    alert.addButton(withTitle: "Quit App")
+
+    let response = alert.runModal()
+
+    switch response {
+    case .alertFirstButtonReturn:
+      licenseManager.confirmClearInvalidLicense()
+    case .alertSecondButtonReturn:
+      licenseManager.confirmQuitApp()
+    default:
+      break
+    }
   }
 }
