@@ -284,6 +284,7 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
     session.isCapturing = true
 
     state = .recording
+    DiagnosticLogger.shared.log(.info, .recording, "Recording started \(Int(recordingRect.width))x\(Int(recordingRect.height)) \(fps)fps \(videoFormat.rawValue)")
     self.startTime = Date()
     elapsedSeconds = 0
     pausedDuration = 0
@@ -296,6 +297,7 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
     session.isCapturing = false
     pauseStartTime = Date()
     state = .paused
+    DiagnosticLogger.shared.log(.info, .recording, "Recording paused")
   }
 
   /// Resume the recording
@@ -305,6 +307,7 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
     pauseStartTime = nil
     session.isCapturing = true
     state = .recording
+    DiagnosticLogger.shared.log(.info, .recording, "Recording resumed")
   }
 
   /// Toggle pause/resume
@@ -341,6 +344,9 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
     await session.finishWriting()
 
     let url = outputURL
+    if let url = url {
+      DiagnosticLogger.shared.log(.info, .recording, "Recording stopped: \(url.lastPathComponent) (\(elapsedSeconds)s)")
+    }
 
     // Reset state
     cleanup()
@@ -365,6 +371,7 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
     stream = nil
 
     session.cancelWriting()
+    DiagnosticLogger.shared.log(.info, .recording, "Recording cancelled")
     if let url = outputURL {
       try? FileManager.default.removeItem(at: url)
     }

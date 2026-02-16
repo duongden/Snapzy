@@ -13,6 +13,7 @@ enum OnboardingScreen: Equatable {
     case splash
     case license
     case permissions
+    case diagnostics
     case shortcuts
     case skipConfirmation
     case completion
@@ -38,7 +39,7 @@ struct LicenseOnboardingRootView: View {
     @ObservedObject private var screenCaptureManager = ScreenCaptureManager.shared
 
     // Onboarding steps (excluding splash and license)
-    private static let onboardingSteps: [OnboardingScreen] = [.permissions, .shortcuts, .completion]
+    private static let onboardingSteps: [OnboardingScreen] = [.permissions, .shortcuts, .diagnostics, .completion]
 
     private var isOnboardingStep: Bool {
         currentScreen != .splash && currentScreen != .license
@@ -84,11 +85,18 @@ struct LicenseOnboardingRootView: View {
                 case .shortcuts:
                     ShortcutsView(
                         onBack: { navigateBack(to: .permissions) },
-                        onDecline: { navigateForward(to: .completion) },
+                        onDecline: { navigateForward(to: .diagnostics) },
                         onAccept: {
                             KeyboardShortcutManager.shared.enable()
-                            navigateForward(to: .completion)
+                            navigateForward(to: .diagnostics)
                         }
+                    )
+                    .transition(stepTransition)
+
+                case .diagnostics:
+                    DiagnosticsOptInView(
+                        onBack: { navigateBack(to: .shortcuts) },
+                        onNext: { navigateForward(to: .completion) }
                     )
                     .transition(stepTransition)
 
@@ -101,7 +109,7 @@ struct LicenseOnboardingRootView: View {
 
                 case .completion:
                     CompletionView(
-                        onBack: { navigateBack(to: .shortcuts) },
+                        onBack: { navigateBack(to: .diagnostics) },
                         onComplete: handleComplete
                     )
                     .transition(stepTransition)

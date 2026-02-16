@@ -398,22 +398,30 @@ final class KeyboardShortcutManager {
     // Block all hotkeys when the app is not licensed
     guard LicenseManager.shared.isLicensed else { return }
 
+    let actionName: String
     switch id {
     case fullscreenHotkeyID.id:
+      actionName = "fullscreen"
       delegate?.shortcutTriggered(.captureFullscreen)
     case areaHotkeyID.id:
+      actionName = "area"
       delegate?.shortcutTriggered(.captureArea)
     case recordingHotkeyID.id:
+      actionName = "recording"
       delegate?.shortcutTriggered(.recordVideo)
     case annotateHotkeyID.id:
+      actionName = "annotate"
       delegate?.shortcutTriggered(.openAnnotate)
     case videoEditorHotkeyID.id:
+      actionName = "video-editor"
       delegate?.shortcutTriggered(.openVideoEditor)
     case ocrHotkeyID.id:
+      actionName = "ocr"
       delegate?.shortcutTriggered(.captureOCR)
     default:
-      break
+      return
     }
+    DiagnosticLogger.shared.log(.info, .action, "Shortcut triggered: \(actionName)")
   }
 
   private func registerShortcuts() {

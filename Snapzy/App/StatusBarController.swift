@@ -21,6 +21,7 @@ final class StatusBarController: ObservableObject {
   private var cancellables = Set<AnyCancellable>()
   private let recorder = ScreenRecordingManager.shared
   private var menu: NSMenu?
+  private var didDetectCrash = false
 
   // Dependencies injected after setup
   private var viewModel: ScreenCaptureViewModel?
@@ -34,9 +35,10 @@ final class StatusBarController: ObservableObject {
   // MARK: - Public API
 
   /// Setup the status bar item with required dependencies
-  func setup(viewModel: ScreenCaptureViewModel, updater: SPUUpdater) {
+  func setup(viewModel: ScreenCaptureViewModel, updater: SPUUpdater, didCrash: Bool = false) {
     self.viewModel = viewModel
     self.updater = updater
+    self.didDetectCrash = didCrash
 
     setupStatusItem()
     buildMenu()
@@ -341,6 +343,21 @@ final class StatusBarController: ObservableObject {
 
     menu?.addItem(NSMenuItem.separator())
 
+    // Crash report (only when previous crash detected)
+    if didDetectCrash {
+      let crashItem = NSMenuItem(
+        title: "Submit Crash Report...",
+        action: #selector(submitCrashReportAction),
+        keyEquivalent: ""
+      )
+      crashItem.target = self
+      crashItem.image = NSImage(
+        systemSymbolName: "exclamationmark.triangle", accessibilityDescription: nil)
+      crashItem.isEnabled = true
+      menu?.addItem(crashItem)
+      menu?.addItem(NSMenuItem.separator())
+    }
+
     // Quit
     let quitItem = NSMenuItem(
       title: "Quit Snapzy",
@@ -394,6 +411,30 @@ final class StatusBarController: ObservableObject {
 
   @objc private func checkForUpdatesAction() {
     UpdaterManager.shared.checkForUpdates()
+  }
+
+  @objc private func submitCrashReportAction() {
+    let alert = NSAlert()
+    alert.messageText = "Snapzy quit unexpectedly"
+    alert.informativeText = "A diagnostic log was saved. Would you like to submit a bug report?"
+    alert.alertStyle = .warning
+    alert.addButton(withTitle: "Submit Bug Report")
+    alert.addButton(withTitle: "Dismiss")
+
+    let response = alert.runModal()
+
+    if response == .alertFirstButtonReturn {
+      if let url = URL(string: "https://zapshot.app/bug-report") {
+        NSWorkspace.shared.open(url)
+      }
+      let logFile = DiagnosticLogger.shared.currentLogFileURL
+      if FileManager.default.fileExists(atPath: logFile.path) {
+        NSWorkspace.shared.activateFileViewerSelecting([logFile])
+      }
+    }
+
+    // Clear the flag after user interacts
+    didDetectCrash = false
   }
 
   @objc private func openPreferencesAction() {

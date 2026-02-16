@@ -11,10 +11,12 @@ import Sparkle
 struct GeneralSettingsView: View {
   @AppStorage(PreferencesKeys.playSounds) private var playSounds = true
   @AppStorage(PreferencesKeys.exportLocation) private var exportLocation = ""
+  @AppStorage(PreferencesKeys.diagnosticsEnabled) private var diagnosticsEnabled = true
   @Environment(\.openWindow) private var openWindow
   @ObservedObject private var themeManager = ThemeManager.shared
 
   @State private var startAtLogin = LoginItemManager.isEnabled
+  @State private var logSizeText = "Calculating..."
 
   private var updater: SPUUpdater {
     UpdaterManager.shared.updater
@@ -83,6 +85,21 @@ struct GeneralSettingsView: View {
         }
       }
 
+      Section("Diagnostics") {
+        SettingRow(icon: "doc.text.magnifyingglass", title: "Crash Logging", description: "Collect diagnostic logs to help us fix bugs") {
+          Toggle("", isOn: $diagnosticsEnabled)
+            .labelsHidden()
+        }
+
+        SettingRow(icon: "folder", title: "Log Files", description: logSizeText) {
+          Button("Open Folder") {
+            revealLogFolder()
+          }
+          .buttonStyle(.bordered)
+          .controlSize(.small)
+        }
+      }
+
       Section("Help") {
         SettingRow(icon: "arrow.counterclockwise.circle", title: "Restart Onboarding", description: "Show the welcome tutorial again") {
           Button("Restart") {
@@ -97,6 +114,7 @@ struct GeneralSettingsView: View {
     .onAppear {
       startAtLogin = LoginItemManager.isEnabled
       initializeExportLocation()
+      updateLogSize()
     }
   }
 
@@ -138,6 +156,36 @@ struct GeneralSettingsView: View {
     NSApp.keyWindow?.close()
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
       NotificationCenter.default.post(name: .showOnboarding, object: nil)
+    }
+  }
+
+  private func revealLogFolder() {
+    let logDir = DiagnosticLogger.shared.logDirectoryURL
+    let fm = FileManager.default
+    if !fm.fileExists(atPath: logDir.path) {
+      try? fm.createDirectory(at: logDir, withIntermediateDirectories: true)
+    }
+    NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: logDir.path)
+  }
+
+  private func updateLogSize() {
+    let logDir = DiagnosticLogger.shared.logDirectoryURL
+    let fm = FileManager.default
+    guard let files = try? fm.contentsOfDirectory(atPath: logDir.path) else {
+      logSizeText = "No logs"
+      return
+    }
+    let totalBytes = files.compactMap { file -> Int? in
+      let path = logDir.appendingPathComponent(file).path
+      return (try? fm.attributesOfItem(atPath: path))?[.size] as? Int
+    }.reduce(0, +)
+
+    if totalBytes == 0 {
+      logSizeText = "No logs"
+    } else if totalBytes < 1024 {
+      logSizeText = "\(totalBytes) B"
+    } else {
+      logSizeText = String(format: "%.1f KB", Double(totalBytes) / 1024.0)
     }
   }
 }

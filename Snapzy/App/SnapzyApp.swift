@@ -36,16 +36,24 @@ class AppDelegate: NSObject, NSApplicationDelegate {
   private var cancellables = Set<AnyCancellable>()
 
   func applicationDidFinishLaunching(_ notification: Notification) {
+    // --- Diagnostics: crash detection & logging ---
+    let didCrash = CrashSentinel.shared.checkAndReset()
+    DiagnosticLogger.shared.startSession()
+    LogCleanupScheduler.shared.start()
+
     // Setup status bar with dependencies (uses shared UpdaterManager)
     StatusBarController.shared.setup(
       viewModel: viewModel,
-      updater: UpdaterManager.shared.updater
+      updater: UpdaterManager.shared.updater,
+      didCrash: didCrash && DiagnosticLogger.shared.isEnabled
     )
 
     // Show splash (handles onboarding internally if needed)
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
       SplashWindowController.shared.show()
     }
+
+
 
     // Listen for restart onboarding notification
     NotificationCenter.default.addObserver(
@@ -67,6 +75,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     observeInvalidLicenseAlert()
   }
 
+  func applicationWillTerminate(_ notification: Notification) {
+    DiagnosticLogger.shared.log(.info, .lifecycle, "App terminated normally")
+    CrashSentinel.shared.markTerminated()
+    LogCleanupScheduler.shared.stop()
+  }
+
   @objc private func handleShowOnboarding() {
     SplashWindowController.shared.show(forceOnboarding: true)
   }
@@ -74,6 +88,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
   @objc private func handleLicenseInvalidated() {
     SplashWindowController.shared.showLicenseActivation()
   }
+
+
 
   // MARK: - Invalid License Confirmation
 

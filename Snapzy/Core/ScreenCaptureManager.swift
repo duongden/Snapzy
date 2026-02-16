@@ -130,6 +130,7 @@ final class ScreenCaptureManager: ObservableObject {
 
     isCapturing = true
     defer { isCapturing = false }
+    DiagnosticLogger.shared.log(.info, .capture, "Fullscreen capture started")
 
     do {
       let content = try await SCShareableContent.current
@@ -161,6 +162,7 @@ final class ScreenCaptureManager: ObservableObject {
       return await saveImage(image, to: saveDirectory, fileName: fileName, format: format)
 
     } catch {
+      DiagnosticLogger.shared.log(.error, .capture, "Fullscreen capture failed: \(error.localizedDescription)")
       return .failure(.captureFailed(error.localizedDescription))
     }
   }
@@ -192,6 +194,7 @@ final class ScreenCaptureManager: ObservableObject {
 
     isCapturing = true
     defer { isCapturing = false }
+    DiagnosticLogger.shared.log(.info, .capture, "Area capture started \(Int(rect.width))x\(Int(rect.height))")
 
     do {
       let content = try await SCShareableContent.current
@@ -305,6 +308,7 @@ final class ScreenCaptureManager: ObservableObject {
       return await saveImage(image, to: saveDirectory, fileName: fileName, format: format)
 
     } catch {
+      DiagnosticLogger.shared.log(.error, .capture, "Area capture failed: \(error.localizedDescription)")
       return .failure(.captureFailed(error.localizedDescription))
     }
   }
@@ -367,9 +371,11 @@ final class ScreenCaptureManager: ObservableObject {
 
     switch writeResult {
     case .success(let url):
+      DiagnosticLogger.shared.log(.info, .capture, "Capture saved: \(url.lastPathComponent)")
       captureCompletedSubject.send(url)
       return .success(url)
     case .failure(let error):
+      DiagnosticLogger.shared.log(.error, .capture, "Save failed: \(error.localizedDescription)")
       logger.error("Save failed: \(error.localizedDescription)")
       return .failure(error)
     }

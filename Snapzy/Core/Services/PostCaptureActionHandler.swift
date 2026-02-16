@@ -44,6 +44,7 @@ final class PostCaptureActionHandler {
     }
 
     logger.info("Executing post-capture actions for \(captureType == .screenshot ? "screenshot" : "recording"): \(url.lastPathComponent)")
+    DiagnosticLogger.shared.log(.info, .action, "Post-capture: \(captureType == .screenshot ? "screenshot" : "recording") \(url.lastPathComponent)")
 
     // Show Quick Access Overlay
     if preferencesManager.isActionEnabled(.showQuickAccess, for: captureType) {

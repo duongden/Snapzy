@@ -12,6 +12,7 @@ import SwiftUI
 enum SplashScreen: Equatable {
   case splash
   case permissions
+  case diagnostics
   case shortcuts
   case skipConfirmation
   case completion
@@ -35,7 +36,7 @@ struct SplashOnboardingRootView: View {
   @ObservedObject private var screenCaptureManager = ScreenCaptureManager.shared
 
   // Onboarding steps (excluding splash)
-  private static let onboardingSteps: [SplashScreen] = [.permissions, .shortcuts, .completion]
+  private static let onboardingSteps: [SplashScreen] = [.permissions, .diagnostics, .shortcuts, .completion]
 
   private var isOnboardingStep: Bool {
     currentScreen != .splash
@@ -63,13 +64,20 @@ struct SplashOnboardingRootView: View {
           PermissionsView(
             screenCaptureManager: screenCaptureManager,
             onQuit: { NSApplication.shared.terminate(nil) },
+            onNext: { navigateForward(to: .diagnostics) }
+          )
+          .transition(stepTransition)
+
+        case .diagnostics:
+          DiagnosticsOptInView(
+            onBack: { navigateBack(to: .permissions) },
             onNext: { navigateForward(to: .shortcuts) }
           )
           .transition(stepTransition)
 
         case .shortcuts:
           ShortcutsView(
-            onBack: { navigateBack(to: .permissions) },
+            onBack: { navigateBack(to: .diagnostics) },
             onDecline: { navigateForward(to: .completion) },
             onAccept: {
               KeyboardShortcutManager.shared.enable()
