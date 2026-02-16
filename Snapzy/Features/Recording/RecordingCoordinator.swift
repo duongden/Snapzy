@@ -487,6 +487,9 @@ final class RecordingCoordinator: ObservableObject {
   }
 
   private func stopRecording() {
+    // Capture output mode before cleanup closes the toolbar
+    let outputMode = toolbarWindow?.state.outputMode ?? .video
+
     Task {
       let url = await recorder.stopRecording()
 
@@ -494,11 +497,62 @@ final class RecordingCoordinator: ObservableObject {
         // Play sound
         NSSound(named: "Glass")?.play()
 
-        // Execute post-capture actions based on user preferences
-        await PostCaptureActionHandler.shared.handleVideoCapture(url: url)
+        if outputMode == .gif {
+          // GIF mode: add to QuickAccess immediately with processing state
+          await handleGIFConversion(videoURL: url)
+        } else {
+          // Video mode: normal post-capture flow
+          await PostCaptureActionHandler.shared.handleVideoCapture(url: url)
+        }
       }
 
       cleanup()
+    }
+  }
+
+  /// Handle GIF conversion: add to QuickAccess with progress, convert, and update
+  private func handleGIFConversion(videoURL: URL) async {
+    let quickAccess = QuickAccessManager.shared
+
+    // Add video to QuickAccess immediately with processing state
+    await quickAccess.addVideo(url: videoURL)
+
+    // Find the item we just added (should be first)
+    guard let item = quickAccess.items.first else { return }
+    let itemId = item.id
+
+    // Set initial processing state
+    quickAccess.updateProcessingState(id: itemId, state: .processing(progress: 0))
+
+    // Run GIF conversion
+    do {
+      let gifURL = try await GIFConverter.convert(
+        videoURL: videoURL,
+        onProgress: { progress in
+          quickAccess.updateProcessingState(id: itemId, state: .processing(progress: progress))
+        }
+      )
+
+      // Generate thumbnail from GIF
+      let thumbnail = NSImage(contentsOf: gifURL)
+
+      // Update the QuickAccess item with GIF URL
+      quickAccess.updateItemURL(id: itemId, newURL: gifURL, newThumbnail: thumbnail)
+      quickAccess.updateProcessingState(id: itemId, state: .idle)
+
+      // Delete the original video file
+      try? FileManager.default.removeItem(at: videoURL)
+
+    } catch {
+      print("GIF conversion failed: \(error.localizedDescription)")
+      // On failure, keep the video as-is and clear processing state
+      quickAccess.updateProcessingState(id: itemId, state: .failed)
+
+      // Auto-clear failure state after 2 seconds
+      Task {
+        try? await Task.sleep(nanoseconds: 2_000_000_000)
+        quickAccess.updateProcessingState(id: itemId, state: .idle)
+      }
     }
   }
 

@@ -210,6 +210,27 @@ final class QuickAccessManager: ObservableObject {
     removeItem(id: id)
   }
 
+  /// Update processing state for an item (used during GIF conversion)
+  func updateProcessingState(id: UUID, state: QuickAccessProcessingState) {
+    guard let index = items.firstIndex(where: { $0.id == id }) else { return }
+    items[index].processingState = state
+  }
+
+  /// Replace item URL and thumbnail after processing (e.g. GIF conversion)
+  func updateItemURL(id: UUID, newURL: URL, newThumbnail: NSImage? = nil) {
+    guard let index = items.firstIndex(where: { $0.id == id }) else { return }
+    let existing = items[index]
+    let thumbnail = newThumbnail ?? existing.thumbnail
+    items[index] = QuickAccessItem(
+      id: existing.id,
+      url: newURL,
+      thumbnail: thumbnail,
+      capturedAt: existing.capturedAt,
+      itemType: existing.itemType,
+      duration: existing.duration
+    )
+  }
+
   /// Dismiss all screenshots
   func dismissAll() {
     for item in items {

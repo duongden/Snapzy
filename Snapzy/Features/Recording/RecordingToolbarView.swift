@@ -16,8 +16,6 @@ struct RecordingToolbarView: View {
   let onCapture: () -> Void
   let onCancel: () -> Void
 
-  @State private var isRecordHovered = false
-
   var body: some View {
     HStack(spacing: ToolbarConstants.itemSpacing) {
       // Close button
@@ -51,15 +49,13 @@ struct RecordingToolbarView: View {
       // Options menu (text button with chevron)
       ToolbarOptionsMenu(state: state)
 
-      // Record button (native text style)
-      Button(action: onRecord) {
-        Text("Record")
+      // Record button group: [Record <badge>] [▼]
+      HStack(spacing: 1) {
+        RecordButtonWithBadge(state: state, onRecord: onRecord)
+
+        ToolbarOutputModeDropdown(state: state)
       }
-      .buttonStyle(RecordButtonStyle())
-      .onHover { isRecordHovered = $0 }
       .fixedSize()
-      .accessibilityLabel("Start recording")
-      .accessibilityHint("Begins screen recording with current settings")
     }
     .padding(.horizontal, ToolbarConstants.horizontalPadding)
     .padding(.vertical, ToolbarConstants.verticalPadding)

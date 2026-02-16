@@ -14,6 +14,27 @@ enum RecordingToolbarMode {
   case recording
 }
 
+// MARK: - Recording Output Mode
+
+enum RecordingOutputMode: String, CaseIterable {
+  case video
+  case gif
+
+  var displayName: String {
+    switch self {
+    case .video: return "Video"
+    case .gif: return "GIF"
+    }
+  }
+
+  var iconName: String {
+    switch self {
+    case .video: return "video"
+    case .gif: return "photo.on.rectangle"
+    }
+  }
+}
+
 // MARK: - Observable State
 
 @MainActor
@@ -23,6 +44,7 @@ final class RecordingToolbarState: ObservableObject {
   @Published var captureAudio: Bool
   @Published var captureMicrophone: Bool
   @Published var captureMode: RecordingCaptureMode
+  @Published var outputMode: RecordingOutputMode
 
   var onCaptureModeChanged: ((RecordingCaptureMode) -> Void)?
 
@@ -51,6 +73,14 @@ final class RecordingToolbarState: ObservableObject {
 
     // Default capture mode is area
     self.captureMode = .area
+
+    // Load output mode (default to video)
+    if let modeString = UserDefaults.standard.string(forKey: PreferencesKeys.recordingOutputMode),
+       let mode = RecordingOutputMode(rawValue: modeString) {
+      self.outputMode = mode
+    } else {
+      self.outputMode = .video
+    }
   }
 }
 
@@ -102,6 +132,10 @@ final class RecordingToolbarWindow: NSWindow {
   var captureMode: RecordingCaptureMode {
     get { state.captureMode }
     set { state.captureMode = newValue }
+  }
+  var outputMode: RecordingOutputMode {
+    get { state.outputMode }
+    set { state.outputMode = newValue }
   }
 
   // Callback for capture mode changes
