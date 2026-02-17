@@ -343,20 +343,18 @@ final class AppStatusBarController: ObservableObject {
 
     menu?.addItem(NSMenuItem.separator())
 
-    // Crash report (only when previous crash detected)
-    if didDetectCrash {
-      let crashItem = NSMenuItem(
-        title: "Submit Crash Report...",
-        action: #selector(submitCrashReportAction),
-        keyEquivalent: ""
-      )
-      crashItem.target = self
-      crashItem.image = NSImage(
-        systemSymbolName: "exclamationmark.triangle", accessibilityDescription: nil)
-      crashItem.isEnabled = true
-      menu?.addItem(crashItem)
-      menu?.addItem(NSMenuItem.separator())
-    }
+    // Crash report
+    let crashItem = NSMenuItem(
+      title: "Submit Crash Report...",
+      action: #selector(submitCrashReportAction),
+      keyEquivalent: ""
+    )
+    crashItem.target = self
+    crashItem.image = NSImage(
+      systemSymbolName: "exclamationmark.triangle", accessibilityDescription: nil)
+    crashItem.isEnabled = true
+    menu?.addItem(crashItem)
+    menu?.addItem(NSMenuItem.separator())
 
     // Quit
     let quitItem = NSMenuItem(
@@ -416,20 +414,22 @@ final class AppStatusBarController: ObservableObject {
   @objc private func submitCrashReportAction() {
     let alert = NSAlert()
     alert.messageText = "Snapzy quit unexpectedly"
-    alert.informativeText = "A diagnostic log was saved. Would you like to submit a bug report?"
+    alert.informativeText = "A diagnostic log was saved. Drag the file below to the bug report page."
     alert.alertStyle = .warning
-    alert.addButton(withTitle: "Submit Bug Report")
+    alert.addButton(withTitle: "Submit")
     alert.addButton(withTitle: "Dismiss")
+
+    // Embed draggable log file in the alert
+    let logFile = DiagnosticLogger.shared.currentLogFileURL
+    if FileManager.default.fileExists(atPath: logFile.path) {
+      alert.accessoryView = CrashReportAccessoryView(fileURL: logFile)
+    }
 
     let response = alert.runModal()
 
     if response == .alertFirstButtonReturn {
       if let url = URL(string: "https://zapshot.app/bug-report") {
         NSWorkspace.shared.open(url)
-      }
-      let logFile = DiagnosticLogger.shared.currentLogFileURL
-      if FileManager.default.fileExists(atPath: logFile.path) {
-        NSWorkspace.shared.activateFileViewerSelecting([logFile])
       }
     }
 
