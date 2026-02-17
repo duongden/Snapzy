@@ -35,4 +35,16 @@ We keep all important docs in `./docs` folder and keep updating them, structure 
 ├── project-structure.md
 ```
 
+We keep all plans in `./plans` folder and keep updating them, structure like below:
+
+```
+./plans
+├── 260208-2118-hide-desktop-icons
+│   ├── phase-01-desktop-icon-manager-service.md
+│   ├── phase-02-preferences-integration.md
+│   └── phase-03-capture-flow-integration.md
+```
+
+Format: `YYMMDD-HHMM-short-description.md`
+
 **IMPORTANT:** _MUST READ_ and _MUST COMPLY_ all _INSTRUCTIONS_ in project `./AGENTS.md`, especially _WORKFLOWS_ section is _CRITICALLY IMPORTANT_, this rule is _MANDATORY. NON-NEGOTIABLE. NO EXCEPTIONS. MUST REMEMBER AT ALL TIMES!!!_
