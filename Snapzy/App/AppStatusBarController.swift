@@ -428,7 +428,7 @@ final class AppStatusBarController: ObservableObject {
     let response = alert.runModal()
 
     if response == .alertFirstButtonReturn {
-      if let url = URL(string: "https://zapshot.app/bug-report") {
+      if let url = URL(string: "https://snapzy.app/bug-report") {
         NSWorkspace.shared.open(url)
       }
     }
