@@ -89,15 +89,26 @@ struct AboutSettingsView: View {
       .background(Color.primary.opacity(0.05))
       .clipShape(Capsule())
 
-      // Update Button
-      Button(action: { updater.checkForUpdates() }) {
-        HStack(spacing: Spacing.sm) {
-          Image(systemName: "arrow.triangle.2.circlepath")
-          Text("Check for Updates")
+      // Action Buttons
+      HStack(spacing: Spacing.sm) {
+        Button(action: { updater.checkForUpdates() }) {
+          HStack(spacing: Spacing.sm) {
+            Image(systemName: "arrow.triangle.2.circlepath")
+            Text("Check for Updates")
+          }
         }
+        .buttonStyle(.borderedProminent)
+        .controlSize(.regular)
+
+        Button(action: { CrashReportService.presentAlert() }) {
+          HStack(spacing: Spacing.sm) {
+            Image(systemName: "exclamationmark.triangle")
+            Text("Submit Crash Report")
+          }
+        }
+        .buttonStyle(.bordered)
+        .controlSize(.regular)
       }
-      .buttonStyle(.borderedProminent)
-      .controlSize(.regular)
 
       // License Management
       licenseSection
@@ -127,6 +138,8 @@ struct AboutSettingsView: View {
         }
         .buttonStyle(.plain)
         .help("Report a Bug")
+
+
       }
       .padding(.top, Spacing.xs)
     }
@@ -321,6 +334,8 @@ struct AboutSettingsView: View {
       }
     }
   }
+
+
 
   // MARK: - Feature Highlights
 

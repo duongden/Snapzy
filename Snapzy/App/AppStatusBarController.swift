@@ -412,28 +412,7 @@ final class AppStatusBarController: ObservableObject {
   }
 
   @objc private func submitCrashReportAction() {
-    let alert = NSAlert()
-    alert.messageText = "Snapzy quit unexpectedly"
-    alert.informativeText = "A diagnostic log was saved. Drag the file below to the bug report page."
-    alert.alertStyle = .warning
-    alert.addButton(withTitle: "Submit")
-    alert.addButton(withTitle: "Dismiss")
-
-    // Embed draggable log file in the alert
-    let logFile = DiagnosticLogger.shared.currentLogFileURL
-    if FileManager.default.fileExists(atPath: logFile.path) {
-      alert.accessoryView = CrashReportAccessoryView(fileURL: logFile)
-    }
-
-    let response = alert.runModal()
-
-    if response == .alertFirstButtonReturn {
-      if let url = URL(string: "https://snapzy.app/bug-report") {
-        NSWorkspace.shared.open(url)
-      }
-    }
-
-    // Clear the flag after user interacts
+    CrashReportService.presentAlert()
     didDetectCrash = false
   }
 
