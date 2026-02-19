@@ -63,6 +63,7 @@ final class QuickAccessManager: ObservableObject {
   // MARK: - Private
 
   private let panelController = QuickAccessPanelController()
+  private let fileAccessManager = SandboxFileAccessManager.shared
   private var dismissTimers: [UUID: Task<Void, Never>] = [:]
 
   // MARK: - UserDefaults Keys (preserved for backward compatibility)
@@ -106,6 +107,8 @@ final class QuickAccessManager: ObservableObject {
   /// Add a new screenshot to the quick access stack
   func addScreenshot(url: URL) async {
     guard isEnabled else { return }
+    let fileAccess = fileAccessManager.beginAccessingURL(url)
+    defer { fileAccess.stop() }
     let result = await ThumbnailGenerator.generate(from: url)
 
     // Use placeholder if thumbnail generation failed
@@ -151,6 +154,8 @@ final class QuickAccessManager: ObservableObject {
   /// Add a new video recording to the quick access stack
   func addVideo(url: URL) async {
     guard isEnabled else { return }
+    let fileAccess = fileAccessManager.beginAccessingURL(url)
+    defer { fileAccess.stop() }
     let result = await ThumbnailGenerator.generate(from: url)
 
     // Use placeholder if thumbnail generation failed
@@ -249,20 +254,23 @@ final class QuickAccessManager: ObservableObject {
 
     removeScreenshot(id: id)
 
-    Task.detached(priority: .userInitiated) {
-      await MainActor.run {
-        let pasteboard = NSPasteboard.general
-        pasteboard.clearContents()
+    Task { @MainActor in
+      let fileAccess = fileAccessManager.beginAccessingURL(url)
+      defer { fileAccess.stop() }
 
-        if isVideo {
-          pasteboard.writeObjects([url as NSURL])
+      let pasteboard = NSPasteboard.general
+      pasteboard.clearContents()
+
+      if isVideo {
+        pasteboard.writeObjects([url as NSURL])
+      } else {
+        if let image = NSImage(contentsOf: url) {
+          pasteboard.writeObjects([image])
         } else {
-          if let image = NSImage(contentsOf: url) {
-            pasteboard.writeObjects([image])
-          }
+          logger.error("Failed to load image for clipboard: \(url.lastPathComponent)")
         }
-        NSSound(named: "Pop")?.play()
       }
+      NSSound(named: "Pop")?.play()
     }
   }
 
@@ -273,11 +281,16 @@ final class QuickAccessManager: ObservableObject {
     let url = item.url
     removeItem(id: id)
 
-    Task.detached(priority: .userInitiated) {
+    Task { @MainActor in
+      let fileAccess = fileAccessManager.beginAccessingURL(url)
+      let directoryAccess = fileAccessManager.beginAccessingURL(url.deletingLastPathComponent())
+      defer { fileAccess.stop() }
+      defer { directoryAccess.stop() }
+
       do {
         try FileManager.default.trashItem(at: url, resultingItemURL: nil)
       } catch {
-        print("Failed to delete item: \(error.localizedDescription)")
+        logger.error("Failed to delete item \(url.lastPathComponent): \(error.localizedDescription)")
       }
     }
   }
@@ -293,10 +306,10 @@ final class QuickAccessManager: ObservableObject {
     removeScreenshot(id: id)
 
     // Async Finder reveal
-    Task.detached(priority: .userInitiated) {
-      await MainActor.run {
-        NSWorkspace.shared.selectFile(url.path, inFileViewerRootedAtPath: "")
-      }
+    Task { @MainActor in
+      let fileAccess = fileAccessManager.beginAccessingURL(url)
+      defer { fileAccess.stop() }
+      NSWorkspace.shared.selectFile(url.path, inFileViewerRootedAtPath: "")
     }
   }
 
@@ -343,11 +356,14 @@ final class QuickAccessManager: ObservableObject {
 
   /// Retry thumbnail generation in background and update item if successful
   private func scheduleThumbnailRetry(for id: UUID, url: URL) {
-    Task {
+    Task { @MainActor in
       // Wait 500ms then retry
       try? await Task.sleep(nanoseconds: 500_000_000)
       guard !Task.isCancelled else { return }
       guard items.contains(where: { $0.id == id }) else { return }
+
+      let fileAccess = fileAccessManager.beginAccessingURL(url)
+      defer { fileAccess.stop() }
 
       let result = await ThumbnailGenerator.generate(from: url)
       guard let newThumbnail = result.thumbnail else {

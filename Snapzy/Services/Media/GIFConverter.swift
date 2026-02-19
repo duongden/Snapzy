@@ -46,6 +46,14 @@ final class GIFConverter {
     options: Options = .default,
     onProgress: @escaping (Double) -> Void
   ) async throws -> URL {
+    let sourceAccess = SandboxFileAccessManager.shared.beginAccessingURL(videoURL)
+    let outputDirectoryAccess = SandboxFileAccessManager.shared.beginAccessingURL(
+      videoURL.deletingLastPathComponent())
+    defer {
+      sourceAccess.stop()
+      outputDirectoryAccess.stop()
+    }
+
     let asset = AVURLAsset(url: videoURL)
 
     // Get video duration

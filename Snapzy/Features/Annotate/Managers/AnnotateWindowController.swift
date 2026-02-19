@@ -14,12 +14,15 @@ import UniformTypeIdentifiers
 @MainActor
 final class AnnotateWindowController: NSWindowController, NSWindowDelegate {
 
+  private let fileAccessManager = SandboxFileAccessManager.shared
+  private var sourceFileAccess: SandboxFileAccessManager.ScopedAccess?
   private let state: AnnotateState
   private let quickAccessItemId: UUID?
   private var cancellables = Set<AnyCancellable>()
 
   init(item: QuickAccessItem) {
     self.quickAccessItemId = item.id
+    self.sourceFileAccess = fileAccessManager.beginAccessingURL(item.url)
 
     // Load full image from URL and adjust for Retina scaling
     let image = Self.loadImageWithCorrectScale(from: item.url) ?? item.thumbnail
@@ -56,6 +59,7 @@ final class AnnotateWindowController: NSWindowController, NSWindowDelegate {
     window.delegate = self
     setupContent()
     setupKeyboardShortcutObservers()
+    setupSourceURLObservation()
   }
 
   /// Empty initializer for drag-drop workflow
@@ -82,6 +86,7 @@ final class AnnotateWindowController: NSWindowController, NSWindowDelegate {
     window.delegate = self
     setupContent()
     setupKeyboardShortcutObservers()
+    setupSourceURLObservation()
   }
 
   @available(*, unavailable)
@@ -90,6 +95,7 @@ final class AnnotateWindowController: NSWindowController, NSWindowDelegate {
   }
 
   deinit {
+    sourceFileAccess?.stop()
     cancellables.removeAll()
   }
 
@@ -111,7 +117,9 @@ final class AnnotateWindowController: NSWindowController, NSWindowDelegate {
 
   /// Load image and adjust size for Retina displays
   private static func loadImageWithCorrectScale(from url: URL) -> NSImage? {
-    guard let image = NSImage(contentsOf: url) else { return nil }
+    guard let image = SandboxFileAccessManager.shared.withScopedAccess(to: url, {
+      NSImage(contentsOf: url)
+    }) else { return nil }
 
     guard let bitmapRep = image.representations.first as? NSBitmapImageRep else {
       if let rep = image.representations.first {
@@ -138,6 +146,22 @@ final class AnnotateWindowController: NSWindowController, NSWindowDelegate {
     )
 
     return image
+  }
+
+  private func setupSourceURLObservation() {
+    state.$sourceURL
+      .sink { [weak self] url in
+        self?.refreshSourceAccess(for: url)
+      }
+      .store(in: &cancellables)
+  }
+
+  private func refreshSourceAccess(for url: URL?) {
+    sourceFileAccess?.stop()
+    sourceFileAccess = nil
+
+    guard let url = url else { return }
+    sourceFileAccess = fileAccessManager.beginAccessingURL(url)
   }
 
   // MARK: - NSWindowDelegate
@@ -202,15 +226,21 @@ final class AnnotateWindowController: NSWindowController, NSWindowDelegate {
 
       switch response {
       case .alertFirstButtonReturn:
-        AnnotateExporter.saveToOriginal(state: self.state)
-        self.state.markAsSaved()
-        self.forceClose()
+        if AnnotateExporter.saveToOriginal(state: self.state) {
+          self.state.markAsSaved()
+          self.forceClose()
+        } else {
+          self.showSaveErrorAlert()
+        }
 
       case .alertSecondButtonReturn:
         let copyURL = AnnotateExporter.generateCopyURL(from: sourceURL)
-        AnnotateExporter.save(state: self.state, to: copyURL)
-        self.state.markAsSaved()
-        self.forceClose()
+        if AnnotateExporter.save(state: self.state, to: copyURL) {
+          self.state.markAsSaved()
+          self.forceClose()
+        } else {
+          self.showSaveErrorAlert()
+        }
 
       default:
         break
@@ -277,9 +307,23 @@ final class AnnotateWindowController: NSWindowController, NSWindowDelegate {
 
     panel.beginSheetModal(for: window) { [weak self] response in
       guard let self = self, response == .OK, let url = panel.url else { return }
-      AnnotateExporter.save(state: self.state, to: url)
-      self.state.markAsSaved()
+      if AnnotateExporter.save(state: self.state, to: url) {
+        self.state.markAsSaved()
+      } else {
+        self.showSaveErrorAlert()
+      }
     }
+  }
+
+  private func showSaveErrorAlert() {
+    guard let window = self.window else { return }
+
+    let alert = NSAlert()
+    alert.messageText = "Save Failed"
+    alert.informativeText = "Snapzy couldn't write to the selected location. Please choose another folder."
+    alert.alertStyle = .warning
+    alert.addButton(withTitle: "OK")
+    alert.beginSheetModal(for: window)
   }
 
   private func generateFileName() -> String {

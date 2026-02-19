@@ -20,23 +20,27 @@ enum VideoEditorExporter {
     to outputURL: URL,
     progress: @escaping (Float) -> Void
   ) async throws {
+    let outputAccess = SandboxFileAccessManager.shared.beginAccessingURL(outputURL.deletingLastPathComponent())
+    defer { outputAccess.stop() }
+    let scopedOutputURL = outputAccess.url.appendingPathComponent(outputURL.lastPathComponent)
+
     let hasZooms = state.zoomSegments.contains { $0.isEnabled }
     let hasBackground = state.backgroundStyle != .none && state.backgroundPadding > 0
 
     // If has zooms or background, use composition-based export
     if hasZooms || hasBackground {
-      try await exportWithZooms(state: state, to: outputURL, progress: progress)
+      try await exportWithZooms(state: state, to: scopedOutputURL, progress: progress)
       return
     }
 
     // If muted via export settings, export without audio
     if state.exportSettings.audioMode == .mute {
-      try await exportVideoOnly(state: state, to: outputURL, progress: progress)
+      try await exportVideoOnly(state: state, to: scopedOutputURL, progress: progress)
       return
     }
 
     // Standard export without zooms
-    try await exportStandard(state: state, to: outputURL, progress: progress)
+    try await exportStandard(state: state, to: scopedOutputURL, progress: progress)
   }
 
   /// Standard export without zoom effects
@@ -449,7 +453,11 @@ enum VideoEditorExporter {
     print("📹 [ReplaceOriginal] Temp file size: \(tempSize) bytes")
 
     // Replace original with temp file - use originalURL for correct target
-    let targetURL = state.originalURL
+    let targetDirectoryAccess = SandboxFileAccessManager.shared.beginAccessingURL(
+      state.originalURL.deletingLastPathComponent())
+    defer { targetDirectoryAccess.stop() }
+
+    let targetURL = targetDirectoryAccess.url.appendingPathComponent(state.originalURL.lastPathComponent)
 
     // Use replaceItemAt for atomic replacement (safer)
     let backupURL = targetURL.deletingLastPathComponent()

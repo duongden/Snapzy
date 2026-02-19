@@ -169,9 +169,7 @@ struct QuickAccessCardView: View {
           if abs(translation) > threshold || abs(velocity) > velocityThreshold {
             isDismissing = true
             QuickAccessSound.dismiss.play(reduceMotion: reduceMotion)
-            withAnimation(QuickAccessAnimations.cardSwipeDismiss) {
-              manager.removeScreenshot(id: item.id)
-            }
+            manager.removeScreenshot(id: item.id)
           } else {
             // Snap back
             withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
@@ -343,9 +341,7 @@ struct QuickAccessCardView: View {
           QuickAccessIconButton(icon: "xmark") {
             isDismissing = true
             QuickAccessSound.dismiss.play(reduceMotion: reduceMotion)
-            withAnimation(QuickAccessAnimations.cardSwipeDismiss) {
-              manager.removeScreenshot(id: item.id)
-            }
+            manager.removeScreenshot(id: item.id)
           }
           .transition(cornerButtonTransition(delay: 2))
           .padding(6)
@@ -361,9 +357,7 @@ struct QuickAccessCardView: View {
             action: {
               isDismissing = true
               QuickAccessSound.delete.play(reduceMotion: reduceMotion)
-              withAnimation(QuickAccessAnimations.cardSwipeDismiss) {
-                manager.deleteItem(id: item.id)
-              }
+              manager.deleteItem(id: item.id)
             },
             helpText: "Delete"
           )

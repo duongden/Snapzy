@@ -48,6 +48,14 @@ final class LicenseManager: ObservableObject {
 
         loadOrganizationConfig()
         loadCachedState()
+
+        #if DEBUG
+        let fingerprintPrefix = String(deviceFingerprint.generate().prefix(8))
+        print("=== LICENSE DEVICE ID SOURCE ===")
+        print("source: keychain-v2")
+        print("fingerprint-prefix: \(fingerprintPrefix)")
+        print("================================")
+        #endif
     }
 
     private func loadOrganizationConfig() {

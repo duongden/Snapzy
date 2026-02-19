@@ -36,6 +36,7 @@ class SystemWallpaperManager: ObservableObject {
   ]
 
   private let supportedExtensions = ["heic", "jpg", "jpeg", "png"]
+  private let wallpaperBookmarkKey = PreferencesKeys.wallpaperDirectoryBookmark
 
   struct WallpaperItem: Identifiable, Hashable {
     let id = UUID()
@@ -191,11 +192,19 @@ class SystemWallpaperManager: ObservableObject {
     isLoading = true
     accessDenied = false
 
-    let wallpapers = await Task.detached(priority: .userInitiated) {
+    var wallpapers = await Task.detached(priority: .userInitiated) {
       self.enumerateAllDirectories()
     }.value
 
-    if wallpapers.isEmpty && !hasAccessibleDirectory() {
+    if wallpapers.isEmpty, let persistedDirectory = loadPersistedWallpaperDirectoryURL() {
+      let didStartAccess = persistedDirectory.startAccessingSecurityScopedResource()
+      wallpapers = enumerateUserSelectedDirectory(persistedDirectory)
+      if didStartAccess {
+        persistedDirectory.stopAccessingSecurityScopedResource()
+      }
+    }
+
+    if wallpapers.isEmpty && !hasAccessibleDirectory() && loadPersistedWallpaperDirectoryURL() == nil {
       accessDenied = true
     }
 
@@ -345,6 +354,8 @@ class SystemWallpaperManager: ObservableObject {
     let response = await panel.begin()
     guard response == .OK, let url = panel.url else { return nil }
 
+    saveWallpaperBookmark(for: url)
+
     // Enumerate user-selected directory
     let items = enumerateUserSelectedDirectory(url)
     if !items.isEmpty {
@@ -382,5 +393,43 @@ class SystemWallpaperManager: ObservableObject {
     }
 
     return items.sorted { $0.name < $1.name }
+  }
+
+  private func saveWallpaperBookmark(for directoryURL: URL) {
+    do {
+      let bookmarkData = try directoryURL.bookmarkData(
+        options: .withSecurityScope,
+        includingResourceValuesForKeys: nil,
+        relativeTo: nil
+      )
+      UserDefaults.standard.set(bookmarkData, forKey: wallpaperBookmarkKey)
+    } catch {
+      UserDefaults.standard.removeObject(forKey: wallpaperBookmarkKey)
+    }
+  }
+
+  private func loadPersistedWallpaperDirectoryURL() -> URL? {
+    guard let bookmarkData = UserDefaults.standard.data(forKey: wallpaperBookmarkKey) else {
+      return nil
+    }
+
+    var isStale = false
+    do {
+      let url = try URL(
+        resolvingBookmarkData: bookmarkData,
+        options: [.withSecurityScope],
+        relativeTo: nil,
+        bookmarkDataIsStale: &isStale
+      )
+
+      if isStale {
+        saveWallpaperBookmark(for: url)
+      }
+
+      return url
+    } catch {
+      UserDefaults.standard.removeObject(forKey: wallpaperBookmarkKey)
+      return nil
+    }
   }
 }

@@ -191,17 +191,32 @@ final class VideoEditorState: ObservableObject {
   }
 
   var fileSizeString: String {
-    guard let attrs = try? FileManager.default.attributesOfItem(atPath: sourceURL.path),
-          let size = attrs[.size] as? Int64 else { return "—" }
+    let size: Int64? = SandboxFileAccessManager.shared.withScopedAccess(to: sourceURL) {
+      guard let attrs = try? FileManager.default.attributesOfItem(atPath: sourceURL.path),
+            let size = attrs[.size] as? Int64
+      else { return nil }
+      return size
+    }
+    guard let size else { return "—" }
     return ByteCountFormatter.string(fromByteCount: size, countStyle: .file)
   }
 
   var fileCreationDate: Date? {
-    try? FileManager.default.attributesOfItem(atPath: sourceURL.path)[.creationDate] as? Date
+    SandboxFileAccessManager.shared.withScopedAccess(to: sourceURL) {
+      guard let attrs = try? FileManager.default.attributesOfItem(atPath: sourceURL.path) else {
+        return nil
+      }
+      return attrs[.creationDate] as? Date
+    }
   }
 
   var fileModificationDate: Date? {
-    try? FileManager.default.attributesOfItem(atPath: sourceURL.path)[.modificationDate] as? Date
+    SandboxFileAccessManager.shared.withScopedAccess(to: sourceURL) {
+      guard let attrs = try? FileManager.default.attributesOfItem(atPath: sourceURL.path) else {
+        return nil
+      }
+      return attrs[.modificationDate] as? Date
+    }
   }
 
   private func gcd(_ a: Int, _ b: Int) -> Int {
@@ -236,7 +251,9 @@ final class VideoEditorState: ObservableObject {
   func loadMetadata() async {
     // GIF files can't be loaded by AVAsset — use NSImage for dimensions
     if isGIF {
-      if let image = NSImage(contentsOf: sourceURL) {
+      if let image = SandboxFileAccessManager.shared.withScopedAccess(to: sourceURL, {
+        NSImage(contentsOf: sourceURL)
+      }) {
         naturalSize = CGSize(
           width: image.representations.first?.pixelsWide ?? Int(image.size.width),
           height: image.representations.first?.pixelsHigh ?? Int(image.size.height)
@@ -525,12 +542,22 @@ final class VideoEditorState: ObservableObject {
 
   /// Open the source file location in Finder
   func openInFinder() {
+    let sourceAccess = SandboxFileAccessManager.shared.beginAccessingURL(sourceURL)
+    defer { sourceAccess.stop() }
     NSWorkspace.shared.activateFileViewerSelecting([sourceURL])
   }
 
   /// Rename the source file
   func renameFile(to newName: String) throws {
+    let oldSourceURL = sourceURL
     let directory = sourceURL.deletingLastPathComponent()
+    let sourceAccess = SandboxFileAccessManager.shared.beginAccessingURL(oldSourceURL)
+    let directoryAccess = SandboxFileAccessManager.shared.beginAccessingURL(directory)
+    defer {
+      sourceAccess.stop()
+      directoryAccess.stop()
+    }
+
     let ext = sourceURL.pathExtension
     let sanitizedName = newName.trimmingCharacters(in: .whitespacesAndNewlines)
 
@@ -538,7 +565,7 @@ final class VideoEditorState: ObservableObject {
       throw NSError(domain: "VideoEditor", code: 1, userInfo: [NSLocalizedDescriptionKey: "Filename cannot be empty"])
     }
 
-    let newURL = directory.appendingPathComponent(sanitizedName).appendingPathExtension(ext)
+    let newURL = directoryAccess.url.appendingPathComponent(sanitizedName).appendingPathExtension(ext)
 
     guard newURL != sourceURL else { return }
 
@@ -546,9 +573,11 @@ final class VideoEditorState: ObservableObject {
       throw NSError(domain: "VideoEditor", code: 2, userInfo: [NSLocalizedDescriptionKey: "A file with this name already exists"])
     }
 
-    try FileManager.default.moveItem(at: sourceURL, to: newURL)
+    try FileManager.default.moveItem(at: sourceAccess.url, to: newURL)
     sourceURL = newURL
-    originalURL = newURL
+    if originalURL == oldSourceURL {
+      originalURL = newURL
+    }
   }
 
   // MARK: - Zoom Management
@@ -683,8 +712,13 @@ final class VideoEditorState: ObservableObject {
   /// Calculate estimated file size based on export settings
   private func calculateEstimatedFileSize() async -> Int64 {
     // Get source file size
-    guard let attrs = try? FileManager.default.attributesOfItem(atPath: sourceURL.path),
-          let sourceSize = attrs[.size] as? Int64 else { return 0 }
+    let sourceSize: Int64? = SandboxFileAccessManager.shared.withScopedAccess(to: sourceURL) {
+      guard let attrs = try? FileManager.default.attributesOfItem(atPath: sourceURL.path),
+            let sourceSize = attrs[.size] as? Int64
+      else { return nil }
+      return sourceSize
+    }
+    guard let sourceSize else { return 0 }
 
     let sourceDuration = CMTimeGetSeconds(duration)
     guard sourceDuration > 0 else { return 0 }

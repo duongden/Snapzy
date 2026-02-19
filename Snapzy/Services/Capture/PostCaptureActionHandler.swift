@@ -19,6 +19,7 @@ final class PostCaptureActionHandler {
 
   private let preferencesManager = PreferencesManager.shared
   private let quickAccessManager = QuickAccessManager.shared
+  private let fileAccessManager = SandboxFileAccessManager.shared
 
   private init() {}
 
@@ -37,6 +38,9 @@ final class PostCaptureActionHandler {
   // MARK: - Private
 
   private func executeActions(for captureType: CaptureType, url: URL) async {
+    let fileAccess = fileAccessManager.beginAccessingURL(url)
+    defer { fileAccess.stop() }
+
     // Validate file exists before processing
     guard FileManager.default.fileExists(atPath: url.path) else {
       logger.error("Capture file missing at \(url.lastPathComponent), skipping post-capture actions")
@@ -66,6 +70,9 @@ final class PostCaptureActionHandler {
 
   /// Copy file to clipboard (image data for screenshots, file URL for videos)
   private func copyToClipboard(url: URL, isVideo: Bool) {
+    let fileAccess = fileAccessManager.beginAccessingURL(url)
+    defer { fileAccess.stop() }
+
     let pasteboard = NSPasteboard.general
     pasteboard.clearContents()
 

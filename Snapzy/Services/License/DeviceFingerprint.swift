@@ -1,10 +1,12 @@
 import Foundation
-import Security
-import CommonCrypto
 
 final class DeviceFingerprint {
     private let lock = NSLock()
     private var cachedFingerprint: String?
+    private let keychain = KeychainService()
+
+    private let stableDeviceIDKey = "device_fingerprint_v2"
+    private let legacyLicenseCacheKey = "com.snapzy.license.cache"
 
     static let shared = DeviceFingerprint()
 
@@ -18,102 +20,14 @@ final class DeviceFingerprint {
             return existing
         }
 
-        let components = [
-            getHardwareUUID() ?? "unknown",
-            getDeviceModel() ?? "unknown",
-            getSerialNumber() ?? "unknown"
-        ]
-
-        let fingerprint = components
-            .joined(separator: "|")
-            .data(using: .utf8)!
-            .sha256Hash()
-
+        let fingerprint = loadOrCreateStableFingerprint()
         cachedFingerprint = fingerprint
         return fingerprint
     }
 
     func generateDeviceName() -> String {
-        let model = getDeviceModel() ?? "Mac"
-        let userName = NSUserName() ?? "User"
-        return "\(model) - \(userName)"
-    }
-
-    private func getHardwareUUID() -> String? {
-        let task = Process()
-        task.launchPath = "/usr/sbin/ioreg"
-        task.arguments = ["-rd1", "-c", "IOPlatformExpertDevice"]
-
-        let pipe = Pipe()
-        task.standardOutput = pipe
-
-        do {
-            try task.run()
-            task.waitUntilExit()
-
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            if let output = String(data: data, encoding: .utf8) {
-                if let range = output.range(of: "\"IOPlatformUUID\" = \"") {
-                    let start = range.upperBound
-                    if let endRange = output[start...].firstIndex(of: "\"") {
-                        let uuid = String(output[start..<endRange])
-                        return uuid
-                    }
-                }
-            }
-        } catch {
-            return nil
-        }
-
-        return nil
-    }
-
-    private func getDeviceModel() -> String? {
-        let task = Process()
-        task.launchPath = "/usr/sbin/sysctl"
-        task.arguments = ["-n", "hw.model"]
-
-        let pipe = Pipe()
-        task.standardOutput = pipe
-
-        do {
-            try task.run()
-            task.waitUntilExit()
-
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            return String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
-        } catch {
-            return nil
-        }
-    }
-
-    private func getSerialNumber() -> String? {
-        let task = Process()
-        task.launchPath = "/usr/sbin/ioreg"
-        task.arguments = ["-rd1", "-c", "IOPlatformExpertDevice"]
-
-        let pipe = Pipe()
-        task.standardOutput = pipe
-
-        do {
-            try task.run()
-            task.waitUntilExit()
-
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            if let output = String(data: data, encoding: .utf8) {
-                if let range = output.range(of: "\"IOPlatformSerialNumber\" = \"") {
-                    let start = range.upperBound
-                    if let endRange = output[start...].firstIndex(of: "\"") {
-                        let serial = String(output[start..<endRange])
-                        return serial
-                    }
-                }
-            }
-        } catch {
-            return nil
-        }
-
-        return nil
+        let fingerprintPrefix = String(generate().prefix(8))
+        return "Snapzy Mac \(fingerprintPrefix)"
     }
 
     func clearCache() {
@@ -121,16 +35,42 @@ final class DeviceFingerprint {
         defer { lock.unlock() }
         cachedFingerprint = nil
     }
-}
 
-extension Data {
-    func sha256Hash() -> String {
-        var hash = [UInt8](repeating: 0, count: Int(CC_SHA256_DIGEST_LENGTH))
-
-        self.withUnsafeBytes { bytes in
-            _ = CC_SHA256(bytes.baseAddress, CC_LONG(self.count), &hash)
+    private func loadOrCreateStableFingerprint() -> String {
+        if let data = try? keychain.load(forKey: stableDeviceIDKey),
+           let fingerprint = String(data: data, encoding: .utf8),
+           !fingerprint.isEmpty {
+            return fingerprint
         }
 
-        return hash.map { String(format: "%02x", $0) }.joined()
+        // Migration path: preserve old fingerprint if cache has one.
+        if let legacyFingerprint = loadLegacyCachedFingerprint() {
+            persistStableFingerprint(legacyFingerprint)
+            return legacyFingerprint
+        }
+
+        let newFingerprint = UUID().uuidString.lowercased()
+        persistStableFingerprint(newFingerprint)
+        return newFingerprint
+    }
+
+    private func persistStableFingerprint(_ fingerprint: String) {
+        try? keychain.save(data: fingerprint.data(using: .utf8)!, forKey: stableDeviceIDKey)
+    }
+
+    private func loadLegacyCachedFingerprint() -> String? {
+        guard let data = UserDefaults.standard.data(forKey: legacyLicenseCacheKey) else {
+            return nil
+        }
+
+        struct LegacyCacheEntry: Decodable {
+            let deviceFingerprint: String
+        }
+
+        guard let entry = try? JSONDecoder().decode(LegacyCacheEntry.self, from: data),
+              !entry.deviceFingerprint.isEmpty else {
+            return nil
+        }
+        return entry.deviceFingerprint
     }
 }

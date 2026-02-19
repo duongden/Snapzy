@@ -6,6 +6,7 @@
 //
 
 import AVFoundation
+import ApplicationServices
 import ScreenCaptureKit
 import SwiftUI
 
@@ -16,6 +17,8 @@ struct PermissionsView: View {
 
   @State private var microphoneGranted = false
   @State private var accessibilityGranted = false
+  @State private var exportFolderGranted = false
+  private let fileAccessManager = SandboxFileAccessManager.shared
 
   // System Settings URLs
   private let microphoneURL =
@@ -24,7 +27,7 @@ struct PermissionsView: View {
     "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
 
   private var requiredPermissionsGranted: Bool {
-    screenCaptureManager.hasPermission
+    screenCaptureManager.hasPermission && exportFolderGranted
   }
 
   var body: some View {
@@ -39,7 +42,7 @@ struct PermissionsView: View {
         .vsHeading()
         .padding(.top, 24)
 
-      Text("Snapzy needs certain permissions to capture your screen and audio.")
+      Text("Snapzy needs permissions for capture, audio, and save location.")
         .vsBody()
         .multilineTextAlignment(.center)
         .frame(maxWidth: 340)
@@ -58,6 +61,18 @@ struct PermissionsView: View {
             Task {
               await screenCaptureManager.requestPermission()
             }
+          }
+        )
+
+        // Save Folder - Required
+        PermissionRow(
+          icon: "folder.fill",
+          title: "Save Folder",
+          description: "Required to save screenshots and recordings",
+          isGranted: exportFolderGranted,
+          isRequired: true,
+          onGrant: {
+            requestExportFolderPermission()
           }
         )
 
@@ -81,7 +96,7 @@ struct PermissionsView: View {
           isGranted: accessibilityGranted,
           isRequired: false,
           onGrant: {
-            openSystemSettings(accessibilityURL)
+            requestAccessibilityPermission()
           }
         )
       }
@@ -95,18 +110,21 @@ struct PermissionsView: View {
         }
         .buttonStyle(VSDesignSystem.SecondaryButtonStyle())
 
-        Button(requiredPermissionsGranted ? "Next" : "Skip") {
+        Button("Next") {
           onNext()
         }
         .buttonStyle(VSDesignSystem.PrimaryButtonStyle())
+        .disabled(!requiredPermissionsGranted)
         .keyboardShortcut(.return, modifiers: [])
       }
       .padding(.top, 32)
     }
     .task {
+      fileAccessManager.ensureExportLocationInitialized()
       await screenCaptureManager.checkPermission()
       checkMicrophonePermission()
       checkAccessibilityPermission()
+      checkExportFolderPermission()
     }
     .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
       // Refresh permissions when app becomes active (user returns from System Settings)
@@ -115,6 +133,7 @@ struct PermissionsView: View {
       }
       checkMicrophonePermission()
       checkAccessibilityPermission()
+      checkExportFolderPermission()
     }
   }
 
@@ -129,12 +148,40 @@ struct PermissionsView: View {
     accessibilityGranted = AXIsProcessTrusted()
   }
 
+  private func checkExportFolderPermission() {
+    fileAccessManager.ensureExportLocationInitialized()
+    exportFolderGranted = fileAccessManager.hasPersistedExportPermission
+  }
+
+  private func requestExportFolderPermission() {
+    _ = fileAccessManager.chooseExportDirectory(
+      message: "Choose a folder for Snapzy captures (default: Desktop/Snapzy)",
+      prompt: "Grant Access",
+      directoryURL: fileAccessManager.defaultExportDirectory
+    )
+    checkExportFolderPermission()
+  }
+
   private func requestMicrophonePermission() {
     AVCaptureDevice.requestAccess(for: .audio) { granted in
       DispatchQueue.main.async {
         microphoneGranted = granted
       }
     }
+  }
+
+  private func requestAccessibilityPermission() {
+    if AXIsProcessTrusted() {
+      accessibilityGranted = true
+      return
+    }
+
+    let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
+    _ = AXIsProcessTrustedWithOptions(options)
+
+    // Keep user on the correct settings page if macOS does not navigate there.
+    openSystemSettings(accessibilityURL)
+    checkAccessibilityPermission()
   }
 
   private func openSystemSettings(_ urlString: String) {

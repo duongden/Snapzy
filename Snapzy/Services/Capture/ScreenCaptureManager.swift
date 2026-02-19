@@ -322,12 +322,15 @@ final class ScreenCaptureManager: ObservableObject {
     fileName: String?,
     format: ImageFormat
   ) async -> CaptureResult {
+    let directoryAccess = SandboxFileAccessManager.shared.beginAccessingURL(directory)
+    defer { directoryAccess.stop() }
+    let scopedDirectory = directoryAccess.url
 
     // Generate filename on main actor (uses Date())
     let name = fileName ?? generateFileName()
-    let fileURL = directory.appendingPathComponent("\(name).\(format.fileExtension)")
+    let fileURL = scopedDirectory.appendingPathComponent("\(name).\(format.fileExtension)")
 
-    logger.info("Saving capture to \(directory.lastPathComponent)/\(name).\(format.fileExtension)")
+    logger.info("Saving capture to \(scopedDirectory.lastPathComponent)/\(name).\(format.fileExtension)")
 
     // Capture format properties before entering detached task
     let utType = format.utType
@@ -336,7 +339,7 @@ final class ScreenCaptureManager: ObservableObject {
     let writeResult: Result<URL, CaptureError> = await Task.detached {
       // Create directory if needed
       do {
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: scopedDirectory, withIntermediateDirectories: true)
       } catch {
         return .failure(.saveFailed("Could not create directory: \(error.localizedDescription)"))
       }

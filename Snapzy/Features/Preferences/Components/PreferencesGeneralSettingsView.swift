@@ -17,6 +17,7 @@ struct GeneralSettingsView: View {
 
   @State private var startAtLogin = LoginItemManager.isEnabled
   @State private var logSizeText = "Calculating..."
+  private let fileAccessManager = SandboxFileAccessManager.shared
 
   private var updater: SPUUpdater {
     UpdaterManager.shared.updater
@@ -124,29 +125,26 @@ struct GeneralSettingsView: View {
     if exportLocation.isEmpty {
       return "Desktop/Snapzy"
     }
-    return URL(fileURLWithPath: exportLocation).lastPathComponent
+
+    let folderName = URL(fileURLWithPath: exportLocation).lastPathComponent
+    if fileAccessManager.hasPersistedExportPermission {
+      return folderName
+    }
+
+    return "\(folderName) (Access not granted)"
   }
 
   private func initializeExportLocation() {
-    if exportLocation.isEmpty {
-      guard let desktop = FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first else {
-        let home = FileManager.default.homeDirectoryForCurrentUser
-        exportLocation = home.appendingPathComponent("Snapzy").path
-        return
-      }
-      exportLocation = desktop.appendingPathComponent("Snapzy").path
-    }
+    fileAccessManager.ensureExportLocationInitialized()
+    exportLocation = fileAccessManager.exportLocationPath
   }
 
   private func chooseExportLocation() {
-    let panel = NSOpenPanel()
-    panel.canChooseDirectories = true
-    panel.canChooseFiles = false
-    panel.canCreateDirectories = true
-    panel.allowsMultipleSelection = false
-    panel.message = "Choose where to save screenshots"
-
-    if panel.runModal() == .OK, let url = panel.url {
+    if let url = fileAccessManager.chooseExportDirectory(
+      message: "Choose where Snapzy saves captures",
+      prompt: "Save Here",
+      directoryURL: fileAccessManager.resolvedExportDirectoryURL()
+    ) {
       exportLocation = url.path
     }
   }

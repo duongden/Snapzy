@@ -21,31 +21,42 @@ final class AnnotateExporter {
     panel.canCreateDirectories = true
 
     if panel.runModal() == .OK, let url = panel.url {
-      save(state: state, to: url)
-      if closeWindow {
+      let didSave = save(state: state, to: url)
+      if didSave && closeWindow {
         NSApp.keyWindow?.close()
       }
     }
   }
 
   /// Save annotated image to original file location (overwrite)
-  static func saveToOriginal(state: AnnotateState) {
-    guard let sourceURL = state.sourceURL else { return }
-    save(state: state, to: sourceURL)
+  @discardableResult
+  static func saveToOriginal(state: AnnotateState) -> Bool {
+    guard let sourceURL = state.sourceURL else { return false }
+    return save(state: state, to: sourceURL)
   }
 
-  static func save(state: AnnotateState, to url: URL) {
-    guard let image = renderFinalImage(state: state) else { return }
+  @discardableResult
+  static func save(state: AnnotateState, to url: URL) -> Bool {
+    guard let image = renderFinalImage(state: state) else { return false }
 
     let format: NSBitmapImageRep.FileType = url.pathExtension.lowercased() == "jpg" ? .jpeg : .png
 
     guard let tiffData = image.tiffRepresentation,
           let bitmap = NSBitmapImageRep(data: tiffData),
           let data = bitmap.representation(using: format, properties: [:])
-    else { return }
+    else { return false }
 
-    try? data.write(to: url)
-    NSSound(named: "Pop")?.play()
+    do {
+      try SandboxFileAccessManager.shared.withScopedAccess(to: url.deletingLastPathComponent()) {
+        try data.write(to: url, options: .atomic)
+      }
+      NSSound(named: "Pop")?.play()
+      return true
+    } catch {
+      NSSound(named: "Basso")?.play()
+      print("Annotate save failed: \(error.localizedDescription)")
+      return false
+    }
   }
 
   static func copyToClipboard(state: AnnotateState) {
@@ -352,7 +363,9 @@ final class AnnotateExporter {
       context.fill(rect)
 
     case .wallpaper(let url), .blurred(let url):
-      if let wallpaper = NSImage(contentsOf: url) {
+      if let wallpaper = SandboxFileAccessManager.shared.withScopedAccess(to: url, {
+        NSImage(contentsOf: url)
+      }) {
         wallpaper.draw(in: rect)
         if case .blurred = state.backgroundStyle {
           // Apply blur effect would require CIFilter

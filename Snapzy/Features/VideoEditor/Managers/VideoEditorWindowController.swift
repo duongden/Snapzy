@@ -6,6 +6,7 @@
 //
 
 import AppKit
+import Darwin
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -13,6 +14,9 @@ import UniformTypeIdentifiers
 @MainActor
 final class VideoEditorWindowController: NSWindowController, NSWindowDelegate {
 
+  private let fileAccessManager = SandboxFileAccessManager.shared
+  private var sourceFileAccess: SandboxFileAccessManager.ScopedAccess?
+  private var originalFileAccess: SandboxFileAccessManager.ScopedAccess?
   private var sourceURL: URL?
   private var state: VideoEditorState?
   private var isEmptyState: Bool = false
@@ -22,6 +26,7 @@ final class VideoEditorWindowController: NSWindowController, NSWindowDelegate {
 
   /// Initialize with QuickAccessItem (existing behavior)
   init(item: QuickAccessItem) {
+    self.sourceFileAccess = fileAccessManager.beginAccessingURL(item.url)
     self.sourceURL = item.url
     self.state = VideoEditorState(url: item.url)
     self.isEmptyState = false
@@ -33,6 +38,7 @@ final class VideoEditorWindowController: NSWindowController, NSWindowDelegate {
 
   /// Initialize with URL directly (for drag & drop from external sources)
   init(url: URL) {
+    self.sourceFileAccess = fileAccessManager.beginAccessingURL(url)
     self.sourceURL = url
     self.state = VideoEditorState(url: url)
     self.isEmptyState = false
@@ -44,6 +50,10 @@ final class VideoEditorWindowController: NSWindowController, NSWindowDelegate {
 
   /// Initialize with URL and optional original URL (for drag & drop with temp copy)
   init(url: URL, originalURL: URL?) {
+    self.sourceFileAccess = fileAccessManager.beginAccessingURL(url)
+    if let originalURL = originalURL, originalURL != url {
+      self.originalFileAccess = fileAccessManager.beginAccessingURL(originalURL)
+    }
     self.sourceURL = url
     self.state = VideoEditorState(url: url, originalURL: originalURL)
     self.isEmptyState = false
@@ -62,6 +72,11 @@ final class VideoEditorWindowController: NSWindowController, NSWindowDelegate {
     super.init(window: Self.createWindow())
     self.window?.delegate = self
     setupEmptyContent()
+  }
+
+  deinit {
+    sourceFileAccess?.stop()
+    originalFileAccess?.stop()
   }
 
   @available(*, unavailable)
@@ -205,7 +220,11 @@ final class VideoEditorWindowController: NSWindowController, NSWindowDelegate {
         forceClose()
       } catch {
         state.isExporting = false
-        showExportError(error)
+        if isPermissionDeniedError(error) {
+          showReplaceOriginalPermissionFallback(error)
+        } else {
+          showExportError(error)
+        }
       }
     }
   }
@@ -281,6 +300,40 @@ final class VideoEditorWindowController: NSWindowController, NSWindowDelegate {
     alert.alertStyle = .critical
     alert.addButton(withTitle: "OK")
     alert.beginSheetModal(for: window)
+  }
+
+  private func showReplaceOriginalPermissionFallback(_ error: Error) {
+    guard let window = self.window else { return }
+
+    let alert = NSAlert()
+    alert.messageText = "Cannot Replace Original"
+    alert.informativeText =
+      "Snapzy doesn't have write access to this file location. Save as a copy instead.\n\n\(error.localizedDescription)"
+    alert.alertStyle = .warning
+    alert.addButton(withTitle: "Save as Copy")
+    alert.addButton(withTitle: "Cancel")
+
+    alert.beginSheetModal(for: window) { [weak self] response in
+      guard let self = self else { return }
+      if response == .alertFirstButtonReturn {
+        self.performSaveAsCopy()
+      }
+    }
+  }
+
+  private func isPermissionDeniedError(_ error: Error) -> Bool {
+    let nsError = error as NSError
+
+    if nsError.domain == NSCocoaErrorDomain {
+      return nsError.code == NSFileReadNoPermissionError
+        || nsError.code == NSFileWriteNoPermissionError
+    }
+
+    if nsError.domain == NSPOSIXErrorDomain {
+      return nsError.code == Int(EACCES) || nsError.code == Int(EPERM)
+    }
+
+    return false
   }
 
   private func forceClose() {

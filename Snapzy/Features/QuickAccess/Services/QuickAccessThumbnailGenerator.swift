@@ -33,6 +33,11 @@ enum ThumbnailGenerator {
   ///   - maxSize: Maximum dimension for thumbnail
   /// - Returns: ThumbnailResult with thumbnail and optional duration (for videos)
   static func generate(from url: URL, maxSize: CGFloat = 200) async -> ThumbnailResult {
+    let scopedAccess = await MainActor.run {
+      SandboxFileAccessManager.shared.beginAccessingURL(url)
+    }
+    defer { scopedAccess.stop() }
+
     if isVideoFile(url) {
       return await generateFromVideo(url: url, maxSize: maxSize)
     } else {

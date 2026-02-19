@@ -50,6 +50,7 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
   private let shortcutManager = KeyboardShortcutManager.shared
   private let quickAccessManager = QuickAccessManager.shared
   private let postCaptureHandler = PostCaptureActionHandler.shared
+  private let fileAccessManager = SandboxFileAccessManager.shared
   private var isAreaSelectionActive = false
   private var cancellables = Set<AnyCancellable>()
 
@@ -59,9 +60,8 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
   @Published var recordingShortcut: ShortcutConfig
 
   init() {
-    // Default save directory: Desktop/Snapzy
-    let desktop = FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first!
-    saveDirectory = desktop.appendingPathComponent("Snapzy")
+    fileAccessManager.ensureExportLocationInitialized()
+    saveDirectory = fileAccessManager.resolvedExportDirectoryURL()
 
     // Initialize shortcuts from manager
     fullscreenShortcut = KeyboardShortcutManager.shared.fullscreenShortcut
@@ -164,13 +164,22 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
 
   func captureFullscreen() {
     Task {
+      guard
+        let resolvedSaveDirectory = fileAccessManager.ensureExportDirectoryForOperation(
+          promptMessage: "Choose where Snapzy should save screenshots and recordings")
+      else {
+        lastCaptureResult = .failure(.saveFailed("Save location permission is required"))
+        return
+      }
+      saveDirectory = resolvedSaveDirectory
+
       isCapturing = true
 
       // Minimal delay to ensure UI state updates before capture
       try? await Task.sleep(nanoseconds: 50_000_000)  // 50ms
 
       let result = await captureManager.captureFullscreen(
-        saveDirectory: saveDirectory,
+        saveDirectory: resolvedSaveDirectory,
         format: selectedFormat.format,
         excludeDesktopIcons: DesktopIconManager.shared.isIconHidingEnabled,
         excludeDesktopWidgets: DesktopIconManager.shared.isWidgetHidingEnabled
@@ -190,6 +199,15 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
     if isAreaSelectionActive {
       return
     }
+
+    guard
+      let resolvedSaveDirectory = fileAccessManager.ensureExportDirectoryForOperation(
+        promptMessage: "Choose where Snapzy should save screenshots and recordings")
+    else {
+      lastCaptureResult = .failure(.saveFailed("Save location permission is required"))
+      return
+    }
+    saveDirectory = resolvedSaveDirectory
 
     // Hide main window
     NSApp.hide(nil)
@@ -224,7 +242,7 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
 
           let result = await self.captureManager.captureArea(
             rect: selectedRect,
-            saveDirectory: self.saveDirectory,
+            saveDirectory: resolvedSaveDirectory,
             format: self.selectedFormat.format,
             excludeDesktopIcons: DesktopIconManager.shared.isIconHidingEnabled,
             excludeDesktopWidgets: DesktopIconManager.shared.isWidgetHidingEnabled
@@ -244,14 +262,11 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
   }
 
   func chooseSaveDirectory() {
-    let panel = NSOpenPanel()
-    panel.canChooseDirectories = true
-    panel.canChooseFiles = false
-    panel.canCreateDirectories = true
-    panel.allowsMultipleSelection = false
-    panel.message = "Choose where to save screenshots"
-
-    if panel.runModal() == .OK, let url = panel.url {
+    if let url = fileAccessManager.chooseExportDirectory(
+      message: "Choose where Snapzy should save screenshots and recordings",
+      prompt: "Save Here",
+      directoryURL: fileAccessManager.resolvedExportDirectoryURL()
+    ) {
       saveDirectory = url
     }
   }

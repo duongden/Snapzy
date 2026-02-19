@@ -170,21 +170,36 @@ struct AnnotateToolbarView: View {
     switch response {
     case .alertFirstButtonReturn:
       // Replace original
-      AnnotateExporter.saveToOriginal(state: state)
-      state.markAsSaved()
-      NSApp.keyWindow?.close()
+      if AnnotateExporter.saveToOriginal(state: state) {
+        state.markAsSaved()
+        NSApp.keyWindow?.close()
+      } else {
+        showSaveErrorAlert()
+      }
 
     case .alertSecondButtonReturn:
       // Save as copy - generate copy filename in same directory
       let copyURL = AnnotateExporter.generateCopyURL(from: sourceURL)
-      AnnotateExporter.save(state: state, to: copyURL)
-      state.markAsSaved()
-      NSApp.keyWindow?.close()
+      if AnnotateExporter.save(state: state, to: copyURL) {
+        state.markAsSaved()
+        NSApp.keyWindow?.close()
+      } else {
+        showSaveErrorAlert()
+      }
 
     default:
       // Cancel - do nothing
       break
     }
+  }
+
+  private func showSaveErrorAlert() {
+    let alert = NSAlert()
+    alert.messageText = "Save Failed"
+    alert.informativeText = "Snapzy couldn't write to the selected location. Please choose another folder."
+    alert.alertStyle = .warning
+    alert.addButton(withTitle: "OK")
+    alert.runModal()
   }
 }
 

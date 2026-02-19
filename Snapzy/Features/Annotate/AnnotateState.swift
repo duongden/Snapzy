@@ -352,7 +352,9 @@ final class AnnotateState: ObservableObject {
 
   /// Load image and adjust size for Retina displays
   private static func loadImageWithCorrectScale(from url: URL) -> NSImage? {
-    guard let image = NSImage(contentsOf: url) else { return nil }
+    guard let image = SandboxFileAccessManager.shared.withScopedAccess(to: url, {
+      NSImage(contentsOf: url)
+    }) else { return nil }
 
     // Get the actual pixel dimensions from the bitmap representation
     guard let bitmapRep = image.representations.first as? NSBitmapImageRep else {

@@ -136,6 +136,7 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
   private var captureSystemAudio: Bool = true
   private var captureMicrophone: Bool = false
   private var outputURL: URL?
+  private var exportDirectoryAccess: SandboxFileAccessManager.ScopedAccess?
 
   // Queue for frame processing
   private let processingQueue = DispatchQueue(label: "com.zapshot.recording", qos: .userInitiated)
@@ -246,8 +247,23 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
 
     // Generate output URL
     let fileName = generateFileName()
-    try FileManager.default.createDirectory(at: saveDirectory, withIntermediateDirectories: true)
-    outputURL = saveDirectory.appendingPathComponent("\(fileName).\(format.fileExtension)")
+    exportDirectoryAccess?.stop()
+    let directoryAccess = SandboxFileAccessManager.shared.beginAccessingURL(saveDirectory)
+    exportDirectoryAccess = directoryAccess
+
+    let scopedSaveDirectory = directoryAccess.url
+
+    do {
+      try FileManager.default.createDirectory(at: scopedSaveDirectory, withIntermediateDirectories: true)
+    } catch {
+      exportDirectoryAccess?.stop()
+      exportDirectoryAccess = nil
+      state = .idle
+      self.error = .writeFailed(error.localizedDescription)
+      throw RecordingError.writeFailed(error.localizedDescription)
+    }
+
+    outputURL = scopedSaveDirectory.appendingPathComponent("\(fileName).\(format.fileExtension)")
 
     // Setup AVAssetWriter
     try setupAssetWriter(width: outputWidth, height: outputHeight, captureSystemAudio: captureSystemAudio, captureMicrophone: captureMicrophone)
@@ -570,6 +586,8 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
   }
 
   private func cleanup() {
+    exportDirectoryAccess?.stop()
+    exportDirectoryAccess = nil
     session.reset()
     outputURL = nil
     state = .idle

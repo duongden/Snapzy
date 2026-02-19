@@ -268,15 +268,9 @@ final class RecordingCoordinator: ObservableObject {
         var fps = UserDefaults.standard.integer(forKey: PreferencesKeys.recordingFPS)
         if fps == 0 { fps = 30 }
 
-        let saveDirectory: URL
-        if let path = UserDefaults.standard.string(forKey: PreferencesKeys.exportLocation),
-          !path.isEmpty
-        {
-          saveDirectory = URL(fileURLWithPath: path)
-        } else {
-          saveDirectory =
-            FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first!
-            .appendingPathComponent("Snapzy")
+        guard let saveDirectory = self.resolveSaveDirectoryForOperation() else {
+          self.showSaveLocationPermissionAlert()
+          return
         }
 
         try await recorder.prepareRecording(
@@ -342,16 +336,9 @@ final class RecordingCoordinator: ObservableObject {
     // Get microphone setting from toolbar
     let captureMicrophone = window.captureMicrophone
 
-    // Get save directory
-    let saveDirectory: URL
-    if let path = UserDefaults.standard.string(forKey: PreferencesKeys.exportLocation),
-      !path.isEmpty
-    {
-      saveDirectory = URL(fileURLWithPath: path)
-    } else {
-      saveDirectory =
-        FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first!
-        .appendingPathComponent("Snapzy")
+    guard let saveDirectory = resolveSaveDirectoryForOperation() else {
+      showSaveLocationPermissionAlert()
+      return
     }
 
     // Save selected format to preferences
@@ -448,12 +435,9 @@ final class RecordingCoordinator: ObservableObject {
       captureSystemAudio = true
     }
 
-    let saveDirectory: URL
-    if let path = UserDefaults.standard.string(forKey: PreferencesKeys.exportLocation), !path.isEmpty {
-      saveDirectory = URL(fileURLWithPath: path)
-    } else {
-      saveDirectory = FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first!
-        .appendingPathComponent("Snapzy")
+    guard let saveDirectory = resolveSaveDirectoryForOperation() else {
+      showSaveLocationPermissionAlert()
+      return
     }
 
     Task {
@@ -514,6 +498,13 @@ final class RecordingCoordinator: ObservableObject {
   /// Handle GIF conversion: add to QuickAccess with progress, convert, and update
   private func handleGIFConversion(videoURL: URL) async {
     let quickAccess = QuickAccessManager.shared
+    let sourceAccess = SandboxFileAccessManager.shared.beginAccessingURL(videoURL)
+    let outputDirectoryAccess = SandboxFileAccessManager.shared.beginAccessingURL(
+      videoURL.deletingLastPathComponent())
+    defer {
+      sourceAccess.stop()
+      outputDirectoryAccess.stop()
+    }
 
     // Add video to QuickAccess immediately with processing state
     await quickAccess.addVideo(url: videoURL)
@@ -535,14 +526,18 @@ final class RecordingCoordinator: ObservableObject {
       )
 
       // Generate thumbnail from GIF
-      let thumbnail = NSImage(contentsOf: gifURL)
+      let thumbnail = SandboxFileAccessManager.shared.withScopedAccess(to: gifURL) {
+        NSImage(contentsOf: gifURL)
+      }
 
       // Update the QuickAccess item with GIF URL
       quickAccess.updateItemURL(id: itemId, newURL: gifURL, newThumbnail: thumbnail)
       quickAccess.updateProcessingState(id: itemId, state: .idle)
 
       // Delete the original video file
-      try? FileManager.default.removeItem(at: videoURL)
+      SandboxFileAccessManager.shared.withScopedAccess(to: videoURL.deletingLastPathComponent()) {
+        try? FileManager.default.removeItem(at: videoURL)
+      }
 
     } catch {
       print("GIF conversion failed: \(error.localizedDescription)")
@@ -561,16 +556,9 @@ final class RecordingCoordinator: ObservableObject {
   private func captureScreenshot() {
     guard let rect = selectedRect else { return }
 
-    // Get save directory
-    let saveDirectory: URL
-    if let path = UserDefaults.standard.string(forKey: PreferencesKeys.exportLocation),
-      !path.isEmpty
-    {
-      saveDirectory = URL(fileURLWithPath: path)
-    } else {
-      saveDirectory =
-        FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first!
-        .appendingPathComponent("Snapzy")
+    guard let saveDirectory = resolveSaveDirectoryForOperation() else {
+      showSaveLocationPermissionAlert()
+      return
     }
 
     // Hide overlay windows and toolbar so they don't appear in the screenshot
@@ -627,6 +615,20 @@ final class RecordingCoordinator: ObservableObject {
     toolbarWindow = nil
     selectedRect = nil
     isActive = false
+  }
+
+  private func resolveSaveDirectoryForOperation() -> URL? {
+    SandboxFileAccessManager.shared.ensureExportDirectoryForOperation(
+      promptMessage: "Choose where Snapzy should save screenshots and recordings")
+  }
+
+  private func showSaveLocationPermissionAlert() {
+    let alert = NSAlert()
+    alert.messageText = "Save Location Access Required"
+    alert.informativeText = "Snapzy needs a save folder permission to continue. Please choose a folder in onboarding or grant it now."
+    alert.alertStyle = .warning
+    alert.addButton(withTitle: "OK")
+    alert.runModal()
   }
 
   // MARK: - Annotation Overlay
