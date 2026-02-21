@@ -54,6 +54,7 @@ struct AnnotationItem: Identifiable, Equatable {
 enum AnnotationType: Equatable {
   case path([CGPoint])
   case rectangle
+  case filledRectangle
   case oval
   case arrow(start: CGPoint, end: CGPoint)
   case line(start: CGPoint, end: CGPoint)
@@ -94,7 +95,7 @@ extension AnnotationItem {
     let tolerance = baseTolerance + properties.strokeWidth / 2
 
     switch type {
-    case .rectangle, .blur(_):
+    case .rectangle, .filledRectangle, .blur(_):
       return bounds.contains(point)
 
     case .oval:

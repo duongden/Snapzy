@@ -19,11 +19,16 @@ enum AnnotationFactory {
     state: AnnotateState
   ) -> AnnotationItem? {
 
-    let properties = AnnotationProperties(
+    var properties = AnnotationProperties(
       strokeColor: state.strokeColor,
       fillColor: state.fillColor,
       strokeWidth: state.strokeWidth
     )
+
+    // For filled rectangle, auto-apply stroke color as fill if user hasn't set a fill
+    if tool == .filledRectangle && state.fillColor == .clear {
+      properties.fillColor = state.strokeColor.opacity(1)
+    }
 
     let bounds = CGRect(
       x: min(start.x, end.x),
@@ -37,6 +42,9 @@ enum AnnotationFactory {
     switch tool {
     case .rectangle:
       type = .rectangle
+
+    case .filledRectangle:
+      type = .filledRectangle
 
     case .oval:
       type = .oval

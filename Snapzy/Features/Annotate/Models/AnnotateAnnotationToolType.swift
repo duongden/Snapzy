@@ -12,6 +12,7 @@ enum AnnotationToolType: String, CaseIterable, Identifiable {
   case selection
   case crop
   case rectangle
+  case filledRectangle
   case oval
   case arrow
   case line
@@ -29,6 +30,7 @@ enum AnnotationToolType: String, CaseIterable, Identifiable {
     case .selection: return "cursorarrow"
     case .crop: return "crop"
     case .rectangle: return "rectangle"
+    case .filledRectangle: return "rectangle.inset.filled"
     case .oval: return "circle"
     case .arrow: return "arrow.right"
     case .line: return "line.diagonal"
@@ -47,6 +49,7 @@ enum AnnotationToolType: String, CaseIterable, Identifiable {
     case .selection: return "v"
     case .crop: return "c"
     case .rectangle: return "r"
+    case .filledRectangle: return "f"
     case .oval: return "o"
     case .arrow: return "a"
     case .line: return "l"
@@ -65,6 +68,7 @@ enum AnnotationToolType: String, CaseIterable, Identifiable {
     case .selection: return "Selection"
     case .crop: return "Crop"
     case .rectangle: return "Rectangle"
+    case .filledRectangle: return "Filled Rectangle"
     case .oval: return "Oval"
     case .arrow: return "Arrow"
     case .line: return "Line"

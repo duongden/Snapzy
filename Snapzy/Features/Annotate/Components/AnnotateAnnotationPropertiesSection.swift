@@ -45,7 +45,7 @@ struct AnnotationPropertiesSection: View {
   private var supportsFillColor: Bool {
     guard let ann = annotation else { return false }
     switch ann.type {
-    case .rectangle, .oval: return true
+    case .rectangle, .filledRectangle, .oval: return true
     default: return false
     }
   }

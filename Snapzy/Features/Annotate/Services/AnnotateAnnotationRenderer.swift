@@ -47,6 +47,10 @@ struct AnnotationRenderer {
     case .rectangle:
       context.stroke(annotation.bounds)
 
+    case .filledRectangle:
+      context.fill(annotation.bounds)
+      context.stroke(annotation.bounds)
+
     case .oval:
       context.strokeEllipse(in: annotation.bounds)
 
@@ -100,6 +104,14 @@ struct AnnotationRenderer {
     case .rectangle:
       let currentPoint = currentPath.last ?? start
       let rect = makeRect(from: start, to: currentPoint)
+      context.stroke(rect)
+
+    case .filledRectangle:
+      let currentPoint = currentPath.last ?? start
+      let rect = makeRect(from: start, to: currentPoint)
+      context.setFillColor(NSColor(strokeColor).withAlphaComponent(1).cgColor)
+      context.fill(rect)
+      context.setFillColor(NSColor.clear.cgColor)
       context.stroke(rect)
 
     case .oval:

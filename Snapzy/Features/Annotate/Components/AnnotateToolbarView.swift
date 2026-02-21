@@ -90,7 +90,7 @@ struct AnnotateToolbarView: View {
   }
 
   private var drawingTools: [AnnotationToolType] {
-    [.selection, .rectangle, .oval, .arrow, .line, .text, .highlighter, .blur, .counter, .pencil]
+    [.selection, .rectangle, .filledRectangle, .oval, .arrow, .line, .text, .highlighter, .blur, .counter, .pencil]
   }
 
   private var undoRedoGroup: some View {
