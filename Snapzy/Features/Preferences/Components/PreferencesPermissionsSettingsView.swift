@@ -14,7 +14,10 @@ struct PermissionsSettingsView: View {
   @State private var screenRecordingGranted = false
   @State private var microphoneGranted = false
   @State private var accessibilityGranted = false
+  @State private var saveFolderGranted = false
   @State private var isChecking = false
+
+  private let fileAccessManager = SandboxFileAccessManager.shared
 
   // System Settings URLs
   private let screenRecordingURL =
@@ -23,6 +26,8 @@ struct PermissionsSettingsView: View {
     "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone"
   private let accessibilityURL =
     "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
+  private let filesAndFoldersURL =
+    "x-apple.systempreferences:com.apple.preference.security?Privacy_FilesAndFolders"
 
   var body: some View {
     Form {
@@ -38,6 +43,15 @@ struct PermissionsSettingsView: View {
           isGranted: screenRecordingGranted,
           isRequired: true,
           settingsURL: screenRecordingURL
+        )
+
+        permissionRow(
+          icon: "folder.fill",
+          name: "Save Folder",
+          description: "Required to save screenshots and recordings",
+          isGranted: saveFolderGranted,
+          isRequired: true,
+          settingsURL: filesAndFoldersURL
         )
 
         permissionRow(
@@ -150,6 +164,7 @@ struct PermissionsSettingsView: View {
 
     checkMicrophonePermission()
     checkAccessibilityPermission()
+    checkSaveFolderPermission()
 
     Task {
       await checkScreenRecordingPermission()
@@ -179,6 +194,11 @@ struct PermissionsSettingsView: View {
 
   private func checkAccessibilityPermission() {
     accessibilityGranted = AXIsProcessTrusted()
+  }
+
+  private func checkSaveFolderPermission() {
+    fileAccessManager.ensureExportLocationInitialized()
+    saveFolderGranted = fileAccessManager.hasPersistedExportPermission
   }
 
   // MARK: - System Settings Navigation
