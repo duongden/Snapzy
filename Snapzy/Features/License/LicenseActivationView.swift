@@ -37,7 +37,8 @@ struct LicenseActivationView: View {
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 340)
 
-            // Sandbox indicator
+            // Sandbox indicator — only visible in debug builds
+            #if DEBUG
             HStack(spacing: 6) {
                 Circle()
                     .fill(PolarLicenseProvider.isSandbox ? Color.orange : Color.green)
@@ -47,6 +48,7 @@ struct LicenseActivationView: View {
                     .foregroundColor(.white.opacity(0.5))
             }
             .padding(.top, 4)
+            #endif
 
             // License Key Input
             VStack(spacing: 16) {
@@ -107,13 +109,15 @@ struct LicenseActivationView: View {
                             .foregroundColor(.red.opacity(0.8))
                     }
 
-                    // Troubleshooting suggestions
+                    // Troubleshooting suggestions — only visible in debug builds
+                    #if DEBUG
                     if PolarLicenseProvider.isSandbox {
                         Text("Make sure you created the license in sandbox.polar.sh")
                             .font(.system(size: 10))
                             .foregroundColor(.white.opacity(0.4))
                             .multilineTextAlignment(.center)
                     }
+                    #endif
                 }
                 .padding(.top, 4)
             }
