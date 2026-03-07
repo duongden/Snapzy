@@ -135,6 +135,11 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
   private var fps: Int = 30
   private var captureSystemAudio: Bool = true
   private var captureMicrophone: Bool = false
+  private var excludeOwnApplicationFromCapture: Bool = true
+  private var excludeDesktopIconsFromCapture: Bool = false
+  private var excludeDesktopWidgetsFromCapture: Bool = false
+  private var excludedWindowIDs = Set<CGWindowID>()
+  private var exceptedWindowIDs = Set<CGWindowID>()
   private var outputURL: URL?
   private var exportDirectoryAccess: SandboxFileAccessManager.ScopedAccess?
   private var registeredOutputTypes: Set<SCStreamOutputType> = []
@@ -169,7 +174,9 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
     captureMicrophone: Bool = false,
     saveDirectory: URL,
     excludeDesktopIcons: Bool = false,
-    excludeDesktopWidgets: Bool = false
+    excludeDesktopWidgets: Bool = false,
+    excludeOwnApplication: Bool = true,
+    excludedWindowIDs: [CGWindowID] = []
   ) async throws {
     guard state == .idle else { return }
     state = .preparing
@@ -182,6 +189,11 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
     self.fps = fps
     self.captureSystemAudio = captureSystemAudio
     self.captureMicrophone = captureMicrophone
+    self.excludeOwnApplicationFromCapture = excludeOwnApplication
+    self.excludeDesktopIconsFromCapture = excludeDesktopIcons
+    self.excludeDesktopWidgetsFromCapture = excludeDesktopWidgets
+    self.excludedWindowIDs = Set(excludedWindowIDs)
+    self.exceptedWindowIDs.removeAll()
 
     // Check permission and get shareable content
     let content: SCShareableContent
@@ -191,26 +203,6 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
       state = .idle
       self.error = .permissionDenied
       throw RecordingError.permissionDenied
-    }
-
-    // Find own app to exclude from capture (hides toolbar/status bar from recording)
-    var excludedApps: [SCRunningApplication] = []
-    if let bundleID = Bundle.main.bundleIdentifier {
-      excludedApps = content.applications.filter { $0.bundleIdentifier == bundleID }
-    }
-
-    // Also exclude Finder (desktop icons) and/or widgets if user preference is enabled
-    // Keep open Finder windows visible via exceptingWindows
-    var exceptedWindows: [SCWindow] = []
-    if excludeDesktopIcons {
-      let iconManager = DesktopIconManager.shared
-      excludedApps += iconManager.getFinderApps(from: content)
-      exceptedWindows = iconManager.getVisibleFinderWindows(from: content)
-    }
-
-    if excludeDesktopWidgets {
-      let iconManager = DesktopIconManager.shared
-      excludedApps += iconManager.getWidgetApps(from: content)
     }
 
     // Find the display containing the rect using NSScreen (same coordinate system as input rect)
@@ -280,8 +272,14 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
     // Setup AVAssetWriter
     try setupAssetWriter(width: outputWidth, height: outputHeight, captureSystemAudio: captureSystemAudio, captureMicrophone: captureMicrophone)
 
-    // Setup SCStream with app exclusion to hide toolbar/status bar from capture
-    try await setupStream(display: display, rect: rect, scaleFactor: scaleFactor, captureSystemAudio: captureSystemAudio, captureMicrophone: captureMicrophone, excludedApps: excludedApps, exceptedWindows: exceptedWindows)
+    try await setupStream(
+      display: display,
+      rect: rect,
+      scaleFactor: scaleFactor,
+      captureSystemAudio: captureSystemAudio,
+      captureMicrophone: captureMicrophone,
+      content: content
+    )
   }
 
   /// Start the recording
@@ -468,10 +466,8 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
     }
   }
 
-  private func setupStream(display: SCDisplay, rect: CGRect, scaleFactor: CGFloat, captureSystemAudio: Bool, captureMicrophone: Bool, excludedApps: [SCRunningApplication], exceptedWindows: [SCWindow] = []) async throws {
-    // Exclude apps from capture (own app + optionally Finder for desktop icon hiding)
-    // Open Finder windows preserved via exceptedWindows
-    let filter = SCContentFilter(display: display, excludingApplications: excludedApps, exceptingWindows: exceptedWindows)
+  private func setupStream(display: SCDisplay, rect: CGRect, scaleFactor: CGFloat, captureSystemAudio: Bool, captureMicrophone: Bool, content: SCShareableContent) async throws {
+    let filter = makeContentFilter(display: display, content: content)
 
     let config = SCStreamConfiguration()
     config.queueDepth = 3
@@ -577,6 +573,87 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
     }
   }
 
+  private func makeContentFilter(display: SCDisplay, content: SCShareableContent) -> SCContentFilter {
+    let iconManager = DesktopIconManager.shared
+
+    if excludeOwnApplicationFromCapture {
+      var excludedApps: [SCRunningApplication] = []
+      if let bundleID = Bundle.main.bundleIdentifier {
+        excludedApps += content.applications.filter { $0.bundleIdentifier == bundleID }
+      }
+
+      var exceptedWindows = content.windows.filter { exceptedWindowIDs.contains($0.windowID) }
+      if excludeDesktopIconsFromCapture {
+        excludedApps += iconManager.getFinderApps(from: content)
+        exceptedWindows += iconManager.getVisibleFinderWindows(from: content)
+      }
+      if excludeDesktopWidgetsFromCapture {
+        excludedApps += iconManager.getWidgetApps(from: content)
+      }
+
+      return SCContentFilter(
+        display: display,
+        excludingApplications: uniqueApplications(excludedApps),
+        exceptingWindows: uniqueWindows(exceptedWindows)
+      )
+    }
+
+    var excludedWindows = content.windows.filter { excludedWindowIDs.contains($0.windowID) }
+    if excludeDesktopIconsFromCapture {
+      excludedWindows += iconManager.getDesktopIconWindows(from: content)
+    }
+    if excludeDesktopWidgetsFromCapture {
+      excludedWindows += iconManager.getWidgetWindows(from: content)
+    }
+
+    return SCContentFilter(
+      display: display,
+      excludingWindows: uniqueWindows(excludedWindows)
+    )
+  }
+
+  private func uniqueWindows(_ windows: [SCWindow]) -> [SCWindow] {
+    var seenWindowIDs = Set<CGWindowID>()
+    return windows.filter { seenWindowIDs.insert($0.windowID).inserted }
+  }
+
+  private func uniqueApplications(_ applications: [SCRunningApplication]) -> [SCRunningApplication] {
+    var seenBundleIDs = Set<String>()
+    var uniqueApps: [SCRunningApplication] = []
+
+    for application in applications {
+      let bundleID = application.bundleIdentifier
+      guard seenBundleIDs.insert(bundleID).inserted else { continue }
+      uniqueApps.append(application)
+    }
+
+    return uniqueApps
+  }
+
+  private func currentDisplay(from content: SCShareableContent) -> SCDisplay? {
+    let targetDisplayID: CGDirectDisplayID
+    if let screen = NSScreen.screens.first(where: { $0.frame.intersects(recordingRect) }),
+       let displayID = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID {
+      targetDisplayID = displayID
+    } else {
+      targetDisplayID = CGMainDisplayID()
+    }
+
+    return content.displays.first(where: { $0.displayID == Int(targetDisplayID) })
+      ?? content.displays.first
+  }
+
+  private func updateContentFilter(for activeStream: SCStream) async {
+    do {
+      let content = try await SCShareableContent.current
+      guard let display = currentDisplay(from: content) else { return }
+      let filter = makeContentFilter(display: display, content: content)
+      try await activeStream.updateContentFilter(filter)
+    } catch {
+      print("Failed to update recording filter: \(error.localizedDescription)")
+    }
+  }
+
   private func startTimer() {
     timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
       Task { @MainActor in
@@ -605,6 +682,11 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
     exportDirectoryAccess?.stop()
     exportDirectoryAccess = nil
     registeredOutputTypes.removeAll()
+    excludedWindowIDs.removeAll()
+    exceptedWindowIDs.removeAll()
+    excludeOwnApplicationFromCapture = true
+    excludeDesktopIconsFromCapture = false
+    excludeDesktopWidgetsFromCapture = false
     session.reset()
     outputURL = nil
     state = .idle
@@ -635,49 +717,10 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
   /// Used to include annotation overlay in recording despite app being excluded
   func addExceptedWindow(windowID: CGWindowID) async {
     guard let activeStream = stream else { return }
+    guard excludeOwnApplicationFromCapture else { return }
 
-    do {
-      let content = try await SCShareableContent.current
-      guard let scWindow = content.windows.first(where: { $0.windowID == windowID }) else { return }
-
-      // Find current display
-      let targetDisplayID: CGDirectDisplayID
-      if let screen = NSScreen.screens.first(where: { $0.frame.intersects(recordingRect) }),
-         let displayID = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID {
-        targetDisplayID = displayID
-      } else {
-        targetDisplayID = CGMainDisplayID()
-      }
-
-      guard let display = content.displays.first(where: { $0.displayID == Int(targetDisplayID) })
-              ?? content.displays.first else { return }
-
-      // Rebuild excluded apps list
-      var excludedApps: [SCRunningApplication] = []
-      if let bundleID = Bundle.main.bundleIdentifier {
-        excludedApps = content.applications.filter { $0.bundleIdentifier == bundleID }
-      }
-
-      // Collect excepted windows (Finder windows + annotation overlay)
-      var exceptedWindows: [SCWindow] = [scWindow]
-      if DesktopIconManager.shared.isIconHidingEnabled {
-        excludedApps += DesktopIconManager.shared.getFinderApps(from: content)
-        exceptedWindows += DesktopIconManager.shared.getVisibleFinderWindows(from: content)
-      }
-      if DesktopIconManager.shared.isWidgetHidingEnabled {
-        excludedApps += DesktopIconManager.shared.getWidgetApps(from: content)
-      }
-
-      let filter = SCContentFilter(
-        display: display,
-        excludingApplications: excludedApps,
-        exceptingWindows: exceptedWindows
-      )
-      try await activeStream.updateContentFilter(filter)
-    } catch {
-      // Non-fatal: overlay just won't appear in video
-      print("Failed to add excepted window: \(error.localizedDescription)")
-    }
+    exceptedWindowIDs.insert(windowID)
+    await updateContentFilter(for: activeStream)
   }
 }
 

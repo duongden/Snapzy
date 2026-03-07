@@ -30,6 +30,27 @@ final class RecordingCoordinator: ObservableObject {
 
   private init() {}
 
+  private var includeOwnAppInScreenshots: Bool {
+    UserDefaults.standard.bool(forKey: PreferencesKeys.screenshotIncludeOwnApp)
+  }
+
+  private var includeOwnAppInRecordings: Bool {
+    UserDefaults.standard.bool(forKey: PreferencesKeys.recordingIncludeOwnApp)
+  }
+
+  private func recordingCaptureExclusionConfiguration() -> (excludeOwnApplication: Bool, excludedWindowIDs: [CGWindowID]) {
+    let excludeOwnApplication = !includeOwnAppInRecordings
+    if excludeOwnApplication {
+      return (true, [])
+    }
+
+    var windowIDs = regionOverlayWindows.map { CGWindowID($0.windowNumber) }
+    if let toolbarWindow {
+      windowIDs.append(CGWindowID(toolbarWindow.windowNumber))
+    }
+    return (false, windowIDs)
+  }
+
   // MARK: - Recording Area Persistence
 
   /// Save recording area rect to UserDefaults
@@ -273,6 +294,8 @@ final class RecordingCoordinator: ObservableObject {
           return
         }
 
+        let exclusionConfig = self.recordingCaptureExclusionConfiguration()
+
         try await recorder.prepareRecording(
           rect: rect,
           format: savedFormat,
@@ -282,7 +305,9 @@ final class RecordingCoordinator: ObservableObject {
           captureMicrophone: savedCaptureMicrophone,
           saveDirectory: saveDirectory,
           excludeDesktopIcons: DesktopIconManager.shared.isIconHidingEnabled,
-          excludeDesktopWidgets: DesktopIconManager.shared.isWidgetHidingEnabled
+          excludeDesktopWidgets: DesktopIconManager.shared.isWidgetHidingEnabled,
+          excludeOwnApplication: exclusionConfig.excludeOwnApplication,
+          excludedWindowIDs: exclusionConfig.excludedWindowIDs
         )
 
         try await recorder.startRecording()
@@ -346,6 +371,8 @@ final class RecordingCoordinator: ObservableObject {
 
     Task {
       do {
+        let exclusionConfig = self.recordingCaptureExclusionConfiguration()
+
         try await recorder.prepareRecording(
           rect: rect,
           format: format,
@@ -355,7 +382,9 @@ final class RecordingCoordinator: ObservableObject {
           captureMicrophone: captureMicrophone,
           saveDirectory: saveDirectory,
           excludeDesktopIcons: DesktopIconManager.shared.isIconHidingEnabled,
-          excludeDesktopWidgets: DesktopIconManager.shared.isWidgetHidingEnabled
+          excludeDesktopWidgets: DesktopIconManager.shared.isWidgetHidingEnabled,
+          excludeOwnApplication: exclusionConfig.excludeOwnApplication,
+          excludedWindowIDs: exclusionConfig.excludedWindowIDs
         )
 
         try await recorder.startRecording()
@@ -442,6 +471,8 @@ final class RecordingCoordinator: ObservableObject {
 
     Task {
       do {
+        let exclusionConfig = self.recordingCaptureExclusionConfiguration()
+
         try await recorder.prepareRecording(
           rect: rect,
           format: format,
@@ -451,7 +482,9 @@ final class RecordingCoordinator: ObservableObject {
           captureMicrophone: false,
           saveDirectory: saveDirectory,
           excludeDesktopIcons: DesktopIconManager.shared.isIconHidingEnabled,
-          excludeDesktopWidgets: DesktopIconManager.shared.isWidgetHidingEnabled
+          excludeDesktopWidgets: DesktopIconManager.shared.isWidgetHidingEnabled,
+          excludeOwnApplication: exclusionConfig.excludeOwnApplication,
+          excludedWindowIDs: exclusionConfig.excludedWindowIDs
         )
         try await recorder.startRecording()
 
@@ -577,7 +610,8 @@ final class RecordingCoordinator: ObservableObject {
         rect: rect,
         saveDirectory: saveDirectory,
         excludeDesktopIcons: DesktopIconManager.shared.isIconHidingEnabled,
-        excludeDesktopWidgets: DesktopIconManager.shared.isWidgetHidingEnabled
+        excludeDesktopWidgets: DesktopIconManager.shared.isWidgetHidingEnabled,
+        excludeOwnApplication: !includeOwnAppInScreenshots
       )
 
       switch result {

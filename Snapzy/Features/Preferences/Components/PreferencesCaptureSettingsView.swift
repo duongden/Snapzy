@@ -12,6 +12,7 @@ struct CaptureSettingsView: View {
   // Screenshot behavior
   @AppStorage(PreferencesKeys.hideDesktopIcons) private var hideDesktopIcons = false
   @AppStorage(PreferencesKeys.hideDesktopWidgets) private var hideDesktopWidgets = false
+  @AppStorage(PreferencesKeys.screenshotIncludeOwnApp) private var includeOwnAppInScreenshots = false
 
   // Recording settings
   @AppStorage(PreferencesKeys.recordingFormat) private var format = "mov"
@@ -20,6 +21,7 @@ struct CaptureSettingsView: View {
   @AppStorage(PreferencesKeys.recordingCaptureAudio) private var captureAudio = true
   @AppStorage(PreferencesKeys.recordingCaptureMicrophone) private var captureMicrophone = false
   @AppStorage(PreferencesKeys.recordingRememberLastArea) private var rememberLastArea = true
+  @AppStorage(PreferencesKeys.recordingIncludeOwnApp) private var includeOwnAppInRecordings = false
 
   @State private var showPermissionDeniedAlert = false
 
@@ -32,6 +34,26 @@ struct CaptureSettingsView: View {
 
   var body: some View {
     Form {
+      Section("Snapzy Windows") {
+        SettingRow(
+          icon: "photo.on.rectangle",
+          title: "Show Snapzy in screenshots",
+          description: "Allow windows like Annotate to appear in captured images"
+        ) {
+          Toggle("", isOn: $includeOwnAppInScreenshots)
+            .labelsHidden()
+        }
+
+        SettingRow(
+          icon: "video",
+          title: "Show Snapzy in recordings",
+          description: "Allow windows like Annotate to appear in recorded video"
+        ) {
+          Toggle("", isOn: $includeOwnAppInRecordings)
+            .labelsHidden()
+        }
+      }
+
       // MARK: - Desktop
 
       Section("Desktop") {

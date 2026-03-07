@@ -39,9 +39,26 @@ final class DesktopIconManager {
     content.applications.filter { $0.bundleIdentifier == "com.apple.finder" }
   }
 
+  /// Get only Finder's desktop/icon windows for window-based exclusion.
+  func getDesktopIconWindows(from content: SCShareableContent) -> [SCWindow] {
+    content.windows.filter { window in
+      window.owningApplication?.bundleIdentifier == "com.apple.finder"
+        && window.windowLayer > 0
+        && window.isOnScreen
+    }
+  }
+
   /// Get widget-related apps for exclusion from capture filters.
   func getWidgetApps(from content: SCShareableContent) -> [SCRunningApplication] {
     content.applications.filter { Self.widgetBundleIDs.contains($0.bundleIdentifier) }
+  }
+
+  /// Get on-screen widget windows for window-based exclusion.
+  func getWidgetWindows(from content: SCShareableContent) -> [SCWindow] {
+    content.windows.filter { window in
+      Self.widgetBundleIDs.contains(window.owningApplication?.bundleIdentifier ?? "")
+        && window.isOnScreen
+    }
   }
 
   /// Get visible Finder windows (non-desktop) to keep in capture via exceptingWindows.

@@ -88,6 +88,25 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
     }
   }
 
+  private var includesOwnAppInScreenshots: Bool {
+    UserDefaults.standard.bool(forKey: PreferencesKeys.screenshotIncludeOwnApp)
+  }
+
+  private var includesOwnAppInRecordings: Bool {
+    UserDefaults.standard.bool(forKey: PreferencesKeys.recordingIncludeOwnApp)
+  }
+
+  private var shouldHideOwnWindowsForRecordingToolbarFlow: Bool {
+    !includesOwnAppInScreenshots && !includesOwnAppInRecordings
+  }
+
+  private func hideVisibleNormalWindowsIfNeeded(_ shouldHide: Bool) {
+    guard shouldHide else { return }
+    NSApp.windows
+      .filter { $0.isVisible && $0.level == .normal }
+      .forEach { $0.orderOut(nil) }
+  }
+
   // MARK: - Quick Access Settings
 
   var quickAccessEnabled: Bool {
@@ -182,7 +201,8 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
         saveDirectory: resolvedSaveDirectory,
         format: selectedFormat.format,
         excludeDesktopIcons: DesktopIconManager.shared.isIconHidingEnabled,
-        excludeDesktopWidgets: DesktopIconManager.shared.isWidgetHidingEnabled
+        excludeDesktopWidgets: DesktopIconManager.shared.isWidgetHidingEnabled,
+        excludeOwnApplication: !includesOwnAppInScreenshots
       )
 
       isCapturing = false
@@ -215,7 +235,7 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
     print("[Snapzy:CaptureVM] captureArea() — flag set to true")
 
     // Hide only normal-level app windows (not overlay panels) to avoid hiding pooled overlay windows
-    NSApp.windows.filter { $0.isVisible && $0.level == .normal }.forEach { $0.orderOut(nil) }
+    hideVisibleNormalWindowsIfNeeded(!includesOwnAppInScreenshots)
 
     // Minimal delay to ensure window is hidden
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
@@ -256,7 +276,8 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
             saveDirectory: resolvedSaveDirectory,
             format: self.selectedFormat.format,
             excludeDesktopIcons: DesktopIconManager.shared.isIconHidingEnabled,
-            excludeDesktopWidgets: DesktopIconManager.shared.isWidgetHidingEnabled
+            excludeDesktopWidgets: DesktopIconManager.shared.isWidgetHidingEnabled,
+            excludeOwnApplication: !self.includesOwnAppInScreenshots
           )
 
           self.isCapturing = false
@@ -303,7 +324,7 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
     print("[Snapzy:CaptureVM] startRecordingFlow() — flag set to true")
 
     // Hide only normal-level app windows (not overlay panels)
-    NSApp.windows.filter { $0.isVisible && $0.level == .normal }.forEach { $0.orderOut(nil) }
+    hideVisibleNormalWindowsIfNeeded(shouldHideOwnWindowsForRecordingToolbarFlow)
 
     // Small delay to ensure window is hidden
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
@@ -363,7 +384,7 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
     print("[Snapzy:CaptureVM] captureOCR() — flag set to true")
 
     // Hide only normal-level app windows (not overlay panels)
-    NSApp.windows.filter { $0.isVisible && $0.level == .normal }.forEach { $0.orderOut(nil) }
+    hideVisibleNormalWindowsIfNeeded(!includesOwnAppInScreenshots)
 
     // Minimal delay to ensure window is hidden
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
@@ -401,7 +422,8 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
             guard let image = try await self.captureManager.captureAreaAsImage(
               rect: selectedRect,
               excludeDesktopIcons: DesktopIconManager.shared.isIconHidingEnabled,
-              excludeDesktopWidgets: DesktopIconManager.shared.isWidgetHidingEnabled
+              excludeDesktopWidgets: DesktopIconManager.shared.isWidgetHidingEnabled,
+              excludeOwnApplication: !self.includesOwnAppInScreenshots
             ) else {
               QuickAccessSound.failed.play()
               return

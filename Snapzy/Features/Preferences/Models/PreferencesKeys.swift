@@ -29,6 +29,9 @@ enum PreferencesKeys {
   static let fullscreenShortcut = "fullscreenShortcut"
   static let areaShortcut = "areaShortcut"
 
+  // Screenshot
+  static let screenshotIncludeOwnApp = "screenshot.includeOwnApp"
+
   // Floating Screenshot (Quick Access)
   static let floatingEnabled = "floatingScreenshot.enabled"
   static let floatingPosition = "floatingScreenshot.position"
@@ -47,6 +50,7 @@ enum PreferencesKeys {
   static let recordingLastAreaRect = "recording.lastAreaRect"
   static let recordingRememberLastArea = "recording.rememberLastArea"
   static let recordingOutputMode = "recording.outputMode"
+  static let recordingIncludeOwnApp = "recording.includeOwnApp"
 
   // Recording Annotation Shortcuts
   static let annotationShortcutModifier = "recording.annotation.shortcutModifier"
