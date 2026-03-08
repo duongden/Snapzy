@@ -61,6 +61,7 @@ struct AnnotateToolbarView: View {
           state.isCropActive = true
         }
       }
+      .help("Crop")
 
       ToolbarButton(
         icon: "rectangle.on.rectangle",
@@ -71,6 +72,7 @@ struct AnnotateToolbarView: View {
           state.showSidebar.toggle()
         }
       }
+      .help("Toggle sidebar")
     }
   }
 
@@ -83,6 +85,7 @@ struct AnnotateToolbarView: View {
         ) {
           state.selectedTool = tool
         }
+        .help(tool.displayName)
         .disabled(state.editorMode == .mockup && tool != .selection)
         .opacity(state.editorMode == .mockup && tool != .selection ? 0.4 : 1)
       }
@@ -98,12 +101,14 @@ struct AnnotateToolbarView: View {
       ToolbarButton(icon: "arrow.uturn.backward", isSelected: false) {
         state.undo()
       }
+      .help("Undo")
       .disabled(!state.canUndo)
       .opacity(state.canUndo ? 1 : 0.4)
 
       ToolbarButton(icon: "arrow.uturn.forward", isSelected: false) {
         state.redo()
       }
+      .help("Redo")
       .disabled(!state.canRedo)
       .opacity(state.canRedo ? 1 : 0.4)
     }
