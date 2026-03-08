@@ -22,12 +22,12 @@ struct TextEditOverlay: View {
   private let textPadding: CGFloat = 4
 
   var body: some View {
-    GeometryReader { geometry in
+    GeometryReader { _ in
       if let editingId = state.editingTextAnnotationId,
          let annotation = state.annotations.first(where: { $0.id == editingId }),
          case .text(let currentText) = annotation.type {
 
-        let displayBounds = calculateDisplayBounds(annotation.bounds, in: geometry.size)
+        let displayBounds = calculateDisplayBounds(annotation.bounds)
         let fontSize = max(annotation.properties.fontSize * scale, 10)
 
         // Text input field positioned exactly at annotation bounds
@@ -79,10 +79,11 @@ struct TextEditOverlay: View {
   }
 
   /// Convert image bounds to display coordinates
-  /// The overlay frame matches the image frame, so we just need to:
+  /// The parent view supplies a frame that matches the full image display size.
+  /// Crop clipping and offset are handled by AnnotateCanvasView, so we only:
   /// 1. Scale the bounds
   /// 2. Flip Y axis (AppKit bottom-left origin → SwiftUI top-left origin)
-  private func calculateDisplayBounds(_ imageBounds: CGRect, in containerSize: CGSize) -> CGRect {
+  private func calculateDisplayBounds(_ imageBounds: CGRect) -> CGRect {
     // Scale the bounds
     let scaledX = imageBounds.origin.x * scale
     let scaledWidth = imageBounds.width * scale

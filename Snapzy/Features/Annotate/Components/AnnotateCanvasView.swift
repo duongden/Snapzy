@@ -223,11 +223,7 @@ struct AnnotateCanvasView: View {
           // When crop is applied, render only the cropped portion
           if isCropApplied, let cropRect = state.cropRect {
             croppedImageLayer(
-              cropWidth: imgWidth,
-              cropHeight: imgHeight,
               cropRect: cropRect,
-              fullImageWidth: fullImgWidth,
-              fullImageHeight: fullImgHeight,
               scale: scale
             )
           } else {
@@ -236,13 +232,12 @@ struct AnnotateCanvasView: View {
 
           // Drawing canvas matches image position
           if isCropApplied, let cropRect = state.cropRect {
+            let cropOffset = cropDisplayOffset(for: cropRect, scale: scale)
+
             // When crop is applied, clip drawing to crop dimensions
             CanvasDrawingView(state: state, displayScale: scale)
               .frame(width: fullImgWidth, height: fullImgHeight)
-              .offset(
-                x: (fullImgWidth - imgWidth) / 2 - (cropRect.origin.x * scale),
-                y: (fullImgHeight - imgHeight) / 2 - ((state.imageHeight - cropRect.origin.y - cropRect.height) * scale)
-              )
+              .offset(x: cropOffset.x, y: cropOffset.y)
               .frame(width: imgWidth, height: imgHeight)
               .clipped()
           } else {
@@ -255,12 +250,26 @@ struct AnnotateCanvasView: View {
 
           // Text editing overlay (when editing a text annotation)
           if state.editingTextAnnotationId != nil {
-            TextEditOverlay(
-              state: state,
-              scale: scale,
-              imageSize: CGSize(width: state.imageWidth, height: state.imageHeight)
-            )
-            .frame(width: imgWidth, height: imgHeight)
+            if isCropApplied, let cropRect = state.cropRect {
+              let cropOffset = cropDisplayOffset(for: cropRect, scale: scale)
+
+              TextEditOverlay(
+                state: state,
+                scale: scale,
+                imageSize: CGSize(width: state.imageWidth, height: state.imageHeight)
+              )
+              .frame(width: fullImgWidth, height: fullImgHeight)
+              .offset(x: cropOffset.x, y: cropOffset.y)
+              .frame(width: imgWidth, height: imgHeight)
+              .clipped()
+            } else {
+              TextEditOverlay(
+                state: state,
+                scale: scale,
+                imageSize: CGSize(width: state.imageWidth, height: state.imageHeight)
+              )
+              .frame(width: imgWidth, height: imgHeight)
+            }
           }
         }
         .offset(x: offset.x, y: offset.y)
@@ -400,15 +409,16 @@ struct AnnotateCanvasView: View {
   /// Uses offset + frame + clipped pattern to display just the crop region.
   @ViewBuilder
   private func croppedImageLayer(
-    cropWidth: CGFloat,
-    cropHeight: CGFloat,
     cropRect: CGRect,
-    fullImageWidth: CGFloat,
-    fullImageHeight: CGFloat,
     scale: CGFloat
   ) -> some View {
     let currentCornerRadius = state.effectiveCornerRadius
     let currentShadowIntensity = state.effectiveShadowIntensity
+    let cropOffset = cropDisplayOffset(for: cropRect, scale: scale)
+    let cropWidth = cropRect.width * scale
+    let cropHeight = cropRect.height * scale
+    let fullImageWidth = state.imageWidth * scale
+    let fullImageHeight = state.imageHeight * scale
 
     if let sourceImage = state.sourceImage {
       // Render full image, offset so crop region is at top-left, then clip
@@ -416,12 +426,7 @@ struct AnnotateCanvasView: View {
         .resizable()
         .aspectRatio(contentMode: .fit)
         .frame(width: fullImageWidth, height: fullImageHeight)
-        .offset(
-          // Shift image so crop region center aligns with clip frame center
-          // clip frame is centered on the full image center in the ZStack
-          x: (fullImageWidth - cropWidth) / 2 - (cropRect.origin.x * scale),
-          y: (fullImageHeight - cropHeight) / 2 - ((state.imageHeight - cropRect.origin.y - cropRect.height) * scale)
-        )
+        .offset(x: cropOffset.x, y: cropOffset.y)
         .frame(width: cropWidth, height: cropHeight)
         .clipped()
         .cornerRadius(currentCornerRadius)
@@ -433,6 +438,19 @@ struct AnnotateCanvasView: View {
           y: 8
         )
     }
+  }
+
+  /// Aligns cropped content to the same visible crop window used by the image and canvas.
+  private func cropDisplayOffset(for cropRect: CGRect, scale: CGFloat) -> CGPoint {
+    let fullImageWidth = state.imageWidth * scale
+    let fullImageHeight = state.imageHeight * scale
+    let cropWidth = cropRect.width * scale
+    let cropHeight = cropRect.height * scale
+
+    return CGPoint(
+      x: (fullImageWidth - cropWidth) / 2 - (cropRect.origin.x * scale),
+      y: (fullImageHeight - cropHeight) / 2 - ((state.imageHeight - cropRect.origin.y - cropRect.height) * scale)
+    )
   }
 
   // MARK: - Drag and Drop
