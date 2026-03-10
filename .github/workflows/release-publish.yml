@@ -22,6 +22,7 @@ jobs:
     env:
       HAS_DEVELOPER_ID_CERT: ${{ secrets.DEVELOPER_ID_P12 != '' && secrets.DEVELOPER_ID_PASSWORD != '' && 'true' || 'false' }}
       HAS_NOTARIZATION_CREDENTIALS: ${{ secrets.APPLE_ID != '' && secrets.APPLE_ID_PASSWORD != '' && secrets.APPLE_TEAM_ID != '' && 'true' || 'false' }}
+      HAS_SPARKLE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY != '' && 'true' || 'false' }}
 
     steps:
       - name: Extract version
@@ -205,7 +206,7 @@ jobs:
 
       - name: Sign DMG with Sparkle EdDSA key
         id: sparkle_sign
-        if: ${{ secrets.SPARKLE_PRIVATE_KEY != '' }}
+        if: env.HAS_SPARKLE_KEY == 'true'
         env:
           SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
         run: |
