@@ -40,6 +40,13 @@
 
 ## Install
 
+### Homebrew
+
+```bash
+brew tap duongductrong/snapzy https://github.com/duongductrong/Snapzy
+brew install --cask snapzy
+```
+
 ### Download a release
 
 1. Go to [Releases](https://github.com/duongductrong/Snapzy/releases)
