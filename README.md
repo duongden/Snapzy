@@ -47,6 +47,13 @@ brew tap duongductrong/snapzy https://github.com/duongductrong/Snapzy
 brew install --cask snapzy
 ```
 
+### Shell script
+
+```bash
+# Install a specific version
+curl -fsSL https://raw.githubusercontent.com/duongductrong/Snapzy/v1.0.2/install.sh | bash
+```
+
 ### Download a release
 
 1. Go to [Releases](https://github.com/duongductrong/Snapzy/releases)

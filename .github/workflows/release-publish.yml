@@ -270,10 +270,15 @@ jobs:
           sed -i '' "s/version \".*\"/version \"${VERSION}\"/" Casks/snapzy.rb
           sed -i '' "s/sha256 \".*\"/sha256 \"${SHA}\"/" Casks/snapzy.rb
 
+      - name: Update README install version
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          sed -i '' "s|/Snapzy/v[0-9][0-9.]*\/install.sh|/Snapzy/v${VERSION}/install.sh|g" README.md
+
       - name: Commit appcast and cask update
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add appcast.xml Casks/snapzy.rb
-          git commit -m "chore: update appcast and cask for v${{ steps.version.outputs.version }}"
+          git add appcast.xml Casks/snapzy.rb README.md
+          git commit -m "chore: update appcast, cask, and readme for v${{ steps.version.outputs.version }}"
           git push origin master
