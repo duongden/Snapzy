@@ -120,10 +120,10 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
           # Create release branch and commit changes
-          git checkout -b "$BRANCH"
+          git checkout -B "$BRANCH"
           git add Snapzy.xcodeproj/project.pbxproj CHANGELOG.md
           git commit -m "chore: bump version to ${VERSION}"
-          git push origin "$BRANCH"
+          git push --force origin "$BRANCH"
 
           # Build PR body
           {
