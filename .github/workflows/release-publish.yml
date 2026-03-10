@@ -195,3 +195,70 @@ jobs:
           generate_release_notes: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract build number
+        id: build
+        run: |
+          BUILD=$(grep -m1 'CURRENT_PROJECT_VERSION' Snapzy.xcodeproj/project.pbxproj | sed 's/.*= //' | sed 's/;.*//' | tr -d ' ')
+          echo "number=$BUILD" >> "$GITHUB_OUTPUT"
+          echo "Build number: $BUILD"
+
+      - name: Sign DMG with Sparkle EdDSA key
+        id: sparkle_sign
+        if: ${{ secrets.SPARKLE_PRIVATE_KEY != '' }}
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          # Write private key to temp file
+          PRIVATE_KEY_FILE="$RUNNER_TEMP/sparkle_private_key.pem"
+          echo "$SPARKLE_PRIVATE_KEY" > "$PRIVATE_KEY_FILE"
+
+          # Build sign_update from Sparkle SPM checkout
+          SPARKLE_SRC="build/DerivedData/SourcePackages/checkouts/Sparkle"
+          if [ -d "$SPARKLE_SRC/sign_update" ]; then
+            swift build --package-path "$SPARKLE_SRC/sign_update" -c release 2>/dev/null
+            SIGN_UPDATE=$(swift build --package-path "$SPARKLE_SRC/sign_update" -c release --show-bin-path 2>/dev/null)/sign_update
+          else
+            echo "::warning::Sparkle sign_update source not found, trying generate_appcast binary"
+            SIGN_UPDATE=""
+          fi
+
+          if [ -n "$SIGN_UPDATE" ] && [ -x "$SIGN_UPDATE" ]; then
+            SIGNATURE=$("$SIGN_UPDATE" "${{ env.dmg_path }}" --ed-key-file "$PRIVATE_KEY_FILE" 2>/dev/null | grep "sparkle:edSignature=" | cut -d'"' -f2)
+          else
+            # Fallback: try the sign_update from artifacts if available
+            SIGN_UPDATE_ALT=$(find build/DerivedData/SourcePackages/artifacts -name "sign_update" -type f 2>/dev/null | head -1)
+            if [ -n "$SIGN_UPDATE_ALT" ] && [ -x "$SIGN_UPDATE_ALT" ]; then
+              SIGNATURE=$("$SIGN_UPDATE_ALT" "${{ env.dmg_path }}" --ed-key-file "$PRIVATE_KEY_FILE" 2>/dev/null | grep "sparkle:edSignature=" | cut -d'"' -f2)
+            else
+              echo "::warning::Could not find sign_update binary, skipping signature"
+              SIGNATURE=""
+            fi
+          fi
+
+          echo "signature=$SIGNATURE" >> "$GITHUB_OUTPUT"
+          rm -f "$PRIVATE_KEY_FILE"
+
+          if [ -n "$SIGNATURE" ]; then
+            echo "DMG signed successfully"
+          else
+            echo "::warning::DMG signature is empty"
+          fi
+
+      - name: Update appcast.xml
+        run: |
+          chmod +x scripts/update-appcast.sh
+          ./scripts/update-appcast.sh \
+            "${{ steps.version.outputs.version }}" \
+            "${{ steps.build.outputs.number }}" \
+            "${{ env.dmg_path }}" \
+            "appcast.xml" \
+            "${{ steps.sparkle_sign.outputs.signature }}"
+
+      - name: Commit appcast update
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add appcast.xml
+          git commit -m "chore: update appcast for v${{ steps.version.outputs.version }}"
+          git push origin master
