@@ -601,7 +601,7 @@ final class ScreenCaptureManager: ObservableObject {
         let handler = SingleFrameStreamOutput(continuation: continuation)
         let stream = SCStream(filter: contentFilter, configuration: configuration, delegate: nil)
         do {
-          try stream.addStreamOutput(handler, type: .screen, sampleHandlerQueue: DispatchQueue(label: "com.snapzy.screenshot"))
+          try stream.addStreamOutput(handler, type: .screen, sampleHandlerQueue: DispatchQueue(label: "com.trongduong.snapzy.screenshot"))
         } catch {
           continuation.resume(throwing: error)
           return

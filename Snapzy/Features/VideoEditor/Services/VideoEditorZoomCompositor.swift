@@ -201,7 +201,7 @@ class ZoomVideoCompositorClass: NSObject, AVVideoCompositing {
 
   private var renderContext: AVVideoCompositionRenderContext?
   private let ciContext = CIContext(options: [.useSoftwareRenderer: false])
-  private let queue = DispatchQueue(label: "com.snapzy.zoomcompositor")
+  private let queue = DispatchQueue(label: "com.trongduong.snapzy.zoomcompositor")
 
   // Wallpaper cache to avoid loading from disk on every frame
   private var cachedWallpaperURL: URL?

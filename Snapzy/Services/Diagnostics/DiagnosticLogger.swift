@@ -19,7 +19,7 @@ final class DiagnosticLogger {
 
   // MARK: - State
 
-  private let writeQueue = DispatchQueue(label: "com.snapzy.diagnosticlogger", qos: .utility)
+  private let writeQueue = DispatchQueue(label: "com.trongduong.snapzy.diagnosticlogger", qos: .utility)
   private var currentFileHandle: FileHandle?
   private var currentDateString: String?
   private var hasWrittenSessionHeader = false
