@@ -86,23 +86,41 @@ final class ScreenCaptureManager: ObservableObject {
     updatePermissionStatus(systemGranted: CGPreflightScreenCaptureAccess())
   }
 
-  /// Request screen recording permission by triggering the system prompt
+  /// Request screen recording permission by triggering the system prompt.
+  ///
+  /// Strategy (macOS 13+):
+  /// 1. Fast-path if already granted (`CGPreflightScreenCaptureAccess`).
+  /// 2. Try `SCShareableContent.current` — on macOS 13–14 this triggers the
+  ///    native system dialog that auto-adds the app to Screen Recording.
+  /// 3. If SCShareableContent throws (not-permitted), fall back to
+  ///    `CGRequestScreenCaptureAccess()` which opens System Settings on
+  ///    macOS 15+ so the user can manually toggle the app on.
   func requestPermission() async -> Bool {
     AppIdentityManager.shared.refresh()
 
+    // Fast path: already granted by the system.
     if CGPreflightScreenCaptureAccess() {
       updatePermissionStatus(systemGranted: true)
       return hasPermission
     }
 
-    let granted = CGRequestScreenCaptureAccess()
-    await checkPermission()
-
-    if !granted {
-      openScreenRecordingPreferences()
+    // Primary: ScreenCaptureKit triggers the native permission dialog (macOS 13-14)
+    // and auto-adds the app to the Screen Recording list.
+    do {
+      _ = try await SCShareableContent.current
+      // If we reach here, the system granted access.
+      updatePermissionStatus(systemGranted: true)
+      return hasPermission
+    } catch {
+      // SCShareableContent threw — permission not yet granted.
+      // Fallback: CGRequestScreenCaptureAccess opens System Settings on macOS 15+.
+      let granted = CGRequestScreenCaptureAccess()
+      if !granted {
+        openScreenRecordingPreferences()
+      }
+      await checkPermission()
+      return hasPermission
     }
-
-    return hasPermission
   }
 
   /// Open System Preferences to Screen Recording section

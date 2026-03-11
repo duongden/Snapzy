@@ -85,9 +85,14 @@ final class AppIdentityManager: ObservableObject {
       issues.append(.quarantined)
     }
 
+    // Skip strict signature validation in debug builds — Xcode uses ad-hoc
+    // signing which always fails kSecCSStrictValidate, blocking the entire
+    // permission flow during development.
+    #if !DEBUG
     if !hasValidBundleSignature(bundleURL) {
       issues.append(.invalidBundleSignature)
     }
+    #endif
 
     return AppIdentityHealth(bundleURL: bundleURL, issues: issues)
   }
