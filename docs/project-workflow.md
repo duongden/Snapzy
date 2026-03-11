@@ -3,7 +3,7 @@
 ## Prerequisites
 
 1. EdDSA private key in Keychain (generated via `generate_keys`)
-2. Developer ID signed and notarized app
+2. Preferred: Developer ID signed and notarized app
 3. GitHub repository with Releases enabled
 
 ## Release Steps
@@ -106,10 +106,18 @@ Update this value in `Snapzy/Resources/Info.plist` if your release repository ch
 
 ```bash
 # Clear last check time to force update check
-defaults delete com.duongductrong.snapzy SULastCheckTime
+defaults delete com.trongduong.snapzy SULastCheckTime
 
 # Run app and click "Check for Updates..."
 ```
+
+## Fallback Distribution
+
+When Developer ID credentials are unavailable, the GitHub release workflow now produces an ad-hoc signed fallback app and verifies the bundle with `codesign --verify --deep --strict`.
+
+- Move the app to `/Applications` before first launch
+- Expect Gatekeeper/notarization limitations on these fallback builds
+- If permissions were granted to an older bundle ID, macOS will require re-granting them
 
 ## Troubleshooting
 

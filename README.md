@@ -57,11 +57,12 @@ curl -fsSL https://raw.githubusercontent.com/duongductrong/Snapzy/v1.0.3/install
 ### Download a release
 
 1. Go to [Releases](https://github.com/duongductrong/Snapzy/releases)
-2. Download the latest packaged app asset, typically `Snapzy-<version>.zip`
-3. Unzip the archive and move `Snapzy.app` to `/Applications`
+2. Download the latest packaged app asset, typically `Snapzy-v<version>.dmg`
+3. Move `Snapzy.app` to `/Applications`
 4. Launch Snapzy
 5. Grant Screen Recording permission when prompted in System Settings
-6. Grant Microphone permission too if you want voice input in recordings
+6. Re-launch Snapzy after granting Screen Recording if macOS asks for it
+7. Grant Microphone permission too if you want voice input in recordings
 
 ## Build from source
 

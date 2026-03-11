@@ -130,8 +130,50 @@ jobs:
               -exportPath build/export \
               -exportOptionsPlist build/ExportOptions.plist
           else
-            # Unsigned export - copy from archive directly
+            # Fallback export - copy from archive and ad-hoc sign the full bundle
             ditto "$ARCHIVE_PATH/Products/Applications/Snapzy.app" build/Snapzy.app
+
+            APP_PATH="build/Snapzy.app"
+            SPARKLE_FRAMEWORK="$APP_PATH/Contents/Frameworks/Sparkle.framework"
+
+            if [ -d "$SPARKLE_FRAMEWORK/XPCServices" ]; then
+              find "$SPARKLE_FRAMEWORK/XPCServices" -mindepth 1 -maxdepth 1 -type d | sort | while read -r nested; do
+                codesign --force --sign - --timestamp=none "$nested"
+              done
+            fi
+
+            if [ -d "$SPARKLE_FRAMEWORK/Updater.app" ]; then
+              codesign --force --sign - --timestamp=none "$SPARKLE_FRAMEWORK/Updater.app"
+            fi
+
+            if [ -d "$SPARKLE_FRAMEWORK" ]; then
+              codesign --force --sign - --timestamp=none "$SPARKLE_FRAMEWORK"
+            fi
+
+            codesign \
+              --force \
+              --sign - \
+              --entitlements Snapzy/Snapzy.entitlements \
+              --options runtime \
+              --timestamp=none \
+              "$APP_PATH"
+          fi
+
+      - name: Verify exported app bundle
+        run: |
+          set -euo pipefail
+          APP_PATH="build/Snapzy.app"
+          if [ -d "build/export/Snapzy.app" ]; then
+            APP_PATH="build/export/Snapzy.app"
+          fi
+
+          codesign --verify --deep --strict --verbose=4 "$APP_PATH"
+          codesign -dv --verbose=4 "$APP_PATH"
+          codesign -d --entitlements - "$APP_PATH" > build/exported-app-entitlements.plist
+
+          if ! grep -q "com.apple.security.app-sandbox" build/exported-app-entitlements.plist; then
+            echo "::error::Expected app sandbox entitlement missing from exported app"
+            exit 1
           fi
 
       - name: Install create-dmg
@@ -187,6 +229,22 @@ jobs:
           SHA=$(shasum -a 256 "${{ env.dmg_path }}" | awk '{print $1}')
           echo "sha256=$SHA" >> "$GITHUB_OUTPUT"
           echo "SHA-256: $SHA"
+
+      - name: Append release artifact note
+        run: |
+          if [ "${HAS_DEVELOPER_ID_CERT}" = "true" ] && [ "${HAS_NOTARIZATION_CREDENTIALS}" = "true" ]; then
+            NOTE="- Release artifact: Developer ID signed and notarized."
+          elif [ "${HAS_DEVELOPER_ID_CERT}" = "true" ]; then
+            NOTE="- Release artifact: Developer ID signed, not notarized."
+          else
+            NOTE="- Release artifact: ad-hoc signed fallback, not notarized. Install to /Applications before first launch."
+          fi
+
+          {
+            printf "\n\n"
+            printf "### Distribution Notes\n\n"
+            printf "%s\n" "$NOTE"
+          } >> build/changelog.md
 
       - name: Upload DMG artifact
         uses: actions/upload-artifact@v4
