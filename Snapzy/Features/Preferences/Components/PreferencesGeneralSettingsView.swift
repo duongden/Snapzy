@@ -17,7 +17,11 @@ struct GeneralSettingsView: View {
 
   @State private var startAtLogin = LoginItemManager.isEnabled
   @State private var logSizeText = "Calculating..."
+  @State private var cacheSizeText = "Calculating..."
+  @State private var canClearCache = true
+  @State private var isClearingCache = false
   private let fileAccessManager = SandboxFileAccessManager.shared
+  private let storageManager = CaptureStorageManager.shared
 
   private var updater: SPUUpdater {
     UpdaterManager.shared.updater
@@ -53,6 +57,15 @@ struct GeneralSettingsView: View {
           }
           .buttonStyle(.bordered)
           .controlSize(.small)
+        }
+
+        SettingRow(icon: "externaldrive.fill", title: "Cache", description: cacheSizeText) {
+          Button(isClearingCache ? "Clearing..." : "Clear...") {
+            clearCacheWithConfirmation()
+          }
+          .buttonStyle(.bordered)
+          .controlSize(.small)
+          .disabled(!canClearCache || isClearingCache)
         }
       }
 
@@ -116,6 +129,7 @@ struct GeneralSettingsView: View {
       startAtLogin = LoginItemManager.isEnabled
       initializeExportLocation()
       updateLogSize()
+      updateCacheSize()
     }
   }
 
@@ -149,6 +163,45 @@ struct GeneralSettingsView: View {
     }
   }
 
+  // MARK: - Cache Management
+
+  private func updateCacheSize() {
+    Task {
+      let bytes = await storageManager.calculateCacheSize()
+      cacheSizeText = CaptureStorageManager.formattedSize(bytes)
+      canClearCache = storageManager.isSafeToCleanup && bytes > 0
+    }
+  }
+
+  private func clearCacheWithConfirmation() {
+    let alert = NSAlert()
+    alert.messageText = "Clear Cache?"
+    alert.informativeText = "This will remove all temporary capture files. Active captures will not be affected. This action cannot be undone."
+    alert.alertStyle = .warning
+    alert.addButton(withTitle: "Clear Cache")
+    alert.addButton(withTitle: "Cancel")
+
+    guard alert.runModal() == .alertFirstButtonReturn else { return }
+
+    isClearingCache = true
+    Task {
+      do {
+        try await storageManager.clearCache()
+      } catch {
+        let errorAlert = NSAlert()
+        errorAlert.messageText = "Could Not Clear Cache"
+        errorAlert.informativeText = error.localizedDescription
+        errorAlert.alertStyle = .informational
+        errorAlert.addButton(withTitle: "OK")
+        errorAlert.runModal()
+      }
+      isClearingCache = false
+      updateCacheSize()
+    }
+  }
+
+  // MARK: - Onboarding
+
   private func restartOnboarding() {
     OnboardingFlowView.resetOnboarding()
     NSApp.keyWindow?.close()
@@ -156,6 +209,8 @@ struct GeneralSettingsView: View {
       NotificationCenter.default.post(name: .showOnboarding, object: nil)
     }
   }
+
+  // MARK: - Diagnostics
 
   private func revealLogFolder() {
     let logDir = DiagnosticLogger.shared.logDirectoryURL
