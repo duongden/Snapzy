@@ -35,6 +35,10 @@ struct QuickAccessCardView: View {
   /// Minimum movement to determine direction (30px threshold for drag activation)
   private let directionThreshold: CGFloat = 30
 
+  /// Scaled card dimensions based on overlay scale setting
+  private var scaledWidth: CGFloat { QuickAccessLayout.scaledCardWidth(CGFloat(manager.overlayScale)) }
+  private var scaledHeight: CGFloat { QuickAccessLayout.scaledCardHeight(CGFloat(manager.overlayScale)) }
+
   /// Dismiss direction based on panel position
   /// Right side panel: swipe right to dismiss (+1)
   /// Left side panel: swipe left to dismiss (-1)
@@ -48,7 +52,7 @@ struct QuickAccessCardView: View {
       Image(nsImage: item.thumbnail)
         .resizable()
         .aspectRatio(contentMode: .fill)
-        .frame(width: QuickAccessLayout.cardWidth, height: QuickAccessLayout.cardHeight)
+        .frame(width: scaledWidth, height: scaledHeight)
         .clipped()
         .blur(radius: isHovering ? 2 : 0)
         .cornerRadius(cornerRadius)
@@ -75,7 +79,7 @@ struct QuickAccessCardView: View {
         cornerButtons
       }
     }
-    .frame(width: QuickAccessLayout.cardWidth, height: QuickAccessLayout.cardHeight)
+    .frame(width: scaledWidth, height: scaledHeight)
     .background(
       RoundedRectangle(cornerRadius: cornerRadius)
         .fill(Color.black.opacity(0.1))
@@ -432,7 +436,7 @@ struct QuickAccessCardView: View {
     Image(nsImage: item.thumbnail)
       .resizable()
       .aspectRatio(contentMode: .fill)
-      .frame(width: QuickAccessLayout.cardWidth * 0.8, height: QuickAccessLayout.cardHeight * 0.8)
+      .frame(width: scaledWidth * 0.8, height: scaledHeight * 0.8)
       .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
       .shadow(color: Color.black.opacity(0.3), radius: 4, x: 0, y: 2)
   }

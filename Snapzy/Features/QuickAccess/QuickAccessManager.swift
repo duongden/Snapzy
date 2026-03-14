@@ -49,6 +49,10 @@ final class QuickAccessManager: ObservableObject {
   @Published var overlayScale: Double = 1.0 {
     didSet {
       UserDefaults.standard.set(overlayScale, forKey: Keys.overlayScale)
+      // Live-resize panel when slider changes
+      if panelController.isVisible {
+        panelController.updateSize(calculateMaxPanelSize())
+      }
     }
   }
   @Published var dragDropEnabled: Bool = true {
@@ -425,11 +429,14 @@ final class QuickAccessManager: ObservableObject {
   /// Fixed max-size panel — never resizes, prevents SwiftUI re-layout jitter
   private func calculateMaxPanelSize() -> CGSize {
     let itemCount = maxVisibleItems
+    let scale = CGFloat(overlayScale)
+    let cardW = QuickAccessLayout.scaledCardWidth(scale)
+    let cardH = QuickAccessLayout.scaledCardHeight(scale)
     let height =
-      CGFloat(itemCount) * QuickAccessLayout.cardHeight
+      CGFloat(itemCount) * cardH
       + CGFloat(itemCount - 1) * QuickAccessLayout.cardSpacing
       + QuickAccessLayout.containerPadding * 2
-    let width = QuickAccessLayout.cardWidth + QuickAccessLayout.containerPadding * 2
+    let width = cardW + QuickAccessLayout.containerPadding * 2
     return CGSize(width: width, height: height)
   }
 
