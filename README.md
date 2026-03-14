@@ -64,6 +64,22 @@ curl -fsSL https://raw.githubusercontent.com/duongductrong/Snapzy/v1.1.0/install
 6. Re-launch Snapzy after granting Screen Recording if macOS asks for it
 7. Grant Microphone permission too if you want voice input in recordings
 
+## Uninstall
+
+To completely remove Snapzy, reset all permissions, and clean up app data:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/duongductrong/Snapzy/main/uninstall.sh | bash
+```
+
+Or if you cloned the repo:
+
+```bash
+./uninstall.sh
+```
+
+This will remove the app from `/Applications`, delete preferences and caches, and reset TCC permissions (Screen Recording, Microphone, Accessibility). You may need to log out or reboot for permission changes to fully take effect.
+
 ## Build from source
 
 1. Clone the repository:
