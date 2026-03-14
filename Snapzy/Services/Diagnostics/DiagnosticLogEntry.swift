@@ -26,6 +26,7 @@ enum DiagnosticLogCategory: String {
   case action = "ACTION"
   case ui = "UI"
   case lifecycle = "LIFECYCLE"
+  case update = "UPDATE"
 }
 
 // MARK: - Log Entry
