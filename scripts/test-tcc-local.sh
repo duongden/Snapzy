@@ -93,12 +93,21 @@ sign_and_install() {
   # Sign Sparkle framework
   sign_sparkle_framework "$app_path" "$identity"
 
+  # Pre-process entitlements: codesign does NOT substitute Xcode variables
+  # like $(PRODUCT_BUNDLE_IDENTIFIER). We must do it manually or Sparkle's
+  # XPC mach-lookup ports won't match (causes error 4005).
+  local bundle_id
+  bundle_id=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$app_path/Contents/Info.plist")
+  local processed="$TEST_DIR/processed-entitlements.plist"
+  sed "s/\$(PRODUCT_BUNDLE_IDENTIFIER)/$bundle_id/g" "$ENTITLEMENTS" > "$processed"
+  echo "  → Pre-processed entitlements with bundle ID: $bundle_id"
+
   # Sign main app
   echo "  → Signing main app bundle..."
   codesign \
     --force \
     --sign "$identity" \
-    --entitlements "$ENTITLEMENTS" \
+    --entitlements "$processed" \
     --timestamp=none \
     "$app_path"
 
