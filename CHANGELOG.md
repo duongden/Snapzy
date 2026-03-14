@@ -27,7 +27,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - chore: update appcast, cask, and readme for v1.0.15 (4b5d26c)
 
 ### Contributors
-- @Trong Duong
+- @duongductrong
 - @github-actions[bot]
 
 ## [1.0.15] - 2026-03-14
