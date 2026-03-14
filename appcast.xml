@@ -6,6 +6,21 @@
     <description>Snapzy application updates</description>
     <language>en</language>
     <item>
+      <title>Version 1.1.0</title>
+      <sparkle:version>17</sparkle:version>
+      <sparkle:shortVersionString>1.1.0</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <pubDate>Sat, 14 Mar 2026 06:08:50 +0000</pubDate>
+      <sparkle:releaseNotesLink>
+        https://github.com/duongductrong/Snapzy/releases/tag/v1.1.0
+      </sparkle:releaseNotesLink>
+      <enclosure
+        url="https://github.com/duongductrong/Snapzy/releases/download/v1.1.0/Snapzy-v1.1.0.dmg"
+        sparkle:edSignature="jIzfo27XJKMCQKcMAa5XE6ubbupbWd09EghN5K46V0jAMHr6t+hNs/i1+TIASmVp5Y49XeIuz0wuKQSC2wIRBg=="
+        length="7962900"
+        type="application/octet-stream"/>
+    </item>
+    <item>
       <title>Version 1.0.15</title>
       <sparkle:version>16</sparkle:version>
       <sparkle:shortVersionString>1.0.15</sparkle:shortVersionString>
