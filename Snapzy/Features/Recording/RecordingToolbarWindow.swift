@@ -45,6 +45,7 @@ final class RecordingToolbarState: ObservableObject {
   @Published var captureMicrophone: Bool
   @Published var captureMode: RecordingCaptureMode
   @Published var outputMode: RecordingOutputMode
+  @Published var highlightClicks: Bool
 
   var onCaptureModeChanged: ((RecordingCaptureMode) -> Void)?
 
@@ -81,6 +82,9 @@ final class RecordingToolbarState: ObservableObject {
     } else {
       self.outputMode = .video
     }
+
+    // Load highlight clicks preference (default to true)
+    self.highlightClicks = UserDefaults.standard.object(forKey: PreferencesKeys.recordingHighlightClicks) as? Bool ?? false
   }
 }
 

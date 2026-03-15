@@ -27,6 +27,10 @@ final class RecordingCoordinator: ObservableObject {
   private var annotationToolbarWindow: RecordingAnnotationToolbarWindow?
   private var annotationOverlayWindow: RecordingAnnotationOverlayWindow?
 
+  // Click highlight overlay
+  private var clickHighlightWindow: MouseClickHighlightWindow?
+  private var clickHighlightService: MouseClickHighlightService?
+
   private init() {}
 
   private let tempCaptureManager = TempCaptureManager.shared
@@ -353,6 +357,9 @@ final class RecordingCoordinator: ObservableObject {
         // Setup annotation overlay (must be after recording starts so window exists)
         setupAnnotationOverlay(for: rect)
 
+        // Setup click highlight overlay (must be after recording starts)
+        setupClickHighlightOverlay(for: rect)
+
         // Switch to status bar
         window.showRecordingStatusBar(recorder: recorder)
 
@@ -609,6 +616,9 @@ final class RecordingCoordinator: ObservableObject {
     // Remove escape monitors
     removeEscapeMonitors()
 
+    // Close click highlight overlay
+    cleanupClickHighlightOverlay()
+
     // Close annotation windows
     cleanupAnnotationOverlay()
 
@@ -693,6 +703,36 @@ final class RecordingCoordinator: ObservableObject {
 
     annotationOverlayWindow?.close()
     annotationOverlayWindow = nil
+  }
+
+  // MARK: - Click Highlight Overlay
+
+  private func setupClickHighlightOverlay(for rect: CGRect) {
+    let isEnabled = UserDefaults.standard.object(forKey: PreferencesKeys.recordingHighlightClicks) as? Bool ?? false
+    guard isEnabled else { return }
+
+    let highlightWindow = MouseClickHighlightWindow(recordingRect: rect)
+    highlightWindow.orderFrontRegardless()
+    clickHighlightWindow = highlightWindow
+
+    let service = MouseClickHighlightService()
+    service.onClickDetected = { [weak highlightWindow] point in
+      highlightWindow?.showClickEffect(at: point)
+    }
+    service.start(recordingRect: rect)
+    clickHighlightService = service
+
+    // Add to ScreenCaptureKit's exceptingWindows so the effect is captured
+    Task {
+      await recorder.addExceptedWindow(windowID: highlightWindow.overlayWindowID)
+    }
+  }
+
+  private func cleanupClickHighlightOverlay() {
+    clickHighlightService?.stop()
+    clickHighlightService = nil
+    clickHighlightWindow?.close()
+    clickHighlightWindow = nil
   }
 
   /// Update the selected rect and sync all overlays + toolbar

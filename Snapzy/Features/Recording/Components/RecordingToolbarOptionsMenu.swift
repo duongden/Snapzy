@@ -101,6 +101,24 @@ private struct ToolbarOptionsPopoverContent: View {
         .toggleStyle(.switch)
         .controlSize(.small)
       }
+
+      Divider()
+
+      // Cursor Section
+      SettingsSection(title: "Cursor", icon: "cursorarrow.click.2") {
+        Toggle(isOn: Binding(
+          get: { state.highlightClicks },
+          set: { newValue in
+            state.highlightClicks = newValue
+            UserDefaults.standard.set(newValue, forKey: PreferencesKeys.recordingHighlightClicks)
+          }
+        )) {
+          Text("Highlight Clicks")
+            .font(.system(size: 11))
+        }
+        .toggleStyle(.switch)
+        .controlSize(.small)
+      }
     }
     .padding(12)
     .frame(width: 240)
