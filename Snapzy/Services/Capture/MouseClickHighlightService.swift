@@ -2,8 +2,8 @@
 //  MouseClickHighlightService.swift
 //  Snapzy
 //
-//  Detects global mouse clicks and forwards them to the click highlight overlay
-//  so they appear in screen recordings.
+//  Detects global mouse clicks and drag movement, forwarding events
+//  to the click highlight overlay so they appear in screen recordings.
 //
 
 import AppKit
@@ -12,34 +12,80 @@ import Foundation
 @MainActor
 final class MouseClickHighlightService {
 
-  private var globalMonitor: Any?
-  private var localMonitor: Any?
+  private var globalDownMonitor: Any?
+  private var localDownMonitor: Any?
+  private var globalUpMonitor: Any?
+  private var localUpMonitor: Any?
+  private var globalDragMonitor: Any?
+  private var localDragMonitor: Any?
   private var recordingRect: CGRect = .zero
   private var isRunning = false
+  private var isMouseDown = false
 
-  /// Called on each detected click with the screen-space position
-  var onClickDetected: ((NSPoint) -> Void)?
+  /// Called on mouse-down with screen-space position
+  var onMouseDown: ((NSPoint) -> Void)?
+
+  /// Called on mouse-up
+  var onMouseUp: (() -> Void)?
+
+  /// Called while mouse is held and dragged, with updated screen-space position
+  var onMouseDragged: ((NSPoint) -> Void)?
 
   func start(recordingRect: CGRect) {
     guard !isRunning else { return }
     isRunning = true
     self.recordingRect = recordingRect
 
-    // Global monitor — clicks when Snapzy is NOT the key app
-    globalMonitor = NSEvent.addGlobalMonitorForEvents(
+    // Mouse-down monitors
+    globalDownMonitor = NSEvent.addGlobalMonitorForEvents(
       matching: [.leftMouseDown, .rightMouseDown]
     ) { [weak self] event in
       MainActor.assumeIsolated {
-        self?.handleClick(event)
+        self?.handleMouseDown(event)
       }
     }
 
-    // Local monitor — clicks when Snapzy IS the key app
-    localMonitor = NSEvent.addLocalMonitorForEvents(
+    localDownMonitor = NSEvent.addLocalMonitorForEvents(
       matching: [.leftMouseDown, .rightMouseDown]
     ) { [weak self] event in
       MainActor.assumeIsolated {
-        self?.handleClick(event)
+        self?.handleMouseDown(event)
+      }
+      return event
+    }
+
+    // Mouse-up monitors
+    globalUpMonitor = NSEvent.addGlobalMonitorForEvents(
+      matching: [.leftMouseUp, .rightMouseUp]
+    ) { [weak self] _ in
+      MainActor.assumeIsolated {
+        self?.handleMouseUp()
+      }
+    }
+
+    localUpMonitor = NSEvent.addLocalMonitorForEvents(
+      matching: [.leftMouseUp, .rightMouseUp]
+    ) { [weak self] event in
+      MainActor.assumeIsolated {
+        self?.handleMouseUp()
+      }
+      return event
+    }
+
+    // Mouse-dragged monitors (cursor movement while held)
+    globalDragMonitor = NSEvent.addGlobalMonitorForEvents(
+      matching: [.leftMouseDragged, .rightMouseDragged]
+    ) { [weak self] _ in
+      MainActor.assumeIsolated {
+        self?.handleMouseDragged()
+      }
+    }
+
+    localDragMonitor = NSEvent.addLocalMonitorForEvents(
+      matching: [.leftMouseDragged, .rightMouseDragged]
+    ) { [weak self] event in
+      MainActor.assumeIsolated {
+        self?.handleMouseDragged()
       }
       return event
     }
@@ -47,30 +93,46 @@ final class MouseClickHighlightService {
 
   func stop() {
     isRunning = false
+    isMouseDown = false
 
-    if let monitor = globalMonitor {
-      NSEvent.removeMonitor(monitor)
-      globalMonitor = nil
+    let monitors = [globalDownMonitor, localDownMonitor,
+                    globalUpMonitor, localUpMonitor,
+                    globalDragMonitor, localDragMonitor]
+    for monitor in monitors {
+      if let m = monitor { NSEvent.removeMonitor(m) }
     }
+    globalDownMonitor = nil
+    localDownMonitor = nil
+    globalUpMonitor = nil
+    localUpMonitor = nil
+    globalDragMonitor = nil
+    localDragMonitor = nil
 
-    if let monitor = localMonitor {
-      NSEvent.removeMonitor(monitor)
-      localMonitor = nil
-    }
-
-    onClickDetected = nil
+    onMouseDown = nil
+    onMouseUp = nil
+    onMouseDragged = nil
   }
 
   func updateRecordingRect(_ rect: CGRect) {
     recordingRect = rect
   }
 
-  private func handleClick(_ event: NSEvent) {
+  private func handleMouseDown(_ event: NSEvent) {
     let location = NSEvent.mouseLocation
-
-    // Only fire for clicks inside the recording area
     guard recordingRect.contains(location) else { return }
+    isMouseDown = true
+    onMouseDown?(location)
+  }
 
-    onClickDetected?(location)
+  private func handleMouseUp() {
+    guard isMouseDown else { return }
+    isMouseDown = false
+    onMouseUp?()
+  }
+
+  private func handleMouseDragged() {
+    guard isMouseDown else { return }
+    let location = NSEvent.mouseLocation
+    onMouseDragged?(location)
   }
 }

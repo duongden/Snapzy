@@ -716,8 +716,14 @@ final class RecordingCoordinator: ObservableObject {
     clickHighlightWindow = highlightWindow
 
     let service = MouseClickHighlightService()
-    service.onClickDetected = { [weak highlightWindow] point in
+    service.onMouseDown = { [weak highlightWindow] point in
       highlightWindow?.showClickEffect(at: point)
+    }
+    service.onMouseUp = { [weak highlightWindow] in
+      highlightWindow?.dismissClickEffect()
+    }
+    service.onMouseDragged = { [weak highlightWindow] point in
+      highlightWindow?.moveClickEffect(to: point)
     }
     service.start(recordingRect: rect)
     clickHighlightService = service
