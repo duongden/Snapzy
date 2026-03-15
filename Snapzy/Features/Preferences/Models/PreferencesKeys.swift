@@ -56,6 +56,18 @@ enum PreferencesKeys {
   static let recordingHighlightClicks = "recording.highlightClicks"
   static let recordingShowKeystrokes = "recording.showKeystrokes"
 
+  // Mouse Highlight Customization
+  static let mouseHighlightSize = "recording.mouseHighlight.size"
+  static let mouseHighlightAnimationDuration = "recording.mouseHighlight.animationDuration"
+  static let mouseHighlightColor = "recording.mouseHighlight.color"
+  static let mouseHighlightOpacity = "recording.mouseHighlight.opacity"
+  static let mouseHighlightRippleCount = "recording.mouseHighlight.rippleCount"
+
+  // Keystroke Overlay Customization
+  static let keystrokeFontSize = "recording.keystroke.fontSize"
+  static let keystrokePosition = "recording.keystroke.position"
+  static let keystrokeDisplayDuration = "recording.keystroke.displayDuration"
+
   // Recording Annotation Shortcuts
   static let annotationShortcutModifier = "recording.annotation.shortcutModifier"
   static let annotationShortcutHoldDuration = "recording.annotation.shortcutHoldDuration"

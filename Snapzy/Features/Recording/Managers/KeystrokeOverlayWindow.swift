@@ -3,7 +3,7 @@
 //  Snapzy
 //
 //  Transparent overlay window that displays a keystroke badge
-//  at the bottom-center of the recording area.
+//  within the recording area, positioned according to user settings.
 //  Captured by ScreenCaptureKit via exceptingWindows so the
 //  keystrokes appear in the recorded video.
 //
@@ -16,8 +16,10 @@ final class KeystrokeOverlayWindow: NSWindow {
 
   private var badgeView: KeystrokeBadgeView?
   private var fadeOutWorkItem: DispatchWorkItem?
+  private let config: KeystrokeOverlayConfiguration
 
-  init(recordingRect: CGRect) {
+  init(recordingRect: CGRect, configuration: KeystrokeOverlayConfiguration = KeystrokeOverlayConfiguration()) {
+    self.config = configuration
     super.init(
       contentRect: recordingRect,
       styleMask: [.borderless],
@@ -44,17 +46,49 @@ final class KeystrokeOverlayWindow: NSWindow {
   private func setupBadgeView(recordingRect: CGRect) {
     guard let contentView else { return }
 
-    let badge = KeystrokeBadgeView()
+    let badge = KeystrokeBadgeView(fontSize: config.fontSize)
     badge.translatesAutoresizingMaskIntoConstraints = false
     badge.alphaValue = 0
     contentView.addSubview(badge)
 
-    // Position at bottom-center, 40px from bottom
-    NSLayoutConstraint.activate([
-      badge.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
-      badge.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -40),
-    ])
+    // Position based on configuration
+    let offset = config.edgeOffset
+    var constraints: [NSLayoutConstraint] = []
 
+    switch config.position {
+    case .bottomCenter:
+      constraints = [
+        badge.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
+        badge.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -offset),
+      ]
+    case .bottomLeft:
+      constraints = [
+        badge.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: offset),
+        badge.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -offset),
+      ]
+    case .bottomRight:
+      constraints = [
+        badge.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -offset),
+        badge.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -offset),
+      ]
+    case .topCenter:
+      constraints = [
+        badge.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
+        badge.topAnchor.constraint(equalTo: contentView.topAnchor, constant: offset),
+      ]
+    case .topLeft:
+      constraints = [
+        badge.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: offset),
+        badge.topAnchor.constraint(equalTo: contentView.topAnchor, constant: offset),
+      ]
+    case .topRight:
+      constraints = [
+        badge.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -offset),
+        badge.topAnchor.constraint(equalTo: contentView.topAnchor, constant: offset),
+      ]
+    }
+
+    NSLayoutConstraint.activate(constraints)
     badgeView = badge
   }
 
@@ -105,12 +139,12 @@ final class KeystrokeOverlayWindow: NSWindow {
       badge.layer?.add(pulse, forKey: "pulse")
     }
 
-    // Schedule fade-out after linger
+    // Schedule fade-out after configurable linger duration
     let workItem = DispatchWorkItem { [weak self] in
       self?.fadeOutBadge()
     }
     fadeOutWorkItem = workItem
-    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5, execute: workItem)
+    DispatchQueue.main.asyncAfter(deadline: .now() + config.displayDuration, execute: workItem)
   }
 
   private func fadeOutBadge() {
@@ -135,13 +169,14 @@ private final class KeystrokeBadgeView: NSView {
   private let textLayer = CATextLayer()
   private let bgLayer = CAShapeLayer()
 
-  private static let horizontalPadding: CGFloat = 14
-  private static let verticalPadding: CGFloat = 8
-  private static let cornerRadius: CGFloat = 8
-  private static let fontSize: CGFloat = 16
+  private let badgeFontSize: CGFloat
+  private let horizontalPadding: CGFloat = 14
+  private let verticalPadding: CGFloat = 8
+  private let badgeCornerRadius: CGFloat = 8
 
-  override init(frame frameRect: NSRect) {
-    super.init(frame: frameRect)
+  init(fontSize: CGFloat = 16) {
+    self.badgeFontSize = fontSize
+    super.init(frame: .zero)
     wantsLayer = true
     layer?.masksToBounds = false
     setupLayers()
@@ -155,12 +190,12 @@ private final class KeystrokeBadgeView: NSView {
   private func setupLayers() {
     // Background layer
     bgLayer.fillColor = NSColor(white: 0.12, alpha: 0.85).cgColor
-    bgLayer.cornerRadius = Self.cornerRadius
+    bgLayer.cornerRadius = badgeCornerRadius
     layer?.addSublayer(bgLayer)
 
     // Text layer
-    textLayer.font = NSFont.systemFont(ofSize: Self.fontSize, weight: .medium) as CTFont
-    textLayer.fontSize = Self.fontSize
+    textLayer.font = NSFont.systemFont(ofSize: badgeFontSize, weight: .medium) as CTFont
+    textLayer.fontSize = badgeFontSize
     textLayer.foregroundColor = NSColor.white.cgColor
     textLayer.alignmentMode = .center
     textLayer.contentsScale = NSScreen.main?.backingScaleFactor ?? 2.0
@@ -172,12 +207,12 @@ private final class KeystrokeBadgeView: NSView {
     textLayer.string = text
 
     // Measure text size
-    let font = NSFont.systemFont(ofSize: Self.fontSize, weight: .medium)
+    let font = NSFont.systemFont(ofSize: badgeFontSize, weight: .medium)
     let attrs: [NSAttributedString.Key: Any] = [.font: font]
     let textSize = (text as NSString).size(withAttributes: attrs)
 
-    let badgeWidth = textSize.width + Self.horizontalPadding * 2
-    let badgeHeight = textSize.height + Self.verticalPadding * 2
+    let badgeWidth = textSize.width + horizontalPadding * 2
+    let badgeHeight = textSize.height + verticalPadding * 2
 
     // Update own frame (centered via constraints, only size matters)
     let newSize = CGSize(width: badgeWidth, height: badgeHeight)
@@ -196,14 +231,14 @@ private final class KeystrokeBadgeView: NSView {
     bgLayer.frame = bounds
     bgLayer.path = CGPath(
       roundedRect: bounds,
-      cornerWidth: Self.cornerRadius,
-      cornerHeight: Self.cornerRadius,
+      cornerWidth: badgeCornerRadius,
+      cornerHeight: badgeCornerRadius,
       transform: nil
     )
 
     textLayer.frame = CGRect(
-      x: Self.horizontalPadding,
-      y: Self.verticalPadding - 1,
+      x: horizontalPadding,
+      y: verticalPadding - 1,
       width: textSize.width,
       height: textSize.height
     )

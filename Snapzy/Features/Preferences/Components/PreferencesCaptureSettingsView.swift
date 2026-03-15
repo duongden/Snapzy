@@ -23,7 +23,38 @@ struct CaptureSettingsView: View {
   @AppStorage(PreferencesKeys.recordingRememberLastArea) private var rememberLastArea = true
   @AppStorage(PreferencesKeys.recordingIncludeOwnApp) private var includeOwnAppInRecordings = false
 
+  // Mouse Highlight settings
+  @AppStorage(PreferencesKeys.mouseHighlightSize) private var mouseHighlightSize: Double = 50
+  @AppStorage(PreferencesKeys.mouseHighlightAnimationDuration) private var mouseHighlightAnimDuration: Double = 0.7
+  @AppStorage(PreferencesKeys.mouseHighlightRippleCount) private var mouseHighlightRippleCount: Int = 3
+  @AppStorage(PreferencesKeys.mouseHighlightOpacity) private var mouseHighlightOpacity: Double = 0.5
+
+  // Keystroke Overlay settings
+  @AppStorage(PreferencesKeys.keystrokeFontSize) private var keystrokeFontSize: Double = 16
+  @AppStorage(PreferencesKeys.keystrokePosition) private var keystrokePosition: String = KeystrokeOverlayPosition.bottomCenter.rawValue
+  @AppStorage(PreferencesKeys.keystrokeDisplayDuration) private var keystrokeDisplayDuration: Double = 1.5
+
   @State private var showPermissionDeniedAlert = false
+
+  /// SwiftUI Color binding backed by archived NSColor in UserDefaults
+  private var mouseHighlightSwiftColor: Binding<Color> {
+    Binding<Color>(
+      get: {
+        if let data = UserDefaults.standard.data(forKey: PreferencesKeys.mouseHighlightColor),
+           let nsColor = try? NSKeyedUnarchiver.unarchivedObject(ofClass: NSColor.self, from: data) {
+          return Color(nsColor: nsColor)
+        }
+        return Color(nsColor: MouseHighlightConfiguration.defaultHighlightColor)
+      },
+      set: { newColor in
+        let nsColor = NSColor(newColor)
+        if let data = try? NSKeyedArchiver.archivedData(withRootObject: nsColor, requiringSecureCoding: true) {
+          UserDefaults.standard.set(data, forKey: PreferencesKeys.mouseHighlightColor)
+        }
+      }
+    )
+  }
+
 
   private var isMicAvailable: Bool {
     if #available(macOS 15.0, *) {
@@ -109,6 +140,84 @@ struct CaptureSettingsView: View {
         }
       }
 
+      // MARK: - Recording Overlays
+
+      Section("Mouse Highlight") {
+        SettingRow(icon: "cursorarrow.click.2", title: "Highlight Size", description: "Diameter of ripple effect (\(Int(mouseHighlightSize))px)") {
+          Slider(value: $mouseHighlightSize, in: 30...100, step: 2)
+            .frame(width: 140)
+        }
+
+        SettingRow(icon: "timer", title: "Animation Duration", description: "Ripple expand speed (\(String(format: "%.1f", mouseHighlightAnimDuration))s)") {
+          Slider(value: $mouseHighlightAnimDuration, in: 0.3...2.0, step: 0.1)
+            .frame(width: 140)
+        }
+
+        SettingRow(icon: "circle.grid.3x3", title: "Ripple Count", description: "Number of expanding rings") {
+          Picker("", selection: $mouseHighlightRippleCount) {
+            ForEach(1...5, id: \.self) { count in
+              Text("\(count)").tag(count)
+            }
+          }
+          .labelsHidden()
+          .pickerStyle(.menu)
+          .frame(width: 80)
+        }
+
+        SettingRow(icon: "paintpalette", title: "Highlight Color", description: "Color of click rings") {
+          ColorPicker("", selection: mouseHighlightSwiftColor, supportsOpacity: false)
+            .labelsHidden()
+        }
+
+        SettingRow(icon: "circle.lefthalf.filled", title: "Opacity", description: "Ring transparency (\(Int(mouseHighlightOpacity * 100))%)") {
+          Slider(value: $mouseHighlightOpacity, in: 0.2...1.0, step: 0.05)
+            .frame(width: 140)
+        }
+
+        HStack {
+          Spacer()
+          Button("Reset to Default") {
+            resetMouseHighlightDefaults()
+          }
+          .font(.system(size: 11))
+          .foregroundColor(.secondary)
+          .buttonStyle(.plain)
+        }
+      }
+
+      Section("Keystroke Overlay") {
+        SettingRow(icon: "textformat.size", title: "Font Size", description: "Badge text size (\(Int(keystrokeFontSize))pt)") {
+          Slider(value: $keystrokeFontSize, in: 12...32, step: 1)
+            .frame(width: 140)
+        }
+
+        SettingRow(icon: "square.and.arrow.down.on.square", title: "Position", description: "Badge placement in recording area") {
+          Picker("", selection: $keystrokePosition) {
+            ForEach(KeystrokeOverlayPosition.allCases) { pos in
+              Text(pos.displayName).tag(pos.rawValue)
+            }
+          }
+          .labelsHidden()
+          .pickerStyle(.menu)
+          .frame(width: 140)
+        }
+
+        SettingRow(icon: "clock", title: "Display Duration", description: "Time before badge fades (\(String(format: "%.1f", keystrokeDisplayDuration))s)") {
+          Slider(value: $keystrokeDisplayDuration, in: 0.5...5.0, step: 0.5)
+            .frame(width: 140)
+        }
+
+        HStack {
+          Spacer()
+          Button("Reset to Default") {
+            resetKeystrokeDefaults()
+          }
+          .font(.system(size: 11))
+          .foregroundColor(.secondary)
+          .buttonStyle(.plain)
+        }
+      }
+
       Section("Audio") {
         SettingRow(icon: "speaker.wave.3.fill", title: "System Audio", description: "Capture sounds from apps") {
           Toggle("", isOn: $captureAudio)
@@ -185,6 +294,22 @@ struct CaptureSettingsView: View {
     if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone") {
       NSWorkspace.shared.open(url)
     }
+  }
+
+  // MARK: - Reset Defaults
+
+  private func resetMouseHighlightDefaults() {
+    mouseHighlightSize = MouseHighlightConfiguration.defaultHighlightSize
+    mouseHighlightAnimDuration = MouseHighlightConfiguration.defaultAnimationDuration
+    mouseHighlightRippleCount = MouseHighlightConfiguration.defaultRippleCount
+    mouseHighlightOpacity = MouseHighlightConfiguration.defaultHighlightOpacity
+    UserDefaults.standard.removeObject(forKey: PreferencesKeys.mouseHighlightColor)
+  }
+
+  private func resetKeystrokeDefaults() {
+    keystrokeFontSize = KeystrokeOverlayConfiguration.defaultFontSize
+    keystrokePosition = KeystrokeOverlayConfiguration.defaultPosition.rawValue
+    keystrokeDisplayDuration = KeystrokeOverlayConfiguration.defaultDisplayDuration
   }
 }
 

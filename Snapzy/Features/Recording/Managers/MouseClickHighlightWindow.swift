@@ -16,8 +16,10 @@ final class MouseClickHighlightWindow: NSWindow {
 
   /// Persistent circle that follows the cursor while mouse is held
   private var holdCircleView: HoldCircleView?
+  private let config: MouseHighlightConfiguration
 
-  init(recordingRect: CGRect) {
+  init(recordingRect: CGRect, configuration: MouseHighlightConfiguration = MouseHighlightConfiguration()) {
+    self.config = configuration
     super.init(
       contentRect: recordingRect,
       styleMask: [.borderless],
@@ -57,9 +59,11 @@ final class MouseClickHighlightWindow: NSWindow {
     let viewPoint = viewPosition(from: screenPoint)
 
     // Spawn expanding ripple rings
-    for i in 0..<3 {
-      let delay = CFTimeInterval(i) * 0.12
-      let ripple = RippleRingView(center: viewPoint)
+    let count = config.rippleCount
+    let delayStep = config.animationDuration > 0 ? min(0.12, config.animationDuration / Double(max(count, 1)) * 0.5) : 0.12
+    for i in 0..<count {
+      let delay = CFTimeInterval(i) * delayStep
+      let ripple = RippleRingView(center: viewPoint, configuration: config)
       contentView.addSubview(ripple)
       ripple.animateExpand(delay: delay) { [weak ripple] in
         ripple?.removeFromSuperview()
@@ -68,7 +72,7 @@ final class MouseClickHighlightWindow: NSWindow {
 
     // Show persistent hold circle
     holdCircleView?.removeFromSuperview()
-    let hold = HoldCircleView(center: viewPoint)
+    let hold = HoldCircleView(center: viewPoint, configuration: config)
     contentView.addSubview(hold)
     hold.animateIn()
     holdCircleView = hold
@@ -106,14 +110,20 @@ final class MouseClickHighlightWindow: NSWindow {
 /// A single hollow circular ring that expands outward and fades.
 private final class RippleRingView: NSView {
 
-  static let maxDiameter: CGFloat = 50
-  static let ringWidth: CGFloat = 2
-  static let animationDuration: CFTimeInterval = 0.7
-
   private let ringLayer = CAShapeLayer()
+  private let maxDiameter: CGFloat
+  private let ringWidth: CGFloat
+  private let duration: CFTimeInterval
+  private let strokeColor: CGColor
 
-  init(center: NSPoint) {
-    let size = Self.maxDiameter
+  init(center: NSPoint, configuration: MouseHighlightConfiguration) {
+    self.maxDiameter = configuration.highlightSize
+    self.ringWidth = configuration.ringWidth
+    self.duration = configuration.animationDuration
+    self.strokeColor = configuration.highlightColor
+      .withAlphaComponent(configuration.highlightOpacity).cgColor
+
+    let size = maxDiameter
     let frame = CGRect(
       x: center.x - size / 2,
       y: center.y - size / 2,
@@ -133,16 +143,14 @@ private final class RippleRingView: NSView {
   }
 
   private func setupRingLayer() {
-    let bounds = CGRect(origin: .zero, size: CGSize(width: Self.maxDiameter, height: Self.maxDiameter))
-    let inset = Self.ringWidth / 2
+    let bounds = CGRect(origin: .zero, size: CGSize(width: maxDiameter, height: maxDiameter))
+    let inset = ringWidth / 2
     let path = CGPath(ellipseIn: bounds.insetBy(dx: inset, dy: inset), transform: nil)
 
     ringLayer.path = path
     ringLayer.fillColor = nil
-    ringLayer.strokeColor = NSColor(
-      displayP3Red: 0.068, green: 0.222, blue: 1.0, alpha: 0.5
-    ).cgColor
-    ringLayer.lineWidth = Self.ringWidth
+    ringLayer.strokeColor = strokeColor
+    ringLayer.lineWidth = ringWidth
     ringLayer.frame = bounds
 
     // Start small and invisible
@@ -160,7 +168,7 @@ private final class RippleRingView: NSView {
     let scaleAnim = CABasicAnimation(keyPath: "transform.scale")
     scaleAnim.fromValue = 0.15
     scaleAnim.toValue = 1.0
-    scaleAnim.duration = Self.animationDuration
+    scaleAnim.duration = duration
     scaleAnim.beginTime = CACurrentMediaTime() + delay
     scaleAnim.timingFunction = CAMediaTimingFunction(name: .easeOut)
     scaleAnim.fillMode = .both
@@ -170,7 +178,7 @@ private final class RippleRingView: NSView {
     let opacityAnim = CAKeyframeAnimation(keyPath: "opacity")
     opacityAnim.values = [0.0, 0.8, 0.0]
     opacityAnim.keyTimes = [0, 0.25, 1.0]
-    opacityAnim.duration = Self.animationDuration
+    opacityAnim.duration = duration
     opacityAnim.beginTime = CACurrentMediaTime() + delay
     opacityAnim.timingFunction = CAMediaTimingFunction(name: .easeOut)
     opacityAnim.fillMode = .both
@@ -188,13 +196,14 @@ private final class RippleRingView: NSView {
 /// A persistent hollow circle that follows the cursor while the mouse is held down.
 private final class HoldCircleView: NSView {
 
-  static let diameter: CGFloat = 36
-  static let ringWidth: CGFloat = 2
-
+  private let circleDiameter: CGFloat
   private let ringLayer = CAShapeLayer()
 
-  init(center: NSPoint) {
-    let size = Self.diameter
+  init(center: NSPoint, configuration: MouseHighlightConfiguration) {
+    self.circleDiameter = configuration.holdCircleSize
+    let ringWidth = configuration.ringWidth
+
+    let size = circleDiameter
     let frame = CGRect(
       x: center.x - size / 2,
       y: center.y - size / 2,
@@ -205,7 +214,7 @@ private final class HoldCircleView: NSView {
 
     wantsLayer = true
     layer?.masksToBounds = false
-    setupRingLayer()
+    setupRingLayer(ringWidth: ringWidth, color: configuration.highlightColor.withAlphaComponent(configuration.highlightOpacity))
   }
 
   @available(*, unavailable)
@@ -213,17 +222,15 @@ private final class HoldCircleView: NSView {
     fatalError("init(coder:) not supported")
   }
 
-  private func setupRingLayer() {
-    let bounds = CGRect(origin: .zero, size: CGSize(width: Self.diameter, height: Self.diameter))
-    let inset = Self.ringWidth / 2
+  private func setupRingLayer(ringWidth: CGFloat, color: NSColor) {
+    let bounds = CGRect(origin: .zero, size: CGSize(width: circleDiameter, height: circleDiameter))
+    let inset = ringWidth / 2
     let path = CGPath(ellipseIn: bounds.insetBy(dx: inset, dy: inset), transform: nil)
 
     ringLayer.path = path
     ringLayer.fillColor = nil
-    ringLayer.strokeColor = NSColor(
-      displayP3Red: 0.068, green: 0.222, blue: 1.0, alpha: 0.5
-    ).cgColor
-    ringLayer.lineWidth = Self.ringWidth
+    ringLayer.strokeColor = color.cgColor
+    ringLayer.lineWidth = ringWidth
     ringLayer.frame = bounds
 
     ringLayer.opacity = 0
@@ -233,7 +240,7 @@ private final class HoldCircleView: NSView {
   }
 
   func updateCenter(_ point: NSPoint) {
-    let size = Self.diameter
+    let size = circleDiameter
     frame = CGRect(
       x: point.x - size / 2,
       y: point.y - size / 2,

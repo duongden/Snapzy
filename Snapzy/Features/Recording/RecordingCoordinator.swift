@@ -721,7 +721,8 @@ final class RecordingCoordinator: ObservableObject {
     let isEnabled = UserDefaults.standard.object(forKey: PreferencesKeys.recordingHighlightClicks) as? Bool ?? false
     guard isEnabled else { return }
 
-    let highlightWindow = MouseClickHighlightWindow(recordingRect: rect)
+    let config = MouseHighlightConfiguration()
+    let highlightWindow = MouseClickHighlightWindow(recordingRect: rect, configuration: config)
     highlightWindow.orderFrontRegardless()
     clickHighlightWindow = highlightWindow
 
@@ -757,7 +758,8 @@ final class RecordingCoordinator: ObservableObject {
     let isEnabled = UserDefaults.standard.object(forKey: PreferencesKeys.recordingShowKeystrokes) as? Bool ?? false
     guard isEnabled else { return }
 
-    let overlayWindow = KeystrokeOverlayWindow(recordingRect: rect)
+    let config = KeystrokeOverlayConfiguration()
+    let overlayWindow = KeystrokeOverlayWindow(recordingRect: rect, configuration: config)
     overlayWindow.orderFrontRegardless()
     keystrokeOverlayWindow = overlayWindow
 
