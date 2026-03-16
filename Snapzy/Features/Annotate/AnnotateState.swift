@@ -47,6 +47,7 @@ final class AnnotateState: ObservableObject {
 
   @Published var showSidebar: Bool = false
   @Published var zoomLevel: CGFloat = 1.0
+  @Published var isPinned: Bool = false
 
   // MARK: - Background Settings
 

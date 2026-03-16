@@ -13,6 +13,7 @@ extension Notification.Name {
   static let annotateSave = Notification.Name("annotateSave")
   static let annotateSaveAs = Notification.Name("annotateSaveAs")
   static let annotateCopyAndClose = Notification.Name("annotateCopyAndClose")
+  static let annotateTogglePin = Notification.Name("annotateTogglePin")
   static let annotateDragStarted = Notification.Name("annotateDragStarted")
   static let annotateDragEnded = Notification.Name("annotateDragEnded")
 }
@@ -103,6 +104,12 @@ final class AnnotateWindow: NSWindow {
     // Cmd+Shift+C - Copy to clipboard and close
     if event.keyCode == 8 && flags == [.command, .shift] {
       NotificationCenter.default.post(name: .annotateCopyAndClose, object: self)
+      return true
+    }
+
+    // Ctrl+Cmd+P - Toggle pin window
+    if event.keyCode == 35 && flags == [.command, .control] {
+      NotificationCenter.default.post(name: .annotateTogglePin, object: self)
       return true
     }
 

@@ -325,6 +325,16 @@ final class AnnotateWindowController: NSWindowController, NSWindowDelegate {
       }
     }
 
+    NotificationCenter.default.addObserver(
+      forName: .annotateTogglePin,
+      object: window,
+      queue: .main
+    ) { [weak self] _ in
+      MainActor.assumeIsolated {
+        self?.togglePin()
+      }
+    }
+
     // Drag-to-app: hide window when drag starts
     NotificationCenter.default.addObserver(
       forName: .annotateDragStarted,
@@ -377,6 +387,13 @@ final class AnnotateWindowController: NSWindowController, NSWindowDelegate {
       print("[AnnotateDrag] Drag cancelled — window restored")
     }
     savedWindowFrame = nil
+  }
+
+  private func togglePin() {
+    guard let window = self.window else { return }
+    let newPinned = !state.isPinned
+    window.level = newPinned ? .floating : .normal
+    state.isPinned = newPinned
   }
 
   /// Silent save — renders once, updates thumbnail instantly, closes window, saves in background

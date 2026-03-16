@@ -138,7 +138,7 @@ struct AnnotateBottomBarView: View {
         share()
       }
 
-      BottomBarButton(icon: "pin", tooltip: "Pin window") {
+      BottomBarButton(icon: state.isPinned ? "pin.fill" : "pin", tooltip: state.isPinned ? "Unpin window (⌃⌘P)" : "Pin window (⌃⌘P)") {
         pin()
       }
 
@@ -163,7 +163,9 @@ struct AnnotateBottomBarView: View {
 
   private func pin() {
     if let window = NSApp.keyWindow {
-      window.level = window.level == .floating ? .normal : .floating
+      let newPinned = !state.isPinned
+      window.level = newPinned ? .floating : .normal
+      state.isPinned = newPinned
     }
   }
 
