@@ -36,6 +36,8 @@ struct QuickAccessItem: Identifiable, Equatable {
   let itemType: QuickAccessItemType
   let duration: TimeInterval?
   var processingState: QuickAccessProcessingState = .idle
+  /// Incremented when thumbnail changes — used by SwiftUI to detect visual updates
+  let thumbnailVersion: UUID
 
   /// Initializer for screenshots (backward compatible)
   init(url: URL, thumbnail: NSImage) {
@@ -45,6 +47,7 @@ struct QuickAccessItem: Identifiable, Equatable {
     self.capturedAt = Date()
     self.itemType = .screenshot
     self.duration = nil
+    self.thumbnailVersion = UUID()
   }
 
   /// Initializer for videos with duration
@@ -55,20 +58,22 @@ struct QuickAccessItem: Identifiable, Equatable {
     self.capturedAt = Date()
     self.itemType = .video
     self.duration = duration
+    self.thumbnailVersion = UUID()
   }
 
   /// Initializer with explicit id (used for thumbnail retry updates)
-  init(id: UUID, url: URL, thumbnail: NSImage, capturedAt: Date, itemType: QuickAccessItemType, duration: TimeInterval?) {
+  init(id: UUID, url: URL, thumbnail: NSImage, capturedAt: Date, itemType: QuickAccessItemType, duration: TimeInterval?, thumbnailVersion: UUID = UUID()) {
     self.id = id
     self.url = url
     self.thumbnail = thumbnail
     self.capturedAt = capturedAt
     self.itemType = itemType
     self.duration = duration
+    self.thumbnailVersion = thumbnailVersion
   }
 
   static func == (lhs: QuickAccessItem, rhs: QuickAccessItem) -> Bool {
-    lhs.id == rhs.id && lhs.processingState == rhs.processingState
+    lhs.id == rhs.id && lhs.processingState == rhs.processingState && lhs.thumbnailVersion == rhs.thumbnailVersion
   }
 
   /// Whether this item is a video

@@ -8,6 +8,13 @@
 import AppKit
 import Foundation
 
+/// In-memory annotation session data for re-editing annotations
+/// Preserved until the Quick Access card is dismissed
+struct AnnotationSessionData {
+  let originalImage: NSImage
+  var annotations: [AnnotationItem]
+}
+
 /// Manages annotation window instances
 @MainActor
 final class AnnotateManager {
@@ -16,6 +23,9 @@ final class AnnotateManager {
 
   private var windowControllers: [UUID: AnnotateWindowController] = [:]
   private var emptyWindowController: AnnotateWindowController?
+
+  /// In-memory cache: original image + annotations, keyed by QuickAccessItem.id
+  private var sessionCache: [UUID: AnnotationSessionData] = [:]
 
   /// Track if we switched to regular app mode
   private var isRegularAppMode = false
@@ -61,7 +71,7 @@ final class AnnotateManager {
     // Switch to regular app mode for Cmd+Tab visibility
     becomeRegularApp()
 
-    let controller = AnnotateWindowController(item: item)
+    let controller = AnnotateWindowController(item: item, sessionData: sessionCache[item.id])
     windowControllers[item.id] = controller
     DiagnosticLogger.shared.log(.info, .action, "Annotate window opened for item \(item.id)")
 
@@ -181,5 +191,25 @@ final class AnnotateManager {
     }
 
     controller.showWindow()
+  }
+
+  // MARK: - Session Cache
+
+  /// Save annotation session data for re-editing
+  func saveSessionData(for itemId: UUID, originalImage: NSImage, annotations: [AnnotationItem]) {
+    sessionCache[itemId] = AnnotationSessionData(
+      originalImage: originalImage,
+      annotations: annotations
+    )
+  }
+
+  /// Get cached session data for an item
+  func getSessionData(for itemId: UUID) -> AnnotationSessionData? {
+    sessionCache[itemId]
+  }
+
+  /// Clear session data when QA card is dismissed
+  func clearSessionData(for itemId: UUID) {
+    sessionCache.removeValue(forKey: itemId)
   }
 }

@@ -142,8 +142,8 @@ struct AnnotateBottomBarView: View {
         pin()
       }
 
-      BottomBarButton(icon: "doc.on.doc", tooltip: "Copy to clipboard & close (⇧⌘C)") {
-        copyToClipboardAndClose()
+      BottomBarButton(icon: "doc.on.doc", tooltip: "Copy to clipboard (⇧⌘C)") {
+        copyToClipboard()
       }
 
       BottomBarButton(icon: "trash", tooltip: "Delete") {
@@ -167,10 +167,10 @@ struct AnnotateBottomBarView: View {
     }
   }
 
-  private func copyToClipboardAndClose() {
-    AnnotateExporter.copyToClipboard(state: state)
-    state.hasUnsavedChanges = false
-    NSApp.keyWindow?.close()
+  private func copyToClipboard() {
+    guard let window = NSApp.keyWindow else { return }
+    // Post notification so the controller handles save + cache + copy
+    NotificationCenter.default.post(name: .annotateCopyAndClose, object: window)
   }
 
   private func confirmAndDeleteImage() {

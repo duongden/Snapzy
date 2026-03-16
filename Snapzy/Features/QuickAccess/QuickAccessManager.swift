@@ -235,6 +235,8 @@ final class QuickAccessManager: ObservableObject {
 
     cancelDismissTimer(for: id)
     editingItemIds.remove(id)
+    // Clear annotation session cache for this item
+    AnnotateManager.shared.clearSessionData(for: id)
     // Fast animation (0.15s) for immediate perceived response
     withAnimation(.spring(response: 0.15, dampingFraction: 0.8)) {
       items.removeAll { $0.id == id }
@@ -256,6 +258,8 @@ final class QuickAccessManager: ObservableObject {
   func dismissCard(id: UUID) {
     cancelDismissTimer(for: id)
     editingItemIds.remove(id)
+    // Clear annotation session cache for this item
+    AnnotateManager.shared.clearSessionData(for: id)
     withAnimation(.spring(response: 0.15, dampingFraction: 0.8)) {
       items.removeAll { $0.id == id }
     }
@@ -285,10 +289,37 @@ final class QuickAccessManager: ObservableObject {
     )
   }
 
+  /// Refresh thumbnail for an item after its image was updated on disk (e.g. annotation saved)
+  func refreshItemThumbnail(id: UUID) async {
+    guard let index = items.firstIndex(where: { $0.id == id }) else { return }
+    let url = items[index].url
+    let fileAccess = fileAccessManager.beginAccessingURL(url)
+    defer { fileAccess.stop() }
+    let result = await ThumbnailGenerator.generate(from: url)
+    guard let newThumbnail = result.thumbnail else {
+      logger.warning("Thumbnail refresh failed for \(url.lastPathComponent)")
+      return
+    }
+    // Re-check index (item may have been removed during async thumbnail generation)
+    guard let freshIndex = items.firstIndex(where: { $0.id == id }) else { return }
+    let existing = items[freshIndex]
+    items[freshIndex] = QuickAccessItem(
+      id: existing.id,
+      url: existing.url,
+      thumbnail: newThumbnail,
+      capturedAt: existing.capturedAt,
+      itemType: existing.itemType,
+      duration: existing.duration
+    )
+    logger.info("Thumbnail refreshed for \(url.lastPathComponent)")
+  }
+
   /// Dismiss all screenshots
   func dismissAll() {
     for item in items {
       cancelDismissTimer(for: item.id)
+      // Clear annotation session cache
+      AnnotateManager.shared.clearSessionData(for: item.id)
     }
     items.removeAll()
     editingItemIds.removeAll()

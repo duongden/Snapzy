@@ -151,60 +151,9 @@ struct AnnotateToolbarView: View {
   }
 
   private func done() {
-    // If we have a source URL, show confirmation to replace or save copy
-    if let sourceURL = state.sourceURL {
-      showSaveConfirmation(for: sourceURL)
-    } else {
-      // No source URL (dropped image without file path) - show save panel
-      AnnotateExporter.saveAs(state: state, closeWindow: true)
-    }
-  }
-
-  private func showSaveConfirmation(for sourceURL: URL) {
-    let alert = NSAlert()
-    alert.messageText = "Save Changes"
-    alert.informativeText = "How would you like to save your changes to \"\(sourceURL.lastPathComponent)\"?"
-    alert.alertStyle = .informational
-
-    alert.addButton(withTitle: "Replace Original")
-    alert.addButton(withTitle: "Save as Copy")
-    alert.addButton(withTitle: "Cancel")
-
-    let response = alert.runModal()
-
-    switch response {
-    case .alertFirstButtonReturn:
-      // Replace original
-      if AnnotateExporter.saveToOriginal(state: state) {
-        state.markAsSaved()
-        NSApp.keyWindow?.close()
-      } else {
-        showSaveErrorAlert()
-      }
-
-    case .alertSecondButtonReturn:
-      // Save as copy - generate copy filename in same directory
-      let copyURL = AnnotateExporter.generateCopyURL(from: sourceURL)
-      if AnnotateExporter.save(state: state, to: copyURL) {
-        state.markAsSaved()
-        NSApp.keyWindow?.close()
-      } else {
-        showSaveErrorAlert()
-      }
-
-    default:
-      // Cancel - do nothing
-      break
-    }
-  }
-
-  private func showSaveErrorAlert() {
-    let alert = NSAlert()
-    alert.messageText = "Save Failed"
-    alert.informativeText = "Snapzy couldn't write to the selected location. Please choose another folder."
-    alert.alertStyle = .warning
-    alert.addButton(withTitle: "OK")
-    alert.runModal()
+    // Post save notification — controller handles silent save + cache + QA refresh + close
+    guard let window = NSApp.keyWindow else { return }
+    NotificationCenter.default.post(name: .annotateSave, object: window)
   }
 }
 
