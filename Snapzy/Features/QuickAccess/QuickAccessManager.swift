@@ -289,6 +289,55 @@ final class QuickAccessManager: ObservableObject {
     )
   }
 
+  /// Update thumbnail directly from an already-rendered image (synchronous, instant)
+  /// Used after annotation save — avoids the slow ThumbnailGenerator pipeline
+  func updateItemThumbnail(id: UUID, image: NSImage) {
+    guard let index = items.firstIndex(where: { $0.id == id }) else { return }
+    let existing = items[index]
+    // Scale to thumbnail size inline (same maxSize as ThumbnailGenerator)
+    let maxSize: CGFloat = 200
+    let thumbnail = scaleThumbnail(image, maxSize: maxSize)
+    items[index] = QuickAccessItem(
+      id: existing.id,
+      url: existing.url,
+      thumbnail: thumbnail,
+      capturedAt: existing.capturedAt,
+      itemType: existing.itemType,
+      duration: existing.duration
+    )
+    logger.info("Thumbnail updated directly for item \(id)")
+  }
+
+  /// Scale image to thumbnail size (synchronous, no file I/O)
+  private func scaleThumbnail(_ image: NSImage, maxSize: CGFloat) -> NSImage {
+    let originalSize = image.size
+    guard originalSize.width > 0, originalSize.height > 0 else { return image }
+
+    let scale: CGFloat
+    if originalSize.width > originalSize.height {
+      scale = min(maxSize / originalSize.width, 1.0)
+    } else {
+      scale = min(maxSize / originalSize.height, 1.0)
+    }
+    if scale >= 1.0 { return image }
+
+    let newSize = CGSize(
+      width: originalSize.width * scale,
+      height: originalSize.height * scale
+    )
+    let thumbnail = NSImage(size: newSize)
+    thumbnail.lockFocus()
+    NSGraphicsContext.current?.imageInterpolation = .high
+    image.draw(
+      in: NSRect(origin: .zero, size: newSize),
+      from: NSRect(origin: .zero, size: originalSize),
+      operation: .copy,
+      fraction: 1.0
+    )
+    thumbnail.unlockFocus()
+    return thumbnail
+  }
+
   /// Refresh thumbnail for an item after its image was updated on disk (e.g. annotation saved)
   func refreshItemThumbnail(id: UUID) async {
     guard let index = items.firstIndex(where: { $0.id == id }) else { return }

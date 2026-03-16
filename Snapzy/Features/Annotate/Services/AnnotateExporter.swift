@@ -59,6 +59,30 @@ final class AnnotateExporter {
     }
   }
 
+  /// Write a pre-rendered image to the source URL (for background save after instant close)
+  @MainActor
+  @discardableResult
+  static func saveToFile(image: NSImage?, state: AnnotateState) -> Bool {
+    guard let image = image, let sourceURL = state.sourceURL else { return false }
+
+    let format: NSBitmapImageRep.FileType = sourceURL.pathExtension.lowercased() == "jpg" ? .jpeg : .png
+
+    guard let tiffData = image.tiffRepresentation,
+          let bitmap = NSBitmapImageRep(data: tiffData),
+          let data = bitmap.representation(using: format, properties: [:])
+    else { return false }
+
+    do {
+      try SandboxFileAccessManager.shared.withScopedAccess(to: sourceURL.deletingLastPathComponent()) {
+        try data.write(to: sourceURL, options: .atomic)
+      }
+      return true
+    } catch {
+      print("Annotate background save failed: \(error.localizedDescription)")
+      return false
+    }
+  }
+
   static func copyToClipboard(state: AnnotateState) {
     guard let image = renderFinalImage(state: state) else { return }
 
@@ -123,7 +147,7 @@ final class AnnotateExporter {
     return newURL
   }
 
-  private static func renderFinalImage(state: AnnotateState) -> NSImage? {
+  static func renderFinalImage(state: AnnotateState) -> NSImage? {
     guard let sourceImage = state.sourceImage else { return nil }
 
     // If mockup mode is active, use mockup rendering path with 3D transforms

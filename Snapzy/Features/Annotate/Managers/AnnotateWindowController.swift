@@ -20,23 +20,26 @@ final class AnnotateWindowController: NSWindowController, NSWindowDelegate {
   private let quickAccessItemId: UUID?
   private var cancellables = Set<AnyCancellable>()
 
-  /// Original source image before any annotations are baked in.
-  /// Used for session caching so annotations can be re-edited.
-  private let originalImage: NSImage
+  /// Compressed PNG data of the original source image (before annotations are baked).
+  /// Captured on first open, reused across saves for session caching.
+  private var originalImageData: Data?
 
   init(item: QuickAccessItem, sessionData: AnnotationSessionData? = nil) {
     self.quickAccessItemId = item.id
     self.sourceFileAccess = fileAccessManager.beginAccessingURL(item.url)
 
     if let sessionData = sessionData {
-      // Restore from cache: use original image + editable annotations
-      self.originalImage = sessionData.originalImage
-      self.state = AnnotateState(image: sessionData.originalImage, url: item.url, quickAccessItemId: item.id)
+      // Restore from cache: decompress original image + editable annotations
+      let image = NSImage(data: sessionData.originalImageData)
+        .flatMap({ img in Self.applyRetinaScaling(to: img) })
+        ?? item.thumbnail
+      self.originalImageData = sessionData.originalImageData
+      self.state = AnnotateState(image: image, url: item.url, quickAccessItemId: item.id)
       self.state.annotations = sessionData.annotations
     } else {
-      // First open: load image from disk
+      // First open: load image from disk and capture raw file bytes (fast, no re-encoding)
       let image = Self.loadImageWithCorrectScale(from: item.url) ?? item.thumbnail
-      self.originalImage = image
+      self.originalImageData = Self.readFileData(from: item.url)
       self.state = AnnotateState(image: image, url: item.url, quickAccessItemId: item.id)
     }
 
@@ -66,7 +69,7 @@ final class AnnotateWindowController: NSWindowController, NSWindowDelegate {
   /// Empty initializer for drag-drop workflow
   init() {
     self.quickAccessItemId = nil
-    self.originalImage = NSImage()
+    self.originalImageData = nil
     self.state = AnnotateState()
 
     // Default window size for empty canvas
@@ -99,7 +102,7 @@ final class AnnotateWindowController: NSWindowController, NSWindowDelegate {
 
     let image = Self.loadImageWithCorrectScale(from: url)
       ?? NSImage(size: NSSize(width: 400, height: 300))
-    self.originalImage = image
+    self.originalImageData = Self.readFileData(from: url)
 
     self.state = AnnotateState(image: image, url: url)
 
@@ -184,6 +187,30 @@ final class AnnotateWindowController: NSWindowController, NSWindowDelegate {
     return image
   }
 
+  /// Apply Retina scaling to an image loaded from Data (same logic as loadImageWithCorrectScale)
+  private static func applyRetinaScaling(to image: NSImage) -> NSImage {
+    let scaleFactor = NSScreen.main?.backingScaleFactor ?? 2.0
+    if let bitmapRep = image.representations.first as? NSBitmapImageRep {
+      image.size = NSSize(
+        width: CGFloat(bitmapRep.pixelsWide) / scaleFactor,
+        height: CGFloat(bitmapRep.pixelsHigh) / scaleFactor
+      )
+    } else if let rep = image.representations.first, rep.pixelsWide > 0, rep.pixelsHigh > 0 {
+      image.size = NSSize(
+        width: CGFloat(rep.pixelsWide) / scaleFactor,
+        height: CGFloat(rep.pixelsHigh) / scaleFactor
+      )
+    }
+    return image
+  }
+
+  /// Read raw file bytes from disk (fast: no image decoding or re-encoding)
+  private static func readFileData(from url: URL) -> Data? {
+    SandboxFileAccessManager.shared.withScopedAccess(to: url) {
+      try? Data(contentsOf: url)
+    }
+  }
+
   private func setupSourceURLObservation() {
     state.$sourceURL
       .sink { [weak self] url in
@@ -239,54 +266,20 @@ final class AnnotateWindowController: NSWindowController, NSWindowDelegate {
 
   private func performSaveAndClose() {
     if let sourceURL = state.sourceURL {
-      // Save silently then close
-      if AnnotateExporter.saveToOriginal(state: state) {
-        state.markAsSaved()
-        saveSessionCache()
+      // Render once, update thumbnail instantly, close, save in background
+      state.markAsSaved()
+      saveSessionCache()
+      let renderedImage = AnnotateExporter.renderFinalImage(state: state)
+      if let renderedImage = renderedImage, let itemId = quickAccessItemId {
+        QuickAccessManager.shared.updateItemThumbnail(id: itemId, image: renderedImage)
       }
+      let capturedState = state
       forceClose()
+      Task.detached(priority: .userInitiated) {
+        await AnnotateExporter.saveToFile(image: renderedImage, state: capturedState)
+      }
     } else {
       AnnotateExporter.saveAs(state: state, closeWindow: true)
-    }
-  }
-
-  /// Save confirmation for closing flow — saves then closes window + removes QA card
-  private func showSaveConfirmationAndClose(for sourceURL: URL) {
-    guard let window = self.window else { return }
-
-    let alert = NSAlert()
-    alert.messageText = "Save Changes"
-    alert.informativeText = "How would you like to save your changes to \"\(sourceURL.lastPathComponent)\"?"
-    alert.alertStyle = .informational
-
-    alert.addButton(withTitle: "Replace Original")
-    alert.addButton(withTitle: "Save as Copy")
-    alert.addButton(withTitle: "Cancel")
-
-    alert.beginSheetModal(for: window) { [weak self] response in
-      guard let self = self else { return }
-
-      switch response {
-      case .alertFirstButtonReturn:
-        if AnnotateExporter.saveToOriginal(state: self.state) {
-          self.state.markAsSaved()
-          self.forceClose()
-        } else {
-          self.showSaveErrorAlert()
-        }
-
-      case .alertSecondButtonReturn:
-        let copyURL = AnnotateExporter.generateCopyURL(from: sourceURL)
-        if AnnotateExporter.save(state: self.state, to: copyURL) {
-          self.state.markAsSaved()
-          self.forceClose()
-        } else {
-          self.showSaveErrorAlert()
-        }
-
-      default:
-        break
-      }
     }
   }
 
@@ -386,23 +379,28 @@ final class AnnotateWindowController: NSWindowController, NSWindowDelegate {
     savedWindowFrame = nil
   }
 
-  /// Silent save — no dialog, overwrites original, caches session, refreshes QA thumbnail, closes window
+  /// Silent save — renders once, updates thumbnail instantly, closes window, saves in background
   private func performSave() {
     guard state.hasImage else { return }
 
     if let sourceURL = state.sourceURL {
-      if AnnotateExporter.saveToOriginal(state: state) {
-        state.markAsSaved()
-        saveSessionCache()
-        // Refresh QA card thumbnail then close
-        if let itemId = quickAccessItemId {
-          Task { @MainActor in
-            await QuickAccessManager.shared.refreshItemThumbnail(id: itemId)
-          }
-        }
-        forceClose()
-      } else {
-        showSaveErrorAlert()
+      // Render the annotated image once
+      let renderedImage = AnnotateExporter.renderFinalImage(state: state)
+
+      // Update QA thumbnail instantly (synchronous, no file I/O)
+      state.markAsSaved()
+      saveSessionCache()
+      if let renderedImage = renderedImage, let itemId = quickAccessItemId {
+        QuickAccessManager.shared.updateItemThumbnail(id: itemId, image: renderedImage)
+      }
+
+      // Close window instantly
+      let capturedState = state
+      forceClose()
+
+      // Save to disk in background
+      Task.detached(priority: .userInitiated) {
+        await AnnotateExporter.saveToFile(image: renderedImage, state: capturedState)
       }
     } else {
       performSaveAs()
@@ -446,36 +444,47 @@ final class AnnotateWindowController: NSWindowController, NSWindowDelegate {
     return "\(baseName)_annotated"
   }
 
-  /// Copy = save + clipboard, close window
+  /// Copy = render once, copy to clipboard, update thumbnail, close, save in background
   private func performCopy() {
     guard state.hasImage else { return }
 
-    // Save to original file first (like save)
-    if let _ = state.sourceURL {
-      if AnnotateExporter.saveToOriginal(state: state) {
-        state.markAsSaved()
-        saveSessionCache()
-        if let itemId = quickAccessItemId {
-          Task { @MainActor in
-            await QuickAccessManager.shared.refreshItemThumbnail(id: itemId)
-          }
-        }
-      }
+    // Render once, use for everything
+    let renderedImage = AnnotateExporter.renderFinalImage(state: state)
+
+    // Copy to clipboard immediately
+    if let renderedImage = renderedImage {
+      let pasteboard = NSPasteboard.general
+      pasteboard.clearContents()
+      pasteboard.writeObjects([renderedImage])
+      NSSound(named: "Pop")?.play()
     }
 
-    // Copy rendered image to clipboard then close
-    AnnotateExporter.copyToClipboard(state: state)
+    // Update QA thumbnail instantly + cache
+    if let _ = state.sourceURL {
+      state.markAsSaved()
+      saveSessionCache()
+    }
+    if let renderedImage = renderedImage, let itemId = quickAccessItemId {
+      QuickAccessManager.shared.updateItemThumbnail(id: itemId, image: renderedImage)
+    }
+
+    // Close instantly, save in background
+    let capturedState = state
     forceClose()
+    Task.detached(priority: .userInitiated) {
+      await AnnotateExporter.saveToFile(image: renderedImage, state: capturedState)
+    }
   }
 
   // MARK: - Session Cache
 
   /// Save current annotation state to session cache for re-editing
   private func saveSessionCache() {
-    guard let itemId = quickAccessItemId else { return }
+    guard let itemId = quickAccessItemId,
+          let imageData = originalImageData else { return }
     AnnotateManager.shared.saveSessionData(
       for: itemId,
-      originalImage: originalImage,
+      originalImageData: imageData,
       annotations: state.annotations
     )
   }

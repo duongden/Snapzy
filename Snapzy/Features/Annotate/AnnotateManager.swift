@@ -11,7 +11,8 @@ import Foundation
 /// In-memory annotation session data for re-editing annotations
 /// Preserved until the Quick Access card is dismissed
 struct AnnotationSessionData {
-  let originalImage: NSImage
+  /// Compressed PNG data of the original image (before any annotations were baked)
+  let originalImageData: Data
   var annotations: [AnnotationItem]
 }
 
@@ -196,9 +197,9 @@ final class AnnotateManager {
   // MARK: - Session Cache
 
   /// Save annotation session data for re-editing
-  func saveSessionData(for itemId: UUID, originalImage: NSImage, annotations: [AnnotationItem]) {
+  func saveSessionData(for itemId: UUID, originalImageData: Data, annotations: [AnnotationItem]) {
     sessionCache[itemId] = AnnotationSessionData(
-      originalImage: originalImage,
+      originalImageData: originalImageData,
       annotations: annotations
     )
   }
