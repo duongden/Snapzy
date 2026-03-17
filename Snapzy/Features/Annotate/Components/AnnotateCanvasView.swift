@@ -472,6 +472,9 @@ struct AnnotateCanvasView: View {
       state.commitTextEditing()
     }
 
+    // Deselect active annotation when switching tools
+    state.selectedAnnotationId = nil
+
     // Special handling for crop tool
     if tool == .crop {
       state.selectedTool = .crop
@@ -633,6 +636,7 @@ struct KeyEventHandlerView: NSViewRepresentable {
 
 final class KeyEventNSView: NSView {
   var onKey: (Character) -> Void
+  private var windowObserver: NSObjectProtocol?
 
   init(onKey: @escaping (Character) -> Void) {
     self.onKey = onKey
@@ -646,12 +650,62 @@ final class KeyEventNSView: NSView {
 
   override var acceptsFirstResponder: Bool { true }
 
+  override func viewDidMoveToWindow() {
+    super.viewDidMoveToWindow()
+    // Remove old observer
+    if let obs = windowObserver {
+      NotificationCenter.default.removeObserver(obs)
+      windowObserver = nil
+    }
+
+    guard let window = window else { return }
+
+    // Grab first responder on initial attach
+    DispatchQueue.main.async { [weak self] in
+      self?.window?.makeFirstResponder(self)
+    }
+
+    // Watch for first responder changes — reclaim when focus goes
+    // to a generic view (not DrawingCanvasNSView or text editor)
+    windowObserver = NotificationCenter.default.addObserver(
+      forName: NSWindow.didUpdateNotification,
+      object: window,
+      queue: .main
+    ) { [weak self] _ in
+      self?.reclaimFirstResponderIfNeeded()
+    }
+  }
+
+  /// Reclaim first responder if no important view holds it
+  private func reclaimFirstResponderIfNeeded() {
+    guard let window = window else { return }
+    let current = window.firstResponder
+
+    // Already the first responder — nothing to do
+    if current === self { return }
+
+    // DrawingCanvasNSView has focus — it handles shortcuts too, leave it
+    if current is DrawingCanvasNSView { return }
+
+    // A text view has focus (e.g. TextEditor) — leave it for typing
+    if current is NSTextView { return }
+
+    // Generic view has focus (e.g. clicked empty area) — reclaim
+    window.makeFirstResponder(self)
+  }
+
   override func keyDown(with event: NSEvent) {
     guard let chars = event.charactersIgnoringModifiers, let char = chars.first else {
       super.keyDown(with: event)
       return
     }
     onKey(char)
+  }
+
+  deinit {
+    if let obs = windowObserver {
+      NotificationCenter.default.removeObserver(obs)
+    }
   }
 }
 

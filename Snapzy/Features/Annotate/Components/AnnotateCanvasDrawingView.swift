@@ -179,7 +179,19 @@ final class DrawingCanvasNSView: NSView {
           if state.editingTextAnnotationId != nil {
             state.commitTextEditing()
           }
-          state.selectedTool = matchedTool
+          // Deselect active annotation when switching tools
+          state.selectedAnnotationId = nil
+          // Special handling for crop tool (must initialize crop rect)
+          if matchedTool == .crop {
+            state.selectedTool = .crop
+            if state.cropRect == nil && state.hasImage {
+              state.initializeCrop()
+            } else if state.cropRect != nil {
+              state.isCropActive = true
+            }
+          } else {
+            state.selectedTool = matchedTool
+          }
         }
         needsDisplay = true
       } else {
