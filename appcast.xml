@@ -6,6 +6,22 @@
     <description>Snapzy application updates</description>
     <language>en</language>
     <item>
+      <title>Version 1.2.4</title>
+      <sparkle:version>22</sparkle:version>
+      <sparkle:shortVersionString>1.2.4</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <pubDate>Tue, 17 Mar 2026 18:22:09 +0000</pubDate>
+      <description><![CDATA[
+        <style>:root { color-scheme: light dark; } body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 13px; line-height: 1.5; padding: 8px 16px; } h3 { font-size: 14px; margin: 12px 0 6px; } ul { padding-left: 20px; margin: 4px 0; } li { margin: 3px 0; }</style>
+        <h3>🐛 Bug Fixes</h3><ul><li>: centralize sound playback management and solve issue sound playback calls across the application</li></ul>
+      ]]></description>
+      <enclosure
+        url="https://github.com/duongductrong/Snapzy/releases/download/v1.2.4/Snapzy-v1.2.4.dmg"
+        sparkle:edSignature="n/s6xA86oseNutir/v1BRbMbhdLlodMmvO37s6NUspBvacN3R9rLamC7r8wdU7y+oXd2EnhS7+bKbweeqg5kBA=="
+        length="8067633"
+        type="application/octet-stream"/>
+    </item>
+    <item>
       <title>Version 1.2.3</title>
       <sparkle:version>21</sparkle:version>
       <sparkle:shortVersionString>1.2.3</sparkle:shortVersionString>
