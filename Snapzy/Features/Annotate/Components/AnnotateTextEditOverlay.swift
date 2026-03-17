@@ -14,12 +14,12 @@ struct TextEditOverlay: View {
   let imageSize: CGSize
 
   @State private var editingText: String = ""
+  @State private var textHeight: CGFloat = 28
   @FocusState private var isFocused: Bool
 
   // MARK: - Constants
 
-  private let minTextFieldWidth: CGFloat = 60
-  private let textPadding: CGFloat = 4
+  private let minTextFieldWidth: CGFloat = AnnotateTextLayout.minWidth
 
   var body: some View {
     GeometryReader { _ in
@@ -29,45 +29,43 @@ struct TextEditOverlay: View {
 
         let displayBounds = calculateDisplayBounds(annotation.bounds)
         let fontSize = max(annotation.properties.fontSize * scale, 10)
+        let fieldWidth = max(displayBounds.width, minTextFieldWidth)
+        let fieldHeight = max(textHeight, displayBounds.height)
 
-        // Text input field positioned exactly at annotation bounds
-        TextField("", text: $editingText)
-          .textFieldStyle(.plain)
+        // Multiline text editor positioned at annotation bounds (top-left anchored)
+        TextEditor(text: $editingText)
           .font(.system(size: fontSize))
           .foregroundColor(annotation.properties.strokeColor)
-          .multilineTextAlignment(.leading)
+          .scrollContentBackground(.hidden)
+          .scrollDisabled(true)
           .frame(
-            width: max(displayBounds.width, minTextFieldWidth),
-            height: displayBounds.height,
-            alignment: .leading
+            width: fieldWidth,
+            height: fieldHeight,
+            alignment: .topLeading
           )
-          .padding(.horizontal, textPadding)
-          .background(
-            // Subtle editing indicator - transparent with light border
-            RoundedRectangle(cornerRadius: 2)
-              .stroke(Color.accentColor.opacity(0.6), lineWidth: 1)
-              .background(
-                RoundedRectangle(cornerRadius: 2)
-                  .fill(Color.primary.opacity(0.05))
-              )
-          )
+          .background(Color.clear)
           .focused($isFocused)
           .position(
-            x: displayBounds.minX + max(displayBounds.width, minTextFieldWidth) / 2,
-            y: displayBounds.minY + displayBounds.height / 2
+            x: displayBounds.minX + fieldWidth / 2,
+            y: displayBounds.minY + fieldHeight / 2
           )
           .onAppear {
             editingText = currentText
+            recalculateHeight(text: currentText, fontSize: fontSize, width: fieldWidth)
             // Delay focus to ensure view is ready
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
               isFocused = true
             }
           }
-          .onSubmit {
-            commitEdit(id: editingId)
-          }
           .onExitCommand {
             cancelEdit()
+          }
+          .onChange(of: editingText) { newValue in
+            recalculateHeight(text: newValue, fontSize: fontSize, width: fieldWidth)
+            // Live-update annotation text and bounds
+            if let editingId = state.editingTextAnnotationId {
+              state.updateAnnotationText(id: editingId, text: newValue)
+            }
           }
           .onChange(of: isFocused) { newValue in
             if !newValue && state.editingTextAnnotationId == editingId {
@@ -76,6 +74,15 @@ struct TextEditOverlay: View {
           }
       }
     }
+  }
+
+  /// Recalculate editor height based on wrapped text content
+  private func recalculateHeight(text: String, fontSize: CGFloat, width: CGFloat) {
+    textHeight = AnnotateTextLayout.measuredHeight(
+      text: text,
+      font: AnnotateTextLayout.font(size: fontSize),
+      constrainedWidth: max(width, minTextFieldWidth)
+    )
   }
 
   /// Convert image bounds to display coordinates

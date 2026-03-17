@@ -498,32 +498,37 @@ final class DrawingCanvasNSView: NSView {
   }
 
   private func calculateResizedBounds(handle: ResizeHandle, currentPoint: CGPoint) -> CGRect {
+    let minSize: CGFloat = 20
     var newBounds = originalBounds
 
     switch handle {
     case .topLeft:
-      newBounds.origin.x = currentPoint.x
-      newBounds.size.width = originalBounds.maxX - currentPoint.x
-      newBounds.size.height = currentPoint.y - originalBounds.minY
+      let clampedX = min(currentPoint.x, originalBounds.maxX - minSize)
+      let clampedY = max(currentPoint.y, originalBounds.minY + minSize)
+      newBounds.origin.x = clampedX
+      newBounds.size.width = originalBounds.maxX - clampedX
+      newBounds.size.height = clampedY - originalBounds.minY
     case .topRight:
-      newBounds.size.width = currentPoint.x - originalBounds.minX
-      newBounds.size.height = currentPoint.y - originalBounds.minY
+      let clampedX = max(currentPoint.x, originalBounds.minX + minSize)
+      let clampedY = max(currentPoint.y, originalBounds.minY + minSize)
+      newBounds.size.width = clampedX - originalBounds.minX
+      newBounds.size.height = clampedY - originalBounds.minY
     case .bottomLeft:
-      newBounds.origin.x = currentPoint.x
-      newBounds.origin.y = currentPoint.y
-      newBounds.size.width = originalBounds.maxX - currentPoint.x
-      newBounds.size.height = originalBounds.maxY - currentPoint.y
+      let clampedX = min(currentPoint.x, originalBounds.maxX - minSize)
+      let clampedY = min(currentPoint.y, originalBounds.maxY - minSize)
+      newBounds.origin.x = clampedX
+      newBounds.origin.y = clampedY
+      newBounds.size.width = originalBounds.maxX - clampedX
+      newBounds.size.height = originalBounds.maxY - clampedY
     case .bottomRight:
-      newBounds.origin.y = currentPoint.y
-      newBounds.size.width = currentPoint.x - originalBounds.minX
-      newBounds.size.height = originalBounds.maxY - currentPoint.y
+      let clampedX = max(currentPoint.x, originalBounds.minX + minSize)
+      let clampedY = min(currentPoint.y, originalBounds.maxY - minSize)
+      newBounds.origin.y = clampedY
+      newBounds.size.width = clampedX - originalBounds.minX
+      newBounds.size.height = originalBounds.maxY - clampedY
     default:
       break
     }
-
-    // Ensure minimum size
-    if newBounds.width < 20 { newBounds.size.width = 20 }
-    if newBounds.height < 20 { newBounds.size.height = 20 }
 
     return newBounds
   }
@@ -544,13 +549,25 @@ final class DrawingCanvasNSView: NSView {
   }
 
   private func createTextAnnotation(at point: CGPoint) {
-    let bounds = CGRect(x: point.x, y: point.y - 24, width: 100, height: 28)
+    let fontSize: CGFloat = 16
     let properties = AnnotationProperties(
       strokeColor: state.strokeColor,
       fillColor: .clear,
       strokeWidth: state.strokeWidth,
-      fontSize: 16,
+      fontSize: fontSize,
       fontName: "SF Pro"
+    )
+    let initialBounds = AnnotateTextLayout.bounds(
+      text: "",
+      font: AnnotateTextLayout.font(size: fontSize, fontName: properties.fontName),
+      origin: .zero,
+      constrainedWidth: AnnotateTextLayout.defaultInitialWidth
+    )
+    let bounds = CGRect(
+      x: point.x,
+      y: point.y - initialBounds.height,
+      width: initialBounds.width,
+      height: initialBounds.height
     )
     // Start with empty text - user will type in the overlay
     let item = AnnotationItem(type: .text(""), bounds: bounds, properties: properties)

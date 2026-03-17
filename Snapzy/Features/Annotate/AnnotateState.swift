@@ -579,12 +579,16 @@ final class AnnotateState: ObservableObject {
   func updateAnnotationText(id: UUID, text: String) {
     if let index = annotations.firstIndex(where: { $0.id == id }) {
       annotations[index].type = .text(text)
-      // Auto-size bounds based on text content
-      let newBounds = calculateTextBounds(
+      // Auto-size height based on wrapped text content, preserve width
+      let currentBounds = annotations[index].bounds
+      let currentWidth = currentBounds.width
+      var newBounds = calculateTextBounds(
         text: text,
         fontSize: annotations[index].properties.fontSize,
-        origin: annotations[index].bounds.origin
+        origin: currentBounds.origin,
+        constrainedWidth: currentWidth
       )
+      newBounds.origin.y = currentBounds.maxY - newBounds.height
       annotations[index].bounds = newBounds
     }
   }
@@ -606,11 +610,16 @@ final class AnnotateState: ObservableObject {
       annotations[index].properties.fontSize = fontSize
       // Recalculate bounds for new font size
       if case .text(let content) = annotations[index].type {
-        annotations[index].bounds = calculateTextBounds(
+        let currentBounds = annotations[index].bounds
+        let currentWidth = currentBounds.width
+        var newBounds = calculateTextBounds(
           text: content,
           fontSize: fontSize,
-          origin: annotations[index].bounds.origin
+          origin: currentBounds.origin,
+          constrainedWidth: currentWidth
         )
+        newBounds.origin.y = currentBounds.maxY - newBounds.height
+        annotations[index].bounds = newBounds
       }
     }
     if let strokeColor = strokeColor {
@@ -621,32 +630,24 @@ final class AnnotateState: ObservableObject {
     }
   }
 
-  /// Calculate text bounds based on content and font size
+  /// Calculate text bounds based on content and font size with word wrapping
   /// - Parameters:
   ///   - text: The text content
   ///   - fontSize: Desired font size (will be clamped to 8-144pt range)
   ///   - origin: Origin point for the text bounds
+  ///   - constrainedWidth: Width to constrain text wrapping to (nil = auto-width from content)
   /// - Returns: Bounded CGRect with enforced maximum dimensions
-  private func calculateTextBounds(text: String, fontSize: CGFloat, origin: CGPoint) -> CGRect {
-    // Clamp font size to reasonable range (prevent extreme values)
-    let clampedFontSize = min(max(fontSize, 8), 144)
-
-    let attributes: [NSAttributedString.Key: Any] = [
-      .font: NSFont.systemFont(ofSize: clampedFontSize)
-    ]
-    let displayText = text.isEmpty ? "Text" : text
-    let size = (displayText as NSString).size(withAttributes: attributes)
-    let padding: CGFloat = 4
-
-    // Enforce maximum bounds to prevent performance issues
-    let maxWidth: CGFloat = 2000  // ~reasonable for 4K displays
-    let maxHeight: CGFloat = 500  // ~15 lines of large text
-
-    return CGRect(
-      x: origin.x,
-      y: origin.y,
-      width: min(size.width + padding * 2, maxWidth),
-      height: min(size.height + padding * 2, maxHeight)
+  private func calculateTextBounds(
+    text: String,
+    fontSize: CGFloat,
+    origin: CGPoint,
+    constrainedWidth: CGFloat? = nil
+  ) -> CGRect {
+    AnnotateTextLayout.bounds(
+      text: text,
+      font: AnnotateTextLayout.font(size: fontSize),
+      origin: origin,
+      constrainedWidth: constrainedWidth
     )
   }
 
@@ -707,5 +708,107 @@ final class AnnotateState: ObservableObject {
     default:
       break
     }
+  }
+}
+
+enum AnnotateTextLayout {
+  static let horizontalPadding: CGFloat = 4
+  static let verticalPadding: CGFloat = 4
+  static let minWidth: CGFloat = 30
+  static let minContentWidth: CGFloat = 20
+  static let defaultInitialWidth: CGFloat = 200
+  static let maxWidth: CGFloat = 2000
+  static let maxHeight: CGFloat = 2000
+
+  static func font(size: CGFloat, fontName: String? = nil) -> NSFont {
+    let clampedSize = min(max(size, 8), 144)
+
+    if let fontName,
+       let namedFont = NSFont(name: fontName, size: clampedSize) {
+      return namedFont
+    }
+
+    return NSFont.systemFont(ofSize: clampedSize)
+  }
+
+  static func bounds(
+    text: String,
+    font: NSFont,
+    origin: CGPoint,
+    constrainedWidth: CGFloat? = nil
+  ) -> CGRect {
+    let finalWidth: CGFloat
+
+    if let constrainedWidth = constrainedWidth {
+      finalWidth = min(max(constrainedWidth, minWidth), maxWidth)
+    } else {
+      let measuredWidth = ceil(singleLineSize(for: text, font: font).width) + horizontalPadding * 2
+      finalWidth = min(max(measuredWidth, defaultInitialWidth), maxWidth)
+    }
+
+    let contentWidth = max(finalWidth - horizontalPadding * 2, minContentWidth)
+    let contentHeight = ceil(contentSize(for: text, font: font, constrainedWidth: contentWidth).height)
+    let finalHeight = min(max(contentHeight + verticalPadding * 2, minimumHeight(for: font)), maxHeight)
+
+    return CGRect(
+      x: origin.x,
+      y: origin.y,
+      width: finalWidth,
+      height: finalHeight
+    )
+  }
+
+  static func textRect(for text: String, font: NSFont, in bounds: CGRect) -> CGRect {
+    let contentWidth = max(bounds.width - horizontalPadding * 2, minContentWidth)
+    let contentHeight = ceil(contentSize(for: text, font: font, constrainedWidth: contentWidth).height)
+    let drawHeight = min(contentHeight, max(bounds.height, 0))
+    let verticalInset = max((bounds.height - drawHeight) / 2, 0)
+
+    return CGRect(
+      x: bounds.minX + horizontalPadding,
+      y: bounds.minY + verticalInset,
+      width: contentWidth,
+      height: drawHeight
+    )
+  }
+
+  static func measuredHeight(text: String, font: NSFont, constrainedWidth: CGFloat) -> CGFloat {
+    bounds(
+      text: text,
+      font: font,
+      origin: .zero,
+      constrainedWidth: constrainedWidth
+    ).height
+  }
+
+  static func minimumHeight(for font: NSFont) -> CGFloat {
+    ceil(font.ascender - font.descender + font.leading) + verticalPadding * 2
+  }
+
+  private static func singleLineSize(for text: String, font: NSFont) -> CGSize {
+    (measurementText(for: text) as NSString).size(withAttributes: textAttributes(font: font))
+  }
+
+  private static func contentSize(for text: String, font: NSFont, constrainedWidth: CGFloat) -> CGSize {
+    let rect = (measurementText(for: text) as NSString).boundingRect(
+      with: CGSize(width: constrainedWidth, height: maxHeight),
+      options: [.usesLineFragmentOrigin, .usesFontLeading],
+      attributes: textAttributes(font: font)
+    )
+    return rect.size
+  }
+
+  private static func measurementText(for text: String) -> String {
+    text.isEmpty ? " " : text
+  }
+
+  private static func textAttributes(font: NSFont) -> [NSAttributedString.Key: Any] {
+    let paragraphStyle = NSMutableParagraphStyle()
+    paragraphStyle.lineBreakMode = .byWordWrapping
+
+    return [
+      .font: font,
+      .paragraphStyle: paragraphStyle
+    ]
   }
 }

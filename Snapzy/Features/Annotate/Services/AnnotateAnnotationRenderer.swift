@@ -196,29 +196,34 @@ struct AnnotationRenderer {
   }
 
   private func drawText(_ content: String, in bounds: CGRect, properties: AnnotationProperties) {
-    let padding: CGFloat = 4
     let displayText = content.isEmpty ? "" : content
+    let font = AnnotateTextLayout.font(size: properties.fontSize, fontName: properties.fontName)
 
     // Draw background if fillColor is not clear
     if properties.fillColor != .clear {
       context.setFillColor(NSColor(properties.fillColor).cgColor)
       let bgRect = CGRect(
-        x: bounds.origin.x - padding,
-        y: bounds.origin.y - padding,
-        width: bounds.width + padding * 2,
-        height: bounds.height + padding * 2
+        x: bounds.origin.x - AnnotateTextLayout.horizontalPadding,
+        y: bounds.origin.y - AnnotateTextLayout.verticalPadding,
+        width: bounds.width + AnnotateTextLayout.horizontalPadding * 2,
+        height: bounds.height + AnnotateTextLayout.verticalPadding * 2
       )
       context.fill(bgRect)
     }
 
-    // Draw text
+    // Draw text with word wrapping within bounds
+    let paragraphStyle = NSMutableParagraphStyle()
+    paragraphStyle.lineBreakMode = .byWordWrapping
+
     let attributes: [NSAttributedString.Key: Any] = [
-      .font: NSFont.systemFont(ofSize: properties.fontSize, weight: .regular),
-      .foregroundColor: NSColor(properties.strokeColor)
+      .font: font,
+      .foregroundColor: NSColor(properties.strokeColor),
+      .paragraphStyle: paragraphStyle
     ]
+
+    let textRect = AnnotateTextLayout.textRect(for: content, font: font, in: bounds)
     let text = displayText as NSString
-    let textPoint = CGPoint(x: bounds.origin.x, y: bounds.origin.y)
-    text.draw(at: textPoint, withAttributes: attributes)
+    text.draw(in: textRect, withAttributes: attributes)
   }
 
   private func makeRect(from start: CGPoint, to end: CGPoint) -> CGRect {
