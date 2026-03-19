@@ -112,6 +112,20 @@ struct CaptureSettingsView: View {
           .labelsHidden()
           .pickerStyle(.menu)
         }
+
+        if screenshotFormat == ImageFormatOption.webp.rawValue {
+          HStack(alignment: .top, spacing: 6) {
+            Image(systemName: "exclamationmark.triangle.fill")
+              .foregroundColor(.orange)
+              .font(.system(size: 12))
+              .padding(.top, 1)
+            Text("WebP encoding is slower than other formats. For faster capture speed, consider using PNG or JPEG.")
+              .font(.system(size: 11))
+              .foregroundColor(.orange)
+              .fixedSize(horizontal: false, vertical: true)
+          }
+          .padding(.vertical, 4)
+        }
       }
 
       // MARK: - Recording
