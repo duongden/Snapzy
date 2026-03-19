@@ -6,6 +6,22 @@
     <description>Snapzy application updates</description>
     <language>en</language>
     <item>
+      <title>Version 1.2.6</title>
+      <sparkle:version>24</sparkle:version>
+      <sparkle:shortVersionString>1.2.6</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <pubDate>Thu, 19 Mar 2026 18:38:52 +0000</pubDate>
+      <description><![CDATA[
+        <style>:root { color-scheme: light dark; } body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 13px; line-height: 1.5; padding: 8px 16px; } h3 { font-size: 14px; margin: 12px 0 6px; } ul { padding-left: 20px; margin: 4px 0; } li { margin: 3px 0; }</style>
+        <h3>✨ Features</h3><ul><li>Add a warning message about WebP encoding speed in capture settings.</li><li>Add .webp, .jpg image format support and format-aware clipboard copying for screenshots and annotations.</li></ul>
+      ]]></description>
+      <enclosure
+        url="https://github.com/duongductrong/Snapzy/releases/download/v1.2.6/Snapzy-v1.2.6.dmg"
+        sparkle:edSignature="TnBdJF2VYTXhTaq4dAXL7s/tpm6PMg38TWi41SmTJiv9hl5le/ztG5rrls2FCIWeDxq1Id5zqdE6AJy2SAmrAw=="
+        length="8564109"
+        type="application/octet-stream"/>
+    </item>
+    <item>
       <title>Version 1.2.5</title>
       <sparkle:version>23</sparkle:version>
       <sparkle:shortVersionString>1.2.5</sparkle:shortVersionString>
