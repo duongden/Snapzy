@@ -188,6 +188,7 @@ final class ScreenCaptureManager: ObservableObject {
         excludeOwnApplication: excludeOwnApplication
       )
       let config = SCStreamConfiguration()
+      if #available(macOS 14.0, *) { config.ignoreShadowsSingleWindow = false }
       config.width = display.width * 2  // Retina resolution
       config.height = display.height * 2
       config.pixelFormat = kCVPixelFormatType_32BGRA
@@ -273,6 +274,7 @@ final class ScreenCaptureManager: ObservableObject {
         excludeOwnApplication: excludeOwnApplication
       )
       let config = SCStreamConfiguration()
+      if #available(macOS 14.0, *) { config.ignoreShadowsSingleWindow = false }
       config.pixelFormat = kCVPixelFormatType_32BGRA
       config.showsCursor = false
 
@@ -509,6 +511,7 @@ final class ScreenCaptureManager: ObservableObject {
       excludeOwnApplication: excludeOwnApplication
     )
     let config = SCStreamConfiguration()
+    if #available(macOS 14.0, *) { config.ignoreShadowsSingleWindow = false }
     config.pixelFormat = kCVPixelFormatType_32BGRA
     config.showsCursor = false
 
