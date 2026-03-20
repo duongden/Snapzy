@@ -49,12 +49,56 @@ final class AnnotateState: ObservableObject {
   @Published var zoomLevel: CGFloat = 1.0
   @Published var isPinned: Bool = false
 
-  /// Valid zoom range (10%–500%)
-  static let zoomRange: ClosedRange<CGFloat> = 0.1...5.0
+  /// Valid zoom range (25%–400%)
+  static let zoomRange: ClosedRange<CGFloat> = 0.25...4.0
 
   /// Clamp a zoom level to the valid range
   func clampedZoom(_ level: CGFloat) -> CGFloat {
     min(max(level, Self.zoomRange.lowerBound), Self.zoomRange.upperBound)
+  }
+
+  // MARK: - Pan State (for zoomed canvas navigation)
+
+  /// Viewport pan offset (points). Applied alongside scaleEffect.
+  @Published var panOffset: CGSize = .zero
+
+  /// Whether Space key is currently held (hand tool active)
+  @Published var isSpacePanning: Bool = false
+
+  /// Canvas container size for pan bounds calculation (updated by GeometryReader)
+  var canvasContainerSize: CGSize = .zero
+
+  /// Reset pan when zoom returns to fit (≤ 1.0)
+  func resetPanIfNeeded() {
+    if zoomLevel <= 1.0 {
+      panOffset = .zero
+    } else {
+      clampPanOffset()
+    }
+  }
+
+  /// Clamp pan offset to keep content partially visible.
+  /// At least ~40% of the canvas remains in the viewport at all times.
+  func clampPanOffset() {
+    guard zoomLevel > 1.0, canvasContainerSize.width > 0 else {
+      panOffset = .zero
+      return
+    }
+
+    // Content overflows viewport by this amount at current zoom
+    // At zoom 1.0, content fits perfectly → overflow = 0
+    // At zoom 2.0, content is 2x → overflow = containerSize
+    let overflowX = canvasContainerSize.width * (zoomLevel - 1.0) / 2
+    let overflowY = canvasContainerSize.height * (zoomLevel - 1.0) / 2
+
+    // Add small margin (20% of container) so user can pan slightly beyond edge
+    let marginX = canvasContainerSize.width * 0.1
+    let marginY = canvasContainerSize.height * 0.1
+    let maxPanX = overflowX + marginX
+    let maxPanY = overflowY + marginY
+
+    panOffset.width = min(max(panOffset.width, -maxPanX), maxPanX)
+    panOffset.height = min(max(panOffset.height, -maxPanY), maxPanY)
   }
 
   // MARK: - Background Settings

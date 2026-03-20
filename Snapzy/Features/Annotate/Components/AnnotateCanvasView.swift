@@ -49,6 +49,8 @@ struct AnnotateCanvasView: View {
             // Centered, scaled canvas
             canvasContent(in: geometry.size)
               .frame(width: geometry.size.width, height: geometry.size.height)
+              .onAppear { state.canvasContainerSize = geometry.size }
+              .onChange(of: geometry.size) { newSize in state.canvasContainerSize = newSize }
           } else {
             // Drop zone when no image loaded
             AnnotateDropZoneView(isDragOver: $isDragOver)
@@ -102,6 +104,26 @@ struct AnnotateCanvasView: View {
       withAnimation(.easeOut(duration: 0.15)) {
         state.zoomLevel = 1.0
       }
+    }
+    .onReceive(NotificationCenter.default.publisher(for: .annotateSpaceDown)) { _ in
+      guard state.hasImage,
+            state.zoomLevel > 1.0,
+            state.editingTextAnnotationId == nil else { return }
+      state.isSpacePanning = true
+    }
+    .onReceive(NotificationCenter.default.publisher(for: .annotateSpaceUp)) { _ in
+      state.isSpacePanning = false
+    }
+    .onReceive(NotificationCenter.default.publisher(for: .annotatePanDrag)) { notification in
+      guard state.isSpacePanning,
+            let dx = notification.userInfo?["deltaX"] as? CGFloat,
+            let dy = notification.userInfo?["deltaY"] as? CGFloat else { return }
+      state.panOffset.width += dx
+      state.panOffset.height += dy
+      state.clampPanOffset()
+    }
+    .onChange(of: state.zoomLevel) { _ in
+      state.resetPanIfNeeded()
     }
     .onDrop(of: [.fileURL, .image], isTargeted: $isDragOver) { providers in
       handleDrop(providers: providers)
@@ -316,6 +338,7 @@ struct AnnotateCanvasView: View {
         }
       }
       .scaleEffect(state.zoomLevel)
+      .offset(x: state.panOffset.width, y: state.panOffset.height)
 
     }
   }

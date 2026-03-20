@@ -21,6 +21,9 @@ extension Notification.Name {
   static let annotateZoomReset = Notification.Name("annotateZoomReset")
   static let annotateScrollZoom = Notification.Name("annotateScrollZoom")
   static let annotateMagnifyZoom = Notification.Name("annotateMagnifyZoom")
+  static let annotateSpaceDown = Notification.Name("annotateSpaceDown")
+  static let annotateSpaceUp = Notification.Name("annotateSpaceUp")
+  static let annotatePanDrag = Notification.Name("annotatePanDrag")
 }
 
 /// Custom NSWindow for annotation editing with dark mode appearance
@@ -139,11 +142,13 @@ final class AnnotateWindow: NSWindow {
     return super.performKeyEquivalent(with: event)
   }
 
-  // MARK: - Scroll Wheel & Magnification Zoom
+  // MARK: - Scroll Wheel, Magnification Zoom & Pan
 
-  /// Intercept scroll wheel (Cmd+scroll) and trackpad magnify events
-  /// at the window level, before AppKit dispatches them to subviews.
-  /// This guarantees capture regardless of which view is under the cursor.
+  /// Track whether Space key is currently held for pan mode
+  private var isSpaceHeld = false
+
+  /// Intercept scroll wheel (Cmd+scroll), trackpad magnify, Space key,
+  /// and mouse drag events at the window level for zoom & pan.
   override func sendEvent(_ event: NSEvent) {
     switch event.type {
     case .scrollWheel where event.modifierFlags.contains(.command):
@@ -155,7 +160,7 @@ final class AnnotateWindow: NSWindow {
         object: self,
         userInfo: ["delta": delta]
       )
-      return  // Consume event — don't forward to subviews
+      return  // Consume event
 
     case .magnify:
       // Trackpad pinch → zoom
@@ -166,6 +171,39 @@ final class AnnotateWindow: NSWindow {
         userInfo: ["magnification": magnification]
       )
       return  // Consume event
+
+    case .keyDown where event.keyCode == 49:
+      // Space key down — consume ALL (including repeats) to prevent system beep
+      if !event.isARepeat {
+        isSpaceHeld = true
+        NotificationCenter.default.post(name: .annotateSpaceDown, object: self)
+      }
+      return  // Always consume to silence beep
+
+    case .keyUp where event.keyCode == 49:
+      // Space key up → deactivate pan mode
+      isSpaceHeld = false
+      NotificationCenter.default.post(name: .annotateSpaceUp, object: self)
+      return
+
+    case .leftMouseDragged where isSpaceHeld:
+      // Mouse drag while Space held → pan
+      let dx = event.deltaX
+      let dy = event.deltaY
+      NotificationCenter.default.post(
+        name: .annotatePanDrag,
+        object: self,
+        userInfo: ["deltaX": dx, "deltaY": dy]
+      )
+      return  // Consume — don't forward to drawing canvas
+
+    case .leftMouseDown where isSpaceHeld:
+      // Consume mouse-down during pan to prevent drawing
+      return
+
+    case .leftMouseUp where isSpaceHeld:
+      // Consume mouse-up during pan
+      return
 
     default:
       break
