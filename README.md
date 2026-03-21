@@ -17,6 +17,7 @@
     <a href="#install">Install</a> •
     <a href="#build-from-source">Build from source</a> •
     <a href="#documentation">Documentation</a> •
+    <a href="#security">Security</a> •
     <a href="#contributing">Contributing</a>
   </p>
 
@@ -114,6 +115,12 @@ For release packaging details, see [docs/project-build.md](docs/project-build.md
 - [Project build guide](docs/project-build.md)
 - [Project structure](docs/project-structure.md)
 - [Release workflow](docs/project-workflow.md)
+
+## Security
+
+Snapzy runs inside the macOS App Sandbox with minimal entitlements. It makes no network requests except for Sparkle update checks and collects no telemetry.
+
+To report a vulnerability, please use a [GitHub Security Advisory](https://github.com/duongductrong/Snapzy/security/advisories/new) or contact the maintainer privately. See [SECURITY.md](SECURITY.md) for full details.
 
 ## Contributing
 
