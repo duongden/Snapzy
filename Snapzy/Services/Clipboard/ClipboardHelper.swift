@@ -34,11 +34,13 @@ enum ClipboardHelper {
   /// - Important: Do NOT delete the file after calling this — the receiving app
   ///   needs it to exist at paste time.
   static func copyImage(from url: URL) {
+    DiagnosticLogger.shared.log(.info, .clipboard, "Copy image from file", context: ["file": url.lastPathComponent])
     let fileAccess = SandboxFileAccessManager.shared.beginAccessingURL(url)
     defer { fileAccess.stop() }
 
     guard FileManager.default.fileExists(atPath: url.path) else {
       logger.error("ClipboardHelper: file not found \(url.lastPathComponent)")
+      DiagnosticLogger.shared.log(.error, .clipboard, "File not found", context: ["file": url.lastPathComponent])
       return
     }
 
@@ -54,6 +56,7 @@ enum ClipboardHelper {
       // Fallback: file exists but NSImage can't decode it (e.g. WebP on macOS 13)
       pasteboard.writeObjects([url as NSURL])
       logger.warning("ClipboardHelper: could not decode image, NSURL-only clipboard for \(url.lastPathComponent)")
+      DiagnosticLogger.shared.log(.warning, .clipboard, "Image decode failed, NSURL-only", context: ["file": url.lastPathComponent])
     }
 
     logger.info("Clipboard: copied file \(url.lastPathComponent)")
@@ -66,11 +69,13 @@ enum ClipboardHelper {
   ///
   /// Used by Annotate / Mockup copy where the image is rendered on-the-fly.
   static func copyImage(_ image: NSImage, format: ImageFormatOption? = nil) {
+    DiagnosticLogger.shared.log(.info, .clipboard, "Copy rendered image", context: ["format": (format ?? currentFormat()).rawValue])
     let resolvedFormat = format ?? currentFormat()
     let ext = resolvedFormat.format.fileExtension
 
     guard let data = AnnotateExporter.imageData(from: image, for: ext) else {
       logger.error("ClipboardHelper: failed to encode image as \(resolvedFormat.rawValue)")
+      DiagnosticLogger.shared.log(.error, .clipboard, "Image encode failed", context: ["format": resolvedFormat.rawValue])
       // Fallback: write NSImage directly (will produce PNG but at least something lands)
       let pasteboard = NSPasteboard.general
       pasteboard.clearContents()
@@ -88,6 +93,7 @@ enum ClipboardHelper {
       try data.write(to: tempURL, options: .atomic)
     } catch {
       logger.error("ClipboardHelper: failed to write temp file: \(error.localizedDescription)")
+      DiagnosticLogger.shared.logError(.clipboard, error, "Temp file write failed")
       // Fallback
       let pasteboard = NSPasteboard.general
       pasteboard.clearContents()

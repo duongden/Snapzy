@@ -322,6 +322,7 @@ final class AnnotateState: ObservableObject {
 
   /// Apply mockup preset
   func applyMockupPreset(_ preset: MockupPreset) {
+    DiagnosticLogger.shared.log(.info, .annotate, "Mockup preset applied", context: ["id": preset.id.uuidString])
     mockupRotationX = preset.rotationX
     mockupRotationY = preset.rotationY
     mockupRotationZ = preset.rotationZ
@@ -333,6 +334,7 @@ final class AnnotateState: ObservableObject {
 
   /// Reset mockup to defaults
   func resetMockup() {
+    DiagnosticLogger.shared.log(.info, .annotate, "Mockup reset")
     mockupRotationX = 0
     mockupRotationY = 0
     mockupRotationZ = 0
@@ -373,7 +375,11 @@ final class AnnotateState: ObservableObject {
 
   /// Load image from URL with Retina scaling
   func loadImage(from url: URL) {
-    guard let image = Self.loadImageWithCorrectScale(from: url) else { return }
+    DiagnosticLogger.shared.log(.info, .annotate, "Loading image from URL", context: ["file": url.lastPathComponent])
+    guard let image = Self.loadImageWithCorrectScale(from: url) else {
+      DiagnosticLogger.shared.log(.error, .annotate, "Failed to load image", context: ["file": url.lastPathComponent])
+      return
+    }
     self.sourceImage = image
     self.sourceURL = url
     // Reset annotations for new image
@@ -392,6 +398,10 @@ final class AnnotateState: ObservableObject {
 
   /// Load image directly
   func loadImage(_ image: NSImage, url: URL? = nil) {
+    DiagnosticLogger.shared.log(.info, .annotate, "Loading image directly", context: [
+      "size": "\(Int(image.size.width))x\(Int(image.size.height))",
+      "url": url?.lastPathComponent ?? "nil"
+    ])
     self.sourceImage = image
     self.sourceURL = url
     // Reset annotations for new image
@@ -450,6 +460,7 @@ final class AnnotateState: ObservableObject {
   // MARK: - Undo/Redo Methods
 
   func saveState() {
+    DiagnosticLogger.shared.log(.debug, .annotate, "Undo checkpoint", context: ["annotations": "\(annotations.count)"])
     undoStack.append(annotations)
     redoStack.removeAll()
     canUndo = true
@@ -458,6 +469,7 @@ final class AnnotateState: ObservableObject {
   }
 
   func undo() {
+    DiagnosticLogger.shared.log(.debug, .annotate, "Undo", context: ["stackDepth": "\(undoStack.count)"])
     guard let previous = undoStack.popLast() else { return }
     redoStack.append(annotations)
     annotations = previous
@@ -466,6 +478,7 @@ final class AnnotateState: ObservableObject {
   }
 
   func redo() {
+    DiagnosticLogger.shared.log(.debug, .annotate, "Redo", context: ["stackDepth": "\(redoStack.count)"])
     guard let next = redoStack.popLast() else { return }
     undoStack.append(annotations)
     annotations = next
@@ -489,6 +502,7 @@ final class AnnotateState: ObservableObject {
 
   /// Initialize crop to full image bounds
   func initializeCrop() {
+    DiagnosticLogger.shared.log(.info, .annotate, "Crop initialized", context: ["imageSize": "\(Int(imageWidth))x\(Int(imageHeight))"])
     let fullImageRect = CGRect(origin: .zero, size: CGSize(width: imageWidth, height: imageHeight))
     cropRect = fullImageRect
     originalCropRect = fullImageRect  // Save original for aspect ratio calculations
@@ -497,6 +511,9 @@ final class AnnotateState: ObservableObject {
 
   /// Apply crop (confirm) - keeps cropRect for export
   func applyCrop() {
+    DiagnosticLogger.shared.log(.info, .annotate, "Crop applied", context: [
+      "rect": cropRect.map { "\(Int($0.width))x\(Int($0.height))" } ?? "nil"
+    ])
     isCropActive = false
     hasUnsavedChanges = true
   }
@@ -508,6 +525,7 @@ final class AnnotateState: ObservableObject {
 
   /// Cancel crop and reset
   func cancelCrop() {
+    DiagnosticLogger.shared.log(.info, .annotate, "Crop cancelled")
     cropRect = nil
     isCropActive = false
     selectedTool = .selection
@@ -721,6 +739,11 @@ final class AnnotateState: ObservableObject {
 
   func deleteSelectedAnnotation() {
     guard let selectedId = selectedAnnotationId else { return }
+    let annotation = annotations.first { $0.id == selectedId }
+    DiagnosticLogger.shared.log(.debug, .annotate, "Delete annotation", context: [
+      "id": selectedId.uuidString,
+      "type": annotation.map { "\($0.type)" } ?? "unknown"
+    ])
     saveState()
     annotations.removeAll { $0.id == selectedId }
     selectedAnnotationId = nil

@@ -221,6 +221,7 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
     do {
       content = try await SCShareableContent.current
     } catch {
+      DiagnosticLogger.shared.logError(.recording, error, "Failed to load shareable content for recording")
       state = .idle
       let message = "ScreenCaptureKit could not load shareable content: \(error.localizedDescription)"
       self.error = .setupFailed(message)
@@ -282,6 +283,7 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
     do {
       try FileManager.default.createDirectory(at: scopedSaveDirectory, withIntermediateDirectories: true)
     } catch {
+      DiagnosticLogger.shared.logError(.recording, error, "Failed to create recording save directory")
       exportDirectoryAccess?.stop()
       exportDirectoryAccess = nil
       state = .idle
@@ -326,6 +328,7 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
     do {
       try await stream?.startCapture()
     } catch {
+      DiagnosticLogger.shared.logError(.recording, error, "Failed to start stream capture")
       state = .idle
       self.error = .setupFailed(error.localizedDescription)
       throw RecordingError.setupFailed(error.localizedDescription)
@@ -403,6 +406,7 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
           )
           try RecordingMetadataStore.save(metadata, for: url)
         } catch {
+          DiagnosticLogger.shared.logError(.recording, error, "Failed to save mouse tracking data")
           print("[RecordingMetadata] Failed to save mouse tracking data: \(error.localizedDescription)")
         }
       }
@@ -691,6 +695,7 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
       let filter = makeContentFilter(display: display, content: content)
       try await activeStream.updateContentFilter(filter)
     } catch {
+      DiagnosticLogger.shared.logError(.recording, error, "Failed to update recording content filter")
       print("Failed to update recording filter: \(error.localizedDescription)")
     }
   }

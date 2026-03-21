@@ -110,6 +110,10 @@ final class RecordingCoordinator: ObservableObject {
     guard !isActive else { return }
     isActive = true
     selectedRect = rect
+    DiagnosticLogger.shared.log(.info, .recording, "Recording toolbar shown", context: [
+      "rect": "\(Int(rect.width))x\(Int(rect.height))",
+      "origin": "\(Int(rect.origin.x)),\(Int(rect.origin.y))"
+    ])
 
     // Save rect for next time
     saveLastAreaRect(rect)
@@ -186,6 +190,7 @@ final class RecordingCoordinator: ObservableObject {
   }
 
   func cancel() {
+    DiagnosticLogger.shared.log(.info, .recording, "Recording cancelled")
     Task {
       await recorder.cancelRecording()
       cleanup()
@@ -296,6 +301,10 @@ final class RecordingCoordinator: ObservableObject {
     guard let rect = selectedRect, let window = toolbarWindow else { return }
 
     let format = window.selectedFormat
+    DiagnosticLogger.shared.log(.info, .recording, "Start recording", context: [
+      "format": format.rawValue,
+      "rect": "\(Int(rect.width))x\(Int(rect.height))"
+    ])
 
     // Get FPS from preferences (default 30)
     var fps = UserDefaults.standard.integer(forKey: PreferencesKeys.recordingFPS)
@@ -371,9 +380,11 @@ final class RecordingCoordinator: ObservableObject {
         window.showRecordingStatusBar(recorder: recorder)
 
       } catch let error as RecordingError {
+        DiagnosticLogger.shared.logError(.recording, error, "Recording setup failed")
         showErrorAlert(error)
         cancel()
       } catch {
+        DiagnosticLogger.shared.logError(.recording, error, "Recording setup failed (generic)")
         showErrorAlert(.setupFailed(error.localizedDescription))
         cancel()
       }
@@ -381,6 +392,7 @@ final class RecordingCoordinator: ObservableObject {
   }
 
   private func showErrorAlert(_ error: RecordingError) {
+    DiagnosticLogger.shared.log(.error, .recording, "Error alert shown", context: ["error": error.localizedDescription])
     let alert = NSAlert()
     alert.messageText = "Recording Failed"
     alert.informativeText = error.localizedDescription
@@ -484,6 +496,10 @@ final class RecordingCoordinator: ObservableObject {
 
     Task {
       let url = await recorder.stopRecording()
+      DiagnosticLogger.shared.log(.info, .recording, "Recording stopped", context: [
+        "hasOutput": "\(url != nil)",
+        "outputMode": "\(outputMode)"
+      ])
 
       // Dismiss recording UI immediately (status bar, area overlay, etc.)
       cleanup()
@@ -505,6 +521,7 @@ final class RecordingCoordinator: ObservableObject {
 
   /// Handle GIF conversion: add to QuickAccess with progress, convert, and update
   private func handleGIFConversion(videoURL: URL) async {
+    DiagnosticLogger.shared.log(.info, .recording, "GIF conversion started", context: ["file": videoURL.lastPathComponent])
     let quickAccess = QuickAccessManager.shared
     let sourceAccess = SandboxFileAccessManager.shared.beginAccessingURL(videoURL)
     let outputDirectoryAccess = SandboxFileAccessManager.shared.beginAccessingURL(
@@ -553,6 +570,7 @@ final class RecordingCoordinator: ObservableObject {
       }
 
     } catch {
+      DiagnosticLogger.shared.logError(.recording, error, "GIF conversion failed")
       print("GIF conversion failed: \(error.localizedDescription)")
       // On failure, keep the video as-is and clear processing state
       quickAccess.updateProcessingState(id: itemId, state: .failed)
@@ -568,6 +586,9 @@ final class RecordingCoordinator: ObservableObject {
   /// Capture a screenshot of the selected area and close the toolbar
   private func captureScreenshot() {
     guard let rect = selectedRect else { return }
+    DiagnosticLogger.shared.log(.info, .recording, "Screenshot during recording", context: [
+      "rect": "\(Int(rect.width))x\(Int(rect.height))"
+    ])
 
     guard let saveDirectory = resolveSaveDirectoryForOperation() else {
       showSaveLocationPermissionAlert()
@@ -620,6 +641,7 @@ final class RecordingCoordinator: ObservableObject {
   }
 
   private func cleanup() {
+    DiagnosticLogger.shared.log(.debug, .recording, "Recording cleanup")
     // Remove escape monitors
     removeEscapeMonitors()
 

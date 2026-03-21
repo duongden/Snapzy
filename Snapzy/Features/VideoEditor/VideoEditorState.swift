@@ -299,6 +299,7 @@ final class VideoEditorState: ObservableObject {
         naturalSize = metadata.size
         gifFrameCount = metadata.frameCount
         gifDuration = metadata.duration
+        DiagnosticLogger.shared.log(.info, .editor, "GIF metadata loaded", context: ["size": "\(Int(metadata.size.width))x\(Int(metadata.size.height))", "frames": "\(metadata.frameCount)"])
       } else if let image = SandboxFileAccessManager.shared.withScopedAccess(to: sourceURL, {
         NSImage(contentsOf: sourceURL)
       }) {
@@ -328,9 +329,14 @@ final class VideoEditorState: ObservableObject {
           height: abs(transformedSize.height)
         )
       }
+      DiagnosticLogger.shared.log(.info, .editor, "Video metadata loaded", context: [
+        "duration": String(format: "%.1fs", CMTimeGetSeconds(loadedDuration)),
+        "size": "\(Int(naturalSize.width))x\(Int(naturalSize.height))"
+      ])
       // Calculate initial file size estimate after metadata loads
       recalculateEstimatedFileSize()
     } catch {
+      DiagnosticLogger.shared.logError(.editor, error, "Failed to load video metadata")
       print("Failed to load video metadata: \(error)")
     }
   }
@@ -486,6 +492,7 @@ final class VideoEditorState: ObservableObject {
   /// Undo the last action
   func undo() {
     guard let action = undoStack.popLast() else { return }
+    DiagnosticLogger.shared.log(.debug, .editor, "Undo", context: ["stackDepth": "\(undoStack.count)"])
     isUndoingOrRedoing = true
     defer {
       isUndoingOrRedoing = false
@@ -532,6 +539,7 @@ final class VideoEditorState: ObservableObject {
   /// Redo the last undone action
   func redo() {
     guard let action = redoStack.popLast() else { return }
+    DiagnosticLogger.shared.log(.debug, .editor, "Redo", context: ["stackDepth": "\(redoStack.count)"])
     isUndoingOrRedoing = true
     defer {
       isUndoingOrRedoing = false
@@ -597,6 +605,7 @@ final class VideoEditorState: ObservableObject {
 
   /// Rename the source file
   func renameFile(to newName: String) throws {
+    DiagnosticLogger.shared.log(.info, .editor, "Renaming file", context: ["from": sourceURL.lastPathComponent, "to": newName])
     let oldSourceURL = sourceURL
     let directory = sourceURL.deletingLastPathComponent()
     let sourceAccess = SandboxFileAccessManager.shared.beginAccessingURL(oldSourceURL)
@@ -626,6 +635,7 @@ final class VideoEditorState: ObservableObject {
     do {
       try RecordingMetadataStore.moveAssociation(from: oldSourceURL, to: newURL)
     } catch {
+      DiagnosticLogger.shared.logError(.editor, error, "Metadata association move failed during rename")
       print("[RecordingMetadata] Failed to move metadata association during rename: \(error.localizedDescription)")
     }
 
@@ -640,6 +650,7 @@ final class VideoEditorState: ObservableObject {
   /// Add a new zoom segment at the specified time
   @discardableResult
   func addZoom(at time: TimeInterval) -> UUID {
+    DiagnosticLogger.shared.log(.debug, .editor, "Adding zoom segment", context: ["time": String(format: "%.2f", time), "type": hasMouseTrackingData ? "auto" : "manual"])
     let videoDuration = CMTimeGetSeconds(duration)
     let defaultZoomType: ZoomType = hasMouseTrackingData ? .auto : .manual
     let segment = ZoomSegment(
@@ -658,6 +669,7 @@ final class VideoEditorState: ObservableObject {
 
   /// Remove a zoom segment by ID
   func removeZoom(id: UUID) {
+    DiagnosticLogger.shared.log(.debug, .editor, "Removing zoom segment", context: ["id": id.uuidString])
     guard let segment = zoomSegments.first(where: { $0.id == id }) else { return }
     zoomSegments.removeAll { $0.id == id }
     if selectedZoomId == id {
@@ -977,6 +989,7 @@ final class VideoEditorState: ObservableObject {
 
   /// Handle background style changes - load and cache images
   private func handleBackgroundStyleChange() {
+    DiagnosticLogger.shared.log(.debug, .editor, "Background style changed", context: ["style": "\(backgroundStyle)"])
     switch backgroundStyle {
     case .wallpaper(let url), .blurred(let url):
       loadBackgroundImage(from: url)

@@ -20,6 +20,12 @@ enum VideoEditorExporter {
     to outputURL: URL,
     progress: @escaping (Float) -> Void
   ) async throws {
+    DiagnosticLogger.shared.log(.info, .export, "Video export started", context: [
+      "file": state.sourceURL.lastPathComponent,
+      "hasZooms": "\(state.zoomSegments.contains { $0.isEnabled })",
+      "hasBackground": "\(state.backgroundStyle != .none && state.backgroundPadding > 0)",
+      "quality": state.exportSettings.quality.exportPreset
+    ])
     let outputAccess = SandboxFileAccessManager.shared.beginAccessingURL(outputURL.deletingLastPathComponent())
     defer { outputAccess.stop() }
     let scopedOutputURL = outputAccess.url.appendingPathComponent(outputURL.lastPathComponent)
@@ -52,8 +58,10 @@ enum VideoEditorExporter {
     let timeRange = CMTimeRange(start: state.trimStart, end: state.trimEnd)
 
     print("📹 [Export] Standard export starting")
-    print("📹 [Export] Trim range: \(CMTimeGetSeconds(state.trimStart))s - \(CMTimeGetSeconds(state.trimEnd))s")
-    print("📹 [Export] Output URL: \(outputURL)")
+    DiagnosticLogger.shared.log(.info, .export, "Standard export", context: [
+      "trim": "\(String(format: "%.1f", CMTimeGetSeconds(state.trimStart)))s-\(String(format: "%.1f", CMTimeGetSeconds(state.trimEnd)))s",
+      "output": outputURL.lastPathComponent
+    ])
 
     guard let exportSession = AVAssetExportSession(
       asset: state.asset,
@@ -106,6 +114,7 @@ enum VideoEditorExporter {
 
         exportSession.videoComposition = videoComposition
         print("📹 [Export] Applied custom dimensions: \(targetSize)")
+        DiagnosticLogger.shared.log(.debug, .export, "Applied custom dimensions", context: ["size": "\(Int(targetSize.width))x\(Int(targetSize.height))"])
       }
     }
 
@@ -123,6 +132,7 @@ enum VideoEditorExporter {
     print("📹 [Export] Export status: \(exportSession.status.rawValue)")
     if let error = exportSession.error {
       print("📹 [Export] Export error: \(error)")
+      DiagnosticLogger.shared.logError(.export, error, "Standard export failed")
     }
 
     guard exportSession.status == .completed else {
@@ -140,6 +150,11 @@ enum VideoEditorExporter {
     to outputURL: URL,
     progress: @escaping (Float) -> Void
   ) async throws {
+    DiagnosticLogger.shared.log(.info, .export, "Zoom export started", context: [
+      "zoomSegments": "\(state.zoomSegments.count)",
+      "trim": "\(String(format: "%.1f", CMTimeGetSeconds(state.trimStart)))s-\(String(format: "%.1f", CMTimeGetSeconds(state.trimEnd)))s",
+      "size": "\(Int(state.naturalSize.width))x\(Int(state.naturalSize.height))"
+    ])
     print("🔍 [ZoomExport] Starting export with zooms")
     print("🔍 [ZoomExport] Output URL: \(outputURL)")
     print("🔍 [ZoomExport] Video duration: \(CMTimeGetSeconds(state.duration))s")
@@ -193,6 +208,7 @@ enum VideoEditorExporter {
     // Add video track
     guard let sourceVideoTrack = try await state.asset.loadTracks(withMediaType: .video).first else {
       print("❌ [ZoomExport] ERROR: No video track found in source asset")
+      DiagnosticLogger.shared.log(.error, .export, "No video track in source asset")
       throw ExportError.exportFailed
     }
     print("🔍 [ZoomExport] Source video track ID: \(sourceVideoTrack.trackID)")
@@ -211,6 +227,7 @@ enum VideoEditorExporter {
       print("🔍 [ZoomExport] Inserted video time range: \(CMTimeGetSeconds(timeRange.start))s - \(CMTimeGetSeconds(timeRange.end))s (duration: \(CMTimeGetSeconds(timeRange.duration))s)")
     } catch {
       print("❌ [ZoomExport] ERROR inserting video time range: \(error)")
+      DiagnosticLogger.shared.logError(.export, error, "Failed to insert video time range")
       throw error
     }
 
@@ -298,6 +315,7 @@ enum VideoEditorExporter {
       print("🔍 [ZoomExport] Video composition instructions count: \(videoComposition.instructions.count)")
     } catch {
       print("❌ [ZoomExport] ERROR creating video composition: \(error)")
+      DiagnosticLogger.shared.logError(.export, error, "Failed to create video composition")
       throw error
     }
 
@@ -350,6 +368,7 @@ enum VideoEditorExporter {
     }
 
     print("✅ [ZoomExport] Export completed successfully!")
+    DiagnosticLogger.shared.log(.info, .export, "Zoom export completed", context: ["output": outputURL.lastPathComponent])
   }
 
   /// Export video without audio track
@@ -454,12 +473,14 @@ enum VideoEditorExporter {
     print("📹 [ReplaceOriginal] Temp URL: \(tempURL)")
     print("📹 [ReplaceOriginal] Source URL: \(state.sourceURL)")
     print("📹 [ReplaceOriginal] Original URL (target): \(state.originalURL)")
+    DiagnosticLogger.shared.log(.info, .export, "Replace original started", context: ["file": state.originalURL.lastPathComponent])
 
     try await exportTrimmed(state: state, to: tempURL, progress: progress)
 
     // Verify temp file was created
     guard FileManager.default.fileExists(atPath: tempURL.path) else {
       print("❌ [ReplaceOriginal] Temp file not found after export!")
+      DiagnosticLogger.shared.log(.error, .export, "Temp file missing after export")
       throw ExportError.exportFailed
     }
 
@@ -499,6 +520,7 @@ enum VideoEditorExporter {
 
     } catch {
       print("❌ [ReplaceOriginal] Error during replacement: \(error)")
+      DiagnosticLogger.shared.logError(.export, error, "File replacement failed")
       // Try to restore from backup if something went wrong
       if FileManager.default.fileExists(atPath: backupURL.path) {
         try? FileManager.default.moveItem(at: backupURL, to: targetURL)
@@ -511,12 +533,15 @@ enum VideoEditorExporter {
     let finalSize = finalAttributes?[.size] as? Int64 ?? 0
     print("📹 [ReplaceOriginal] Final file size: \(finalSize) bytes")
     print("✅ [ReplaceOriginal] Replacement complete!")
+    DiagnosticLogger.shared.log(.info, .export, "Replace original completed", context: ["size": "\(finalSize) bytes"])
   }
 
   /// Save trimmed video as a copy
   static func saveAsCopy(state: VideoEditorState, progress: @escaping (Float) -> Void) async throws -> URL {
     let copyURL = generateCopyURL(from: state.sourceURL)
+    DiagnosticLogger.shared.log(.info, .export, "Save as copy started", context: ["output": copyURL.lastPathComponent])
     try await exportTrimmed(state: state, to: copyURL, progress: progress)
+    DiagnosticLogger.shared.log(.info, .export, "Save as copy completed")
     return copyURL
   }
 

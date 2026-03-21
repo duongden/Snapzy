@@ -283,6 +283,7 @@ final class VideoEditorWindowController: NSWindowController, NSWindowDelegate {
         state.markAsSaved()
         forceClose()
       } catch {
+        DiagnosticLogger.shared.logError(.export, error, "GIF replace original failed")
         state.isExporting = false
         showExportError(error)
         try? FileManager.default.removeItem(at: tempURL.deletingLastPathComponent())
@@ -335,6 +336,7 @@ final class VideoEditorWindowController: NSWindowController, NSWindowDelegate {
         state.markAsSaved()
         NSWorkspace.shared.activateFileViewerSelecting([outputURL])
       } catch {
+        DiagnosticLogger.shared.logError(.export, error, "GIF save as copy failed")
         state.isExporting = false
         showExportError(error)
       }
@@ -362,6 +364,7 @@ final class VideoEditorWindowController: NSWindowController, NSWindowDelegate {
         state.markAsSaved()
         forceClose()
       } catch {
+        DiagnosticLogger.shared.logError(.export, error, "Video replace original failed")
         state.isExporting = false
         if isPermissionDeniedError(error) {
           showReplaceOriginalPermissionFallback(error)
@@ -411,6 +414,7 @@ final class VideoEditorWindowController: NSWindowController, NSWindowDelegate {
         // Show exported file in Finder
         NSWorkspace.shared.activateFileViewerSelecting([outputURL])
       } catch {
+        DiagnosticLogger.shared.logError(.export, error, "Video save as copy failed")
         state.isExporting = false
         showExportError(error)
       }
@@ -435,6 +439,7 @@ final class VideoEditorWindowController: NSWindowController, NSWindowDelegate {
   }
 
   private func showExportError(_ error: Error) {
+    DiagnosticLogger.shared.logError(.export, error, "Export error shown to user")
     guard let window = self.window else { return }
 
     let alert = NSAlert()

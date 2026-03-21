@@ -40,9 +40,11 @@ final class OCRService {
   /// - Parameter image: The image to extract text from
   /// - Returns: Recognized text joined by newlines
   func recognizeText(from image: CGImage) async throws -> String {
-    try await withCheckedThrowingContinuation { continuation in
+    DiagnosticLogger.shared.log(.info, .ocr, "OCR started", context: ["width": "\(image.width)", "height": "\(image.height)"])
+    return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<String, Error>) in
       let request = VNRecognizeTextRequest { request, error in
         if let error = error {
+          DiagnosticLogger.shared.logError(.ocr, error, "OCR recognition failed")
           continuation.resume(throwing: OCRError.recognitionFailed(error))
           return
         }
@@ -57,9 +59,12 @@ final class OCRService {
         }
 
         if recognizedStrings.isEmpty {
+          DiagnosticLogger.shared.log(.warning, .ocr, "OCR completed: no text found")
           continuation.resume(throwing: OCRError.noTextFound)
         } else {
-          continuation.resume(returning: recognizedStrings.joined(separator: "\n"))
+          let result = recognizedStrings.joined(separator: "\n")
+          DiagnosticLogger.shared.log(.info, .ocr, "OCR completed", context: ["lines": "\(recognizedStrings.count)", "chars": "\(result.count)"])
+          continuation.resume(returning: result)
         }
       }
 
@@ -72,6 +77,7 @@ final class OCRService {
       do {
         try handler.perform([request])
       } catch {
+        DiagnosticLogger.shared.logError(.ocr, error, "OCR handler failed")
         continuation.resume(throwing: OCRError.recognitionFailed(error))
       }
     }
@@ -82,6 +88,7 @@ final class OCRService {
   /// - Returns: Recognized text joined by newlines
   func recognizeText(from image: NSImage) async throws -> String {
     guard let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
+      DiagnosticLogger.shared.log(.error, .ocr, "NSImage to CGImage conversion failed")
       throw OCRError.imageConversionFailed
     }
     return try await recognizeText(from: cgImage)

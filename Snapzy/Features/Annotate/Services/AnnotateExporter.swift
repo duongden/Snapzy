@@ -14,6 +14,7 @@ import UniformTypeIdentifiers
 final class AnnotateExporter {
 
   static func saveAs(state: AnnotateState, closeWindow: Bool = true) {
+    DiagnosticLogger.shared.log(.info, .annotate, "Save As dialog opened")
     guard state.hasImage else { return }
     let panel = NSSavePanel()
     panel.allowedContentTypes = [.png, .jpeg, .webP]
@@ -32,12 +33,21 @@ final class AnnotateExporter {
   @discardableResult
   static func saveToOriginal(state: AnnotateState) -> Bool {
     guard let sourceURL = state.sourceURL else { return false }
+    DiagnosticLogger.shared.log(.info, .annotate, "Save to original", context: ["file": sourceURL.lastPathComponent])
     return save(state: state, to: sourceURL)
   }
 
   @discardableResult
   static func save(state: AnnotateState, to url: URL) -> Bool {
-    guard let image = renderFinalImage(state: state) else { return false }
+    DiagnosticLogger.shared.log(.info, .annotate, "Save started", context: [
+      "file": url.lastPathComponent,
+      "format": url.pathExtension,
+      "annotations": "\(state.annotations.count)"
+    ])
+    guard let image = renderFinalImage(state: state) else {
+      DiagnosticLogger.shared.log(.error, .annotate, "Save failed: render returned nil")
+      return false
+    }
 
     guard let data = imageData(from: image, for: url.pathExtension) else { return false }
 
@@ -49,6 +59,7 @@ final class AnnotateExporter {
       return true
     } catch {
       SoundManager.play("Basso")
+      DiagnosticLogger.shared.logError(.annotate, error, "Save failed")
       print("Annotate save failed: \(error.localizedDescription)")
       return false
     }
@@ -59,6 +70,7 @@ final class AnnotateExporter {
   @discardableResult
   static func saveToFile(image: NSImage?, state: AnnotateState) -> Bool {
     guard let image = image, let sourceURL = state.sourceURL else { return false }
+    DiagnosticLogger.shared.log(.info, .annotate, "Background save", context: ["file": sourceURL.lastPathComponent])
 
     guard let data = imageData(from: image, for: sourceURL.pathExtension) else { return false }
 
@@ -68,20 +80,29 @@ final class AnnotateExporter {
       }
       return true
     } catch {
+      DiagnosticLogger.shared.logError(.annotate, error, "Background save failed")
       print("Annotate background save failed: \(error.localizedDescription)")
       return false
     }
   }
 
   static func copyToClipboard(state: AnnotateState) {
-    guard let image = renderFinalImage(state: state) else { return }
+    DiagnosticLogger.shared.log(.info, .annotate, "Copy to clipboard", context: ["annotations": "\(state.annotations.count)"])
+    guard let image = renderFinalImage(state: state) else {
+      DiagnosticLogger.shared.log(.error, .annotate, "Copy failed: render returned nil")
+      return
+    }
 
     ClipboardHelper.copyImage(image)
     SoundManager.play("Pop")
   }
 
   static func share(state: AnnotateState, from view: NSView) {
-    guard let image = renderFinalImage(state: state) else { return }
+    DiagnosticLogger.shared.log(.info, .annotate, "Share started")
+    guard let image = renderFinalImage(state: state) else {
+      DiagnosticLogger.shared.log(.error, .annotate, "Share failed: render returned nil")
+      return
+    }
 
     let picker = NSSharingServicePicker(items: [image])
     picker.show(relativeTo: view.bounds, of: view, preferredEdge: .minY)
@@ -165,8 +186,15 @@ final class AnnotateExporter {
 
     // If mockup mode is active, use mockup rendering path with 3D transforms
     if state.editorMode == .mockup {
+      DiagnosticLogger.shared.log(.debug, .annotate, "Rendering mockup image")
       return renderMockupImage(state: state)
     }
+
+    DiagnosticLogger.shared.log(.debug, .annotate, "Rendering final image", context: [
+      "annotations": "\(state.annotations.count)",
+      "hasCrop": "\(state.cropRect != nil)",
+      "background": "\(state.backgroundStyle)"
+    ])
 
     // Determine effective bounds (crop or full image)
     let effectiveBounds: CGRect

@@ -478,6 +478,7 @@ final class ScreenCaptureManager: ObservableObject {
       let content = try await SCShareableContent.current
       return content.displays
     } catch {
+      DiagnosticLogger.shared.log(.warning, .capture, "Failed to get available displays", context: ["error": error.localizedDescription])
       return []
     }
   }

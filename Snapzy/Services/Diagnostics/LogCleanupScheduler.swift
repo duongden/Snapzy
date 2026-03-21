@@ -66,8 +66,11 @@ final class LogCleanupScheduler {
 
     var keptLines: [String] = []
     for line in lines {
-      // Keep session headers (start with "===") and empty lines
-      if line.hasPrefix("===") || line.hasPrefix("macOS ") || line.hasPrefix("===") || line.isEmpty {
+      // Keep session headers (start with "===") and enriched header context lines
+      if line.hasPrefix("===") || line.hasPrefix("macOS ") || line.isEmpty
+        || line.contains("GB RAM") || line.contains("screen") || line.contains("PID")
+        || line.hasPrefix("Locale:") || line.hasPrefix("Previous crash:")
+      {
         keptLines.append(line)
         continue
       }

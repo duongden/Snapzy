@@ -29,9 +29,12 @@ final class VideoEditorManager {
 
     // Reuse existing window if open
     if let existing = windowControllers[item.id] {
+      DiagnosticLogger.shared.log(.debug, .editor, "Video editor reused", context: ["itemId": item.id.uuidString])
       existing.showWindow()
       return
     }
+
+    DiagnosticLogger.shared.log(.info, .editor, "Opening video editor", context: ["itemId": item.id.uuidString])
 
     let controller = VideoEditorWindowController(item: item)
     windowControllers[item.id] = controller
@@ -67,9 +70,12 @@ final class VideoEditorManager {
 
     // Reuse existing window if open
     if let existing = urlWindowControllers[url] {
+      DiagnosticLogger.shared.log(.debug, .editor, "Video editor reused", context: ["file": url.lastPathComponent])
       existing.showWindow()
       return
     }
+
+    DiagnosticLogger.shared.log(.info, .editor, "Opening video editor for URL", context: ["file": url.lastPathComponent])
 
     let controller = VideoEditorWindowController(url: url, originalURL: originalURL)
     urlWindowControllers[url] = controller
@@ -95,9 +101,12 @@ final class VideoEditorManager {
   func openEmptyEditor() {
     // Reuse existing empty window if open
     if let existing = emptyWindowController {
+      DiagnosticLogger.shared.log(.debug, .editor, "Empty video editor reused")
       existing.showWindow()
       return
     }
+
+    DiagnosticLogger.shared.log(.info, .editor, "Opening empty video editor")
 
     let controller = VideoEditorWindowController()
     controller.onVideoLoaded = { [weak self] url, originalURL in
@@ -166,5 +175,6 @@ final class VideoEditorManager {
       observers.removeValue(forKey: itemId)
     }
     windowControllers.removeValue(forKey: itemId)
+    DiagnosticLogger.shared.log(.debug, .editor, "Video editor window closed", context: ["itemId": itemId.uuidString])
   }
 }

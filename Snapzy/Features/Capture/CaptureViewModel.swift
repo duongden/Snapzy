@@ -225,11 +225,13 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
           promptMessage: "Choose where Snapzy should save screenshots and recordings")
       else {
         lastCaptureResult = .failure(.saveFailed("Save location permission is required"))
+        DiagnosticLogger.shared.log(.error, .capture, "Fullscreen capture aborted: no save location")
         return
       }
       saveDirectory = resolvedSaveDirectory
 
       isCapturing = true
+      DiagnosticLogger.shared.log(.info, .capture, "Fullscreen capture flow started", context: ["format": resolvedFormat.fileExtension])
       let prefetchedContentTask = captureManager.prefetchShareableContent()
       await Task.yield()
 
@@ -260,7 +262,7 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
   func captureArea() {
     // Prevent multiple area captures - only one at a time
     if isAreaSelectionActive {
-      print("[Snapzy:CaptureVM] captureArea() blocked — isAreaSelectionActive=true")
+      DiagnosticLogger.shared.log(.debug, .capture, "captureArea blocked: already active")
       return
     }
 
@@ -275,7 +277,7 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
 
     // Set flag BEFORE delay to close the race window
     isAreaSelectionActive = true
-    print("[Snapzy:CaptureVM] captureArea() — flag set to true")
+    DiagnosticLogger.shared.log(.info, .capture, "Area capture flow started", context: ["format": resolvedFormat.fileExtension])
     let prefetchedContentTask = captureManager.prefetchShareableContent()
 
     // Hide only normal-level app windows (not overlay panels) to avoid hiding pooled overlay windows
@@ -284,31 +286,29 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
     // Minimal delay to ensure window is hidden
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
       guard let self = self else {
-        print("[Snapzy:CaptureVM] captureArea() asyncAfter — self is nil, resetting flag")
+        DiagnosticLogger.shared.log(.warning, .capture, "captureArea: self deallocated")
         AreaSelectionController.shared.cancelSelection()
         return
       }
 
-      print("[Snapzy:CaptureVM] captureArea() — starting selection")
       AreaSelectionController.shared.startSelection { [weak self] rect in
         guard let self = self else {
-          print("[Snapzy:CaptureVM] captureArea() completion — self is nil, flag stuck!")
+          DiagnosticLogger.shared.log(.warning, .capture, "captureArea completion: self deallocated")
           return
         }
         // Always reset flag regardless of outcome
         defer {
           self.isAreaSelectionActive = false
-          print("[Snapzy:CaptureVM] captureArea() — flag reset to false (defer)")
         }
 
         guard let selectedRect = rect else {
           // Cancelled
-          print("[Snapzy:CaptureVM] captureArea() — cancelled by user")
+          DiagnosticLogger.shared.log(.info, .capture, "Area capture cancelled by user")
           self.lastCaptureResult = .failure(.cancelled)
           return
         }
 
-        print("[Snapzy:CaptureVM] captureArea() — rect selected: \(selectedRect)")
+        DiagnosticLogger.shared.log(.info, .capture, "Area selected", context: ["rect": "\(Int(selectedRect.width))x\(Int(selectedRect.height))"])
         Task { @MainActor in
           self.isCapturing = true
           await Task.yield()
@@ -331,7 +331,6 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
 
           self.isCapturing = false
           self.lastCaptureResult = result
-          print("[Snapzy:CaptureVM] captureArea() — capture result: \(result)")
 
           if case .success = result {
             SoundManager.play("Glass")
@@ -364,13 +363,13 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
 
     // Prevent multiple area selections
     guard !isAreaSelectionActive else {
-      print("[Snapzy:CaptureVM] startRecordingFlow() blocked — isAreaSelectionActive=true")
+      DiagnosticLogger.shared.log(.debug, .recording, "startRecordingFlow blocked: area selection active")
       return
     }
 
     // Set flag BEFORE delay to close race window
     isAreaSelectionActive = true
-    print("[Snapzy:CaptureVM] startRecordingFlow() — flag set to true")
+    DiagnosticLogger.shared.log(.info, .recording, "Recording flow started")
 
     // Hide only normal-level app windows (not overlay panels)
     hideVisibleNormalWindowsIfNeeded(shouldHideOwnWindowsForRecordingToolbarFlow)
@@ -378,7 +377,7 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
     // Small delay to ensure window is hidden
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
       guard let self = self else {
-        print("[Snapzy:CaptureVM] startRecordingFlow() asyncAfter — self is nil, resetting flag")
+        DiagnosticLogger.shared.log(.warning, .recording, "startRecordingFlow: self deallocated")
         AreaSelectionController.shared.cancelSelection()
         return
       }
@@ -387,7 +386,7 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
       let rememberLastArea = UserDefaults.standard.object(forKey: PreferencesKeys.recordingRememberLastArea) as? Bool ?? true
       if rememberLastArea, let savedRect = RecordingCoordinator.shared.loadLastAreaRect() {
         self.isAreaSelectionActive = false
-        print("[Snapzy:CaptureVM] startRecordingFlow() — using saved rect, flag reset")
+        DiagnosticLogger.shared.log(.info, .recording, "Using saved recording area", context: ["rect": "\(Int(savedRect.width))x\(Int(savedRect.height))"])
         Task { @MainActor in
           RecordingCoordinator.shared.showToolbar(for: savedRect)
         }
@@ -395,16 +394,13 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
       }
 
       // No saved rect or disabled - start area selection
-      print("[Snapzy:CaptureVM] startRecordingFlow() — starting selection")
       AreaSelectionController.shared.startSelection(mode: .recording) { [weak self] rect, mode in
         guard let self = self else {
-          print("[Snapzy:CaptureVM] startRecordingFlow() completion — self is nil, flag stuck!")
+          DiagnosticLogger.shared.log(.warning, .recording, "startRecordingFlow completion: self deallocated")
           return
         }
 
-        // Cleanup flag
         self.isAreaSelectionActive = false
-        print("[Snapzy:CaptureVM] startRecordingFlow() — flag reset to false")
 
         guard let rect = rect else { return }
 
@@ -422,13 +418,13 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
   func captureOCR() {
     // Prevent multiple area captures
     if isAreaSelectionActive {
-      print("[Snapzy:CaptureVM] captureOCR() blocked — isAreaSelectionActive=true")
+      DiagnosticLogger.shared.log(.debug, .ocr, "captureOCR blocked: area selection active")
       return
     }
 
     // Set flag BEFORE delay to close the race window
     isAreaSelectionActive = true
-    print("[Snapzy:CaptureVM] captureOCR() — flag set to true")
+    DiagnosticLogger.shared.log(.info, .ocr, "OCR capture flow started")
     let prefetchedContentTask = captureManager.prefetchShareableContent()
 
     // Hide only normal-level app windows (not overlay panels)
@@ -437,29 +433,27 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
     // Minimal delay to ensure window is hidden
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
       guard let self = self else {
-        print("[Snapzy:CaptureVM] captureOCR() asyncAfter — self is nil, resetting flag")
+        DiagnosticLogger.shared.log(.warning, .ocr, "captureOCR: self deallocated")
         AreaSelectionController.shared.cancelSelection()
         return
       }
 
-      print("[Snapzy:CaptureVM] captureOCR() — starting selection")
       AreaSelectionController.shared.startSelection { [weak self] rect in
         guard let self = self else {
-          print("[Snapzy:CaptureVM] captureOCR() completion — self is nil, flag stuck!")
+          DiagnosticLogger.shared.log(.warning, .ocr, "captureOCR completion: self deallocated")
           return
         }
 
         guard let selectedRect = rect else {
           self.isAreaSelectionActive = false
-          print("[Snapzy:CaptureVM] captureOCR() — cancelled, flag reset")
+          DiagnosticLogger.shared.log(.info, .ocr, "OCR capture cancelled")
           return
         }
 
-        print("[Snapzy:CaptureVM] captureOCR() — rect selected: \(selectedRect)")
+        DiagnosticLogger.shared.log(.info, .ocr, "OCR area selected", context: ["rect": "\(Int(selectedRect.width))x\(Int(selectedRect.height))"])
         Task { @MainActor in
           defer {
             self.isAreaSelectionActive = false
-            print("[Snapzy:CaptureVM] captureOCR() — flag reset to false (defer)")
           }
           await Task.yield()
 
@@ -485,10 +479,12 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
             pasteboard.setString(text, forType: .string)
 
             // Success feedback
+            DiagnosticLogger.shared.log(.info, .ocr, "OCR text copied to clipboard", context: ["chars": "\(text.count)"])
             QuickAccessSound.complete.play()
 
           } catch {
             // Error feedback
+            DiagnosticLogger.shared.logError(.ocr, error, "OCR capture failed")
             QuickAccessSound.failed.play()
           }
         }
