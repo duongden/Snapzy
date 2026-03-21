@@ -3,8 +3,9 @@
 //  Snapzy
 //
 //  Format-aware clipboard write utility.
-//  Uses file-based clipboard (NSURL) so the pasted file preserves
-//  the original format (JPEG/WebP/PNG) — matching CleanShot behavior.
+//  Writes both NSURL (file reference) and NSImage (pixel data) to the pasteboard
+//  so every receiving app can paste — Finder uses the file URL while chat apps,
+//  browsers, and editors use the TIFF/PNG image representation.
 //
 
 import AppKit
@@ -16,16 +17,19 @@ private let logger = Logger(subsystem: "Snapzy", category: "ClipboardHelper")
 
 /// Centralized helper for copying images to clipboard while respecting the configured format.
 ///
-/// Strategy: write the file URL as `NSURL` to the pasteboard so that receiving apps
-/// (Finder, Preview, etc.) copy/paste the actual file with its original format intact.
+/// Strategy: write **both** `NSURL` (file reference) and `NSImage` (pixel data) to the
+/// pasteboard. File-aware apps (Finder, Preview) use the URL; image-consuming apps
+/// (Telegram, Slack, Chrome, etc.) use the TIFF/PNG representation.
 /// Temp files must NOT be deleted immediately — the receiving app needs them at paste time.
 /// Orphaned temp files are cleaned up on next launch by `TempCaptureManager.cleanupOrphanedFiles()`.
 enum ClipboardHelper {
 
   // MARK: - File-based copy
 
-  /// Copy an image file to clipboard as a file reference (NSURL).
-  /// The pasted result preserves the file's original format (JPEG/WebP/PNG).
+  /// Copy an image file to clipboard with both file reference and image data.
+  ///
+  /// Writes `NSURL` (preserves original format in Finder) **and** `NSImage`
+  /// (provides TIFF/PNG data for apps that expect image types on the pasteboard).
   ///
   /// - Important: Do NOT delete the file after calling this — the receiving app
   ///   needs it to exist at paste time.
@@ -40,7 +44,17 @@ enum ClipboardHelper {
 
     let pasteboard = NSPasteboard.general
     pasteboard.clearContents()
-    pasteboard.writeObjects([url as NSURL])
+
+    // Write NSURL + NSImage for maximum compatibility.
+    // NSURL: Finder/Preview paste the actual file with its original format.
+    // NSImage: Telegram, Slack, Chrome, etc. paste TIFF/PNG image data.
+    if let image = NSImage(contentsOf: url) {
+      pasteboard.writeObjects([url as NSURL, image])
+    } else {
+      // Fallback: file exists but NSImage can't decode it (e.g. WebP on macOS 13)
+      pasteboard.writeObjects([url as NSURL])
+      logger.warning("ClipboardHelper: could not decode image, NSURL-only clipboard for \(url.lastPathComponent)")
+    }
 
     logger.info("Clipboard: copied file \(url.lastPathComponent)")
   }
@@ -83,7 +97,8 @@ enum ClipboardHelper {
 
     let pasteboard = NSPasteboard.general
     pasteboard.clearContents()
-    pasteboard.writeObjects([tempURL as NSURL])
+    // Write both NSURL (format-preserving) and NSImage (universal image data)
+    pasteboard.writeObjects([tempURL as NSURL, image])
 
     logger.info("Clipboard: copied rendered image as \(ext) via temp file")
   }
