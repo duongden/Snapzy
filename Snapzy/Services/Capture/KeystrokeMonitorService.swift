@@ -65,12 +65,13 @@ final class KeystrokeMonitorService {
 
     let hasModifier = hasCommand || hasOption || hasControl
 
-    // Resolve key name from keyCode
-    let keyName = Self.specialKeyName(for: event.keyCode)
-      ?? event.charactersIgnoringModifiers?.uppercased()
+    // Resolve key name from keyCode (reliable for both local and global monitors).
+    // event.charactersIgnoringModifiers can return nil in global monitors when
+    // multiple modifiers are held, so we use keyCode-based lookup as primary source.
+    let keyName = Self.keyDisplayName(for: event.keyCode, event: event)
 
     // Filter: only show when a modifier (⌘/⌥/⌃) is held, or a special key is pressed
-    let isSpecialKey = Self.specialKeyName(for: event.keyCode) != nil
+    let isSpecialKey = Self.isSpecialKey(event.keyCode)
     guard hasModifier || isSpecialKey else { return }
 
     // Build display string: modifiers first, then key
@@ -90,6 +91,33 @@ final class KeystrokeMonitorService {
   }
 
   // MARK: - Key Code Mapping
+
+  /// Whether the keyCode is a special key (Return, Tab, arrows, function keys, etc.)
+  private static func isSpecialKey(_ keyCode: UInt16) -> Bool {
+    return specialKeyName(for: keyCode) != nil
+  }
+
+  /// Resolve a display name for the given keyCode.
+  /// Priority: special key symbol → ShortcutConfig keyCode map → charactersIgnoringModifiers fallback.
+  private static func keyDisplayName(for keyCode: UInt16, event: NSEvent) -> String? {
+    // 1. Special keys (Return, Tab, Arrows, F-keys, etc.)
+    if let special = specialKeyName(for: keyCode) {
+      return special
+    }
+
+    // 2. KeyCode-based lookup via ShortcutConfig (always reliable)
+    let mapped = ShortcutConfig.keyCodeToString(UInt32(keyCode))
+    if mapped != "?" {
+      return mapped
+    }
+
+    // 3. Last resort: use event characters (may be nil in global monitors)
+    if let chars = event.charactersIgnoringModifiers, !chars.isEmpty {
+      return chars.uppercased()
+    }
+
+    return nil
+  }
 
   /// Maps macOS virtual key codes to human-readable special key symbols
   private static func specialKeyName(for keyCode: UInt16) -> String? {
