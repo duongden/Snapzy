@@ -11,6 +11,7 @@ struct SettingRow<Content: View>: View {
   let icon: String
   let title: String
   let description: String?
+  var tooltip: String? = nil
   @ViewBuilder let content: () -> Content
 
   var body: some View {
@@ -21,8 +22,14 @@ struct SettingRow<Content: View>: View {
         .frame(width: 28)
 
       VStack(alignment: .leading, spacing: 2) {
-        Text(title)
-          .fontWeight(.medium)
+        if let tooltip {
+          Text(title)
+            .fontWeight(.medium)
+            .hint(tooltip, variant: .icon(.info))
+        } else {
+          Text(title)
+            .fontWeight(.medium)
+        }
         if let description {
           Text(description)
             .font(.caption)

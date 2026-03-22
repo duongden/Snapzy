@@ -14,6 +14,7 @@ struct CloudSettingsView: View {
   @ObservedObject private var historyStore = CloudUploadHistoryStore.shared
 
   @State private var isEditing = false
+  @State private var showResetConfirmation = false
 
   var body: some View {
     Form {
@@ -28,6 +29,14 @@ struct CloudSettingsView: View {
       }
     }
     .formStyle(.grouped)
+    .alert("Reset Cloud Configuration?", isPresented: $showResetConfirmation) {
+      Button("Reset", role: .destructive) {
+        cloudManager.clearConfiguration()
+      }
+      Button("Cancel", role: .cancel) {}
+    } message: {
+      Text("This will remove all cloud credentials and settings. This action cannot be undone.")
+    }
   }
 
   // MARK: - Configured State
@@ -92,12 +101,12 @@ struct CloudSettingsView: View {
         }
 
         HStack(spacing: 12) {
-          Button("Edit Configuration") {
-            isEditing = true
+          Button(action: { isEditing = true }) {
+            Label("Edit", systemImage: "pencil")
           }
 
-          Button("Reset Configuration", role: .destructive) {
-            cloudManager.clearConfiguration()
+          Button(role: .destructive, action: { showResetConfirmation = true }) {
+            Label("Reset", systemImage: "arrow.counterclockwise")
           }
           .foregroundColor(.red)
         }
@@ -150,7 +159,7 @@ private struct CloudCredentialFormView: View {
   var body: some View {
     Group {
       Section("Cloud Provider") {
-        SettingRow(icon: "cloud", title: "Provider", description: "Select your cloud storage provider") {
+        SettingRow(icon: "cloud", title: "Provider", description: nil, tooltip: "Select your cloud storage provider") {
           Picker("", selection: $providerType) {
             ForEach(CloudProviderType.allCases, id: \.self) { type in
               Text(type.displayName).tag(type)
@@ -162,20 +171,20 @@ private struct CloudCredentialFormView: View {
       }
 
       Section("Credentials") {
-        SettingRow(icon: "key", title: "Access Key ID", description: "Your cloud provider access key") {
-          TextField("AKIA...", text: $accessKey)
+        SettingRow(icon: "key", title: "Access Key ID", description: nil, tooltip: "Your cloud provider access key") {
+          TextField("", text: $accessKey)
             .textFieldStyle(.roundedBorder)
             .frame(width: 240)
         }
 
-        SettingRow(icon: "lock", title: "Secret Access Key", description: "Your cloud provider secret key") {
+        SettingRow(icon: "lock", title: "Secret Access Key", description: nil, tooltip: "Your cloud provider secret key") {
           HStack(spacing: 6) {
             if showSecretKey {
-              TextField("Secret Key", text: $secretKey)
+              TextField("", text: $secretKey)
                 .textFieldStyle(.roundedBorder)
                 .frame(width: 210)
             } else {
-              SecureField("Secret Key", text: $secretKey)
+              SecureField("", text: $secretKey)
                 .textFieldStyle(.roundedBorder)
                 .frame(width: 210)
             }
@@ -190,15 +199,15 @@ private struct CloudCredentialFormView: View {
       }
 
       Section("Storage") {
-        SettingRow(icon: "externaldrive", title: "Bucket Name", description: "S3 or R2 bucket name") {
-          TextField("my-bucket", text: $bucket)
+        SettingRow(icon: "externaldrive", title: "Bucket Name", description: nil, tooltip: "S3 or R2 bucket name") {
+          TextField("", text: $bucket)
             .textFieldStyle(.roundedBorder)
             .frame(width: 240)
         }
 
         if providerType == .awsS3 {
-          SettingRow(icon: "globe", title: "Region", description: "AWS region (e.g. us-east-1)") {
-            TextField("us-east-1", text: $region)
+          SettingRow(icon: "globe", title: "Region", description: nil, tooltip: "AWS region (e.g. us-east-1)") {
+            TextField("", text: $region)
               .textFieldStyle(.roundedBorder)
               .frame(width: 240)
           }
@@ -206,24 +215,25 @@ private struct CloudCredentialFormView: View {
           SettingRow(
             icon: "server.rack",
             title: "Endpoint",
-            description: "Optional custom S3 endpoint for LocalStack or other S3-compatible storage"
+            description: nil,
+            tooltip: "Optional custom S3 endpoint for LocalStack or other S3-compatible storage"
           ) {
-            TextField("http://localhost:4566", text: $endpoint)
+            TextField("", text: $endpoint)
               .textFieldStyle(.roundedBorder)
               .frame(width: 240)
           }
         }
 
         if providerType == .cloudflareR2 {
-          SettingRow(icon: "server.rack", title: "Endpoint", description: "R2 account endpoint URL") {
-            TextField("https://<accountId>.r2.cloudflarestorage.com", text: $endpoint)
+          SettingRow(icon: "server.rack", title: "Endpoint", description: nil, tooltip: "R2 account endpoint URL") {
+            TextField("", text: $endpoint)
               .textFieldStyle(.roundedBorder)
               .frame(width: 240)
           }
         }
 
-        SettingRow(icon: "link", title: "Custom Domain", description: "Public access domain (optional)") {
-          TextField("cdn.example.com", text: $customDomain)
+        SettingRow(icon: "link", title: "Custom Domain", description: nil, tooltip: "Public access domain (optional)") {
+          TextField("", text: $customDomain)
             .textFieldStyle(.roundedBorder)
             .frame(width: 240)
         }
