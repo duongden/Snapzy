@@ -12,6 +12,7 @@ import SwiftUI
 struct CloudSettingsView: View {
   @ObservedObject private var cloudManager = CloudManager.shared
   @ObservedObject private var historyStore = CloudUploadHistoryStore.shared
+  @ObservedObject private var usageService = CloudUsageService.shared
 
   @State private var isEditing = false
   @State private var showResetConfirmation = false
@@ -43,6 +44,9 @@ struct CloudSettingsView: View {
 
   private var configuredView: some View {
     Group {
+      // Cloud stats at the very top
+      cloudStatsSection
+
       Section("Cloud Provider") {
         if let config = cloudManager.loadConfiguration() {
           SettingRow(
@@ -129,6 +133,141 @@ struct CloudSettingsView: View {
         }
       }
     }
+  }
+
+  // MARK: - Cloud Stats Section
+
+  private var cloudStatsSection: some View {
+    Section {
+      if usageService.isLoading && usageService.usageInfo == nil {
+        HStack {
+          Spacer()
+          ProgressView()
+            .scaleEffect(0.8)
+          Text("Loading stats...")
+            .font(.system(size: 12))
+            .foregroundColor(.secondary)
+          Spacer()
+        }
+        .padding(.vertical, 8)
+      } else if let error = usageService.error, usageService.usageInfo == nil {
+        HStack(alignment: .top, spacing: 6) {
+          Image(systemName: "exclamationmark.triangle.fill")
+            .foregroundColor(.orange)
+            .font(.system(size: 12))
+          Text(error)
+            .font(.system(size: 11))
+            .foregroundColor(.orange)
+        }
+        .padding(.vertical, 4)
+      } else {
+        let info = usageService.usageInfo
+
+        // 2×2 stats grid
+        LazyVGrid(
+          columns: [
+            GridItem(.flexible(), spacing: 8),
+            GridItem(.flexible(), spacing: 8),
+          ],
+          spacing: 8
+        ) {
+          CloudStatCard(
+            icon: "externaldrive",
+            label: "Storage",
+            value: info?.formattedStorage ?? "—"
+          )
+          CloudStatCard(
+            icon: "doc.on.doc",
+            label: "Objects",
+            value: info.map { "\($0.objectCount)" } ?? "—"
+          )
+          CloudStatCard(
+            icon: "clock.arrow.circlepath",
+            label: "Lifecycle",
+            value: lifecycleShortLabel(info?.lifecycleRuleDays)
+          )
+          CloudStatCard(
+            icon: "dollarsign.circle",
+            label: "Est. Cost/mo",
+            value: usageService.estimatedMonthlyCost
+          )
+        }
+
+        // Footer: last updated + refresh
+        HStack(spacing: 6) {
+          if let fetchedAt = info?.fetchedAt {
+            Text("Updated \(fetchedAt, style: .relative) ago")
+              .font(.system(size: 10))
+              .foregroundColor(.secondary)
+          }
+
+          Spacer()
+
+          Button(action: {
+            Task { await usageService.fetchUsage() }
+          }) {
+            HStack(spacing: 4) {
+              if usageService.isLoading {
+                ProgressView()
+                  .scaleEffect(0.5)
+                  .frame(width: 10, height: 10)
+              } else {
+                Image(systemName: "arrow.clockwise")
+                  .font(.system(size: 10))
+              }
+              Text("Refresh")
+                .font(.system(size: 10))
+            }
+            .foregroundColor(.secondary)
+          }
+          .buttonStyle(.plain)
+          .disabled(usageService.isLoading)
+        }
+      }
+    } header: {
+      Text("Cloud Status")
+    }
+    .onAppear {
+      if cloudManager.isConfigured && usageService.usageInfo == nil {
+        Task { await usageService.fetchUsage() }
+      }
+    }
+  }
+
+  private func lifecycleShortLabel(_ days: Int?) -> String {
+    guard let days = days else { return "None" }
+    return "\(days)d expire"
+  }
+}
+
+// MARK: - Stat Card
+
+/// Compact stat card for the cloud stats grid
+private struct CloudStatCard: View {
+  let icon: String
+  let label: String
+  let value: String
+
+  var body: some View {
+    HStack(spacing: 8) {
+      Image(systemName: icon)
+        .font(.system(size: 14))
+        .foregroundColor(.secondary)
+        .frame(width: 18)
+
+      VStack(alignment: .leading, spacing: 1) {
+        Text(label)
+          .font(.system(size: 10))
+          .foregroundColor(.secondary)
+          .lineLimit(1)
+        Text(value)
+          .font(.system(size: 12, weight: .medium))
+          .lineLimit(1)
+      }
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .padding(.horizontal, 8)
+    .padding(.vertical, 6)
   }
 }
 
