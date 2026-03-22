@@ -24,6 +24,8 @@ final class CloudManager: ObservableObject {
 
   @Published private(set) var isConfigured: Bool = false
   @Published private(set) var providerType: CloudProviderType?
+  @Published private(set) var cachedConfiguration: CloudConfiguration?
+  @Published private(set) var cachedMaskedAccessKey: String = "••••••••"
   @Published var isUploading: Bool = false
   @Published var uploadProgress: Double = 0
 
@@ -47,6 +49,9 @@ final class CloudManager: ObservableObject {
     {
       providerType = type
     }
+    // Cache config and masked key for SwiftUI body reads
+    cachedConfiguration = loadConfiguration()
+    cachedMaskedAccessKey = maskedAccessKey()
   }
 
   // MARK: - Configuration
@@ -75,6 +80,8 @@ final class CloudManager: ObservableObject {
     // Update state
     isConfigured = true
     providerType = config.providerType
+    cachedConfiguration = config
+    cachedMaskedAccessKey = maskedAccessKey()
 
     logger.info("Cloud configuration saved: \(config.providerType.displayName)")
   }
@@ -161,6 +168,8 @@ final class CloudManager: ObservableObject {
 
     isConfigured = false
     providerType = nil
+    cachedConfiguration = nil
+    cachedMaskedAccessKey = "••••••••"
 
     logger.info("Cloud configuration cleared")
   }

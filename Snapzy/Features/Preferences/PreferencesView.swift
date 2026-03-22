@@ -12,25 +12,25 @@ struct PreferencesView: View {
 
   var body: some View {
     TabView {
-      GeneralSettingsView()
+      LazyView(GeneralSettingsView())
         .tabItem { Label("General", systemImage: "gearshape.fill") }
 
-      CaptureSettingsView()
+      LazyView(CaptureSettingsView())
         .tabItem { Label("Capture", systemImage: "camera.fill") }
 
-      QuickAccessSettingsView()
+      LazyView(QuickAccessSettingsView())
         .tabItem { Label("Quick Access", systemImage: "square.stack.fill") }
 
-      ShortcutsSettingsView()
+      LazyView(ShortcutsSettingsView())
         .tabItem { Label("Shortcuts", systemImage: "keyboard.fill") }
 
-      PermissionsSettingsView()
+      LazyView(PermissionsSettingsView())
         .tabItem { Label("Permissions", systemImage: "lock.shield.fill") }
 
-      CloudSettingsView()
+      LazyView(CloudSettingsView())
         .tabItem { Label("Cloud", systemImage: "icloud.fill") }
 
-      AboutSettingsView()
+      LazyView(AboutSettingsView())
         .tabItem { Label("About", systemImage: "info.circle.fill") }
     }
     .frame(width: 700, height: 550)

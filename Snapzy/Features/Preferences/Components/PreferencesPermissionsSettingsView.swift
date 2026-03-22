@@ -16,6 +16,7 @@ struct PermissionsSettingsView: View {
   @State private var accessibilityGranted = false
   @State private var saveFolderGranted = false
   @State private var isChecking = false
+  @State private var hasAppeared = false
 
   private let fileAccessManager = SandboxFileAccessManager.shared
 
@@ -118,9 +119,14 @@ struct PermissionsSettingsView: View {
     }
     .formStyle(.grouped)
     .onAppear {
+      hasAppeared = true
       checkAllPermissions()
     }
+    .onDisappear {
+      hasAppeared = false
+    }
     .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+      guard hasAppeared else { return }
       checkAllPermissions()
     }
   }

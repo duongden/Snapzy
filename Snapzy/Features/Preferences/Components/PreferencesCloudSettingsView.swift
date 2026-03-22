@@ -48,7 +48,7 @@ struct CloudSettingsView: View {
       cloudStatsSection
 
       Section("Cloud Provider") {
-        if let config = cloudManager.loadConfiguration() {
+        if let config = cloudManager.cachedConfiguration {
           SettingRow(
             icon: "cloud.fill",
             title: config.providerType.displayName,
@@ -60,7 +60,7 @@ struct CloudSettingsView: View {
           SettingRow(
             icon: "key.fill",
             title: "Access Key",
-            description: cloudManager.maskedAccessKey()
+            description: cloudManager.cachedMaskedAccessKey
           ) {
             EmptyView()
           }
