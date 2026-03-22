@@ -46,6 +46,16 @@ final class CloudUploadHistoryStore: ObservableObject {
     save()
   }
 
+  /// Remove a record by cloud key (used when overwriting replaces the old key)
+  func removeByKey(_ key: String) {
+    let before = records.count
+    records.removeAll { $0.key == key }
+    if records.count < before {
+      save()
+      logger.info("Removed overwritten record for key: \(key)")
+    }
+  }
+
   /// Remove all records
   func removeAll() {
     records.removeAll()

@@ -237,13 +237,15 @@ final class CloudManager: ObservableObject {
     logger.info("Deleted from cloud: \(record.key)")
   }
 
-  /// Delete a cloud object by key only (no local record removal).
+  /// Delete a cloud object by key only.
+  /// Also removes the matching record from upload history.
   /// Used for background cleanup when re-uploading with a new key.
   func deleteByKey(key: String) async throws {
     guard let provider = createProvider() else {
       throw CloudError.notConfigured
     }
     try await provider.delete(key: key)
+    CloudUploadHistoryStore.shared.removeByKey(key)
     logger.info("Deleted old cloud object: \(key)")
   }
 
