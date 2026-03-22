@@ -27,6 +27,9 @@ struct PreferencesView: View {
       PermissionsSettingsView()
         .tabItem { Label("Permissions", systemImage: "lock.shield.fill") }
 
+      CloudSettingsView()
+        .tabItem { Label("Cloud", systemImage: "icloud.fill") }
+
       AboutSettingsView()
         .tabItem { Label("About", systemImage: "info.circle.fill") }
     }

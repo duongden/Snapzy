@@ -285,16 +285,17 @@ final class QuickAccessManager: ObservableObject {
       thumbnail: thumbnail,
       capturedAt: existing.capturedAt,
       itemType: existing.itemType,
-      duration: existing.duration
+      duration: existing.duration,
+      cloudURL: existing.cloudURL
     )
   }
 
   /// Update thumbnail directly from an already-rendered image (synchronous, instant)
-  /// Used after annotation save — avoids the slow ThumbnailGenerator pipeline
+  /// Used after annotation save — avoids the slow ThumbnailGenerator pipeline.
+  /// Preserves existing isCloudStale — callers should use markCloudStale(id:) if needed.
   func updateItemThumbnail(id: UUID, image: NSImage) {
     guard let index = items.firstIndex(where: { $0.id == id }) else { return }
     let existing = items[index]
-    // Scale to thumbnail size inline (same maxSize as ThumbnailGenerator)
     let maxSize: CGFloat = 200
     let thumbnail = scaleThumbnail(image, maxSize: maxSize)
     items[index] = QuickAccessItem(
@@ -303,7 +304,10 @@ final class QuickAccessManager: ObservableObject {
       thumbnail: thumbnail,
       capturedAt: existing.capturedAt,
       itemType: existing.itemType,
-      duration: existing.duration
+      duration: existing.duration,
+      cloudURL: existing.cloudURL,
+      cloudKey: existing.cloudKey,
+      isCloudStale: existing.isCloudStale
     )
     logger.info("Thumbnail updated directly for item \(id)")
   }
@@ -358,7 +362,8 @@ final class QuickAccessManager: ObservableObject {
       thumbnail: newThumbnail,
       capturedAt: existing.capturedAt,
       itemType: existing.itemType,
-      duration: existing.duration
+      duration: existing.duration,
+      cloudURL: existing.cloudURL
     )
     logger.info("Thumbnail refreshed for \(url.lastPathComponent)")
   }
@@ -375,9 +380,19 @@ final class QuickAccessManager: ObservableObject {
     panelController.hide()
   }
 
-  /// Copy item to clipboard (image or video file URL)
+  /// Copy item to clipboard (cloud link if available, otherwise image or video file URL)
   func copyToClipboard(id: UUID) {
     guard let item = items.first(where: { $0.id == id }) else { return }
+
+    // If cloud URL is available, copy the cloud link as text
+    if let cloudURL = item.cloudURL {
+      let pasteboard = NSPasteboard.general
+      pasteboard.clearContents()
+      pasteboard.setString(cloudURL.absoluteString, forType: .string)
+      dismissCard(id: id)
+      SoundManager.play("Pop")
+      return
+    }
 
     let url = item.url
     let isVideo = item.isVideo
@@ -400,7 +415,6 @@ final class QuickAccessManager: ObservableObject {
 
     // File-based clipboard: the file must stay on disk so the receiving app
     // can read it at paste time. Orphaned temp files are cleaned on next launch.
-    // (Previously only videos needed this, now images do too since we use NSURL.)
 
     SoundManager.play("Pop")
   }
@@ -619,10 +633,26 @@ final class QuickAccessManager: ObservableObject {
           thumbnail: newThumbnail,
           capturedAt: existing.capturedAt,
           itemType: existing.itemType,
-          duration: existing.duration
+          duration: existing.duration,
+          cloudURL: existing.cloudURL
         )
         logger.info("Thumbnail retry succeeded for \(url.lastPathComponent)")
       }
     }
+  }
+
+  /// Set cloud URL and key for an item after successful upload
+  func setCloudURL(id: UUID, url: URL, key: String) {
+    guard let index = items.firstIndex(where: { $0.id == id }) else { return }
+    items[index].cloudURL = url
+    items[index].cloudKey = key
+    items[index].isCloudStale = false
+  }
+
+  /// Mark an item's cloud state as stale (local differs from cloud)
+  func markCloudStale(id: UUID) {
+    guard let index = items.firstIndex(where: { $0.id == id }) else { return }
+    guard items[index].cloudURL != nil else { return }
+    items[index].isCloudStale = true
   }
 }

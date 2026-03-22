@@ -21,6 +21,13 @@ final class AnnotateState: ObservableObject {
   /// QuickAccess item ID if opened from quick access card (nil for drag-drop workflow)
   let quickAccessItemId: UUID?
 
+  /// Cloud URL if file was already uploaded (passed from QuickAccessItem)
+  @Published var cloudURL: URL?
+  /// Cloud object key for overwrite re-uploads
+  @Published var cloudKey: String?
+  /// True when image has changed since last cloud upload (synced from QuickAccessItem)
+  @Published var isCloudStale: Bool = false
+
   /// Whether an image is loaded
   var hasImage: Bool { sourceImage != nil }
 
@@ -358,10 +365,13 @@ final class AnnotateState: ObservableObject {
   private var undoStack: [[AnnotationItem]] = []
   private var redoStack: [[AnnotationItem]] = []
 
-  init(image: NSImage, url: URL, quickAccessItemId: UUID? = nil) {
+  init(image: NSImage, url: URL, quickAccessItemId: UUID? = nil, cloudURL: URL? = nil, cloudKey: String? = nil, isCloudStale: Bool = false) {
     self.sourceImage = image
     self.sourceURL = url
     self.quickAccessItemId = quickAccessItemId
+    self.cloudURL = cloudURL
+    self.cloudKey = cloudKey
+    self.isCloudStale = isCloudStale
   }
 
   /// Empty initializer for drag-drop workflow
@@ -369,6 +379,8 @@ final class AnnotateState: ObservableObject {
     self.sourceImage = nil
     self.sourceURL = nil
     self.quickAccessItemId = nil
+    self.cloudURL = nil
+    self.cloudKey = nil
   }
 
   // MARK: - Image Loading

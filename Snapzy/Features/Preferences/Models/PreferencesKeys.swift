@@ -77,4 +77,13 @@ enum PreferencesKeys {
   // Diagnostics
   static let diagnosticsEnabled = "diagnostics.enabled"
   static let diagnosticsSessionActive = "diagnostics.sessionActive"
+
+  // Cloud
+  static let cloudProviderType = "cloud.providerType"
+  static let cloudBucket = "cloud.bucket"
+  static let cloudRegion = "cloud.region"
+  static let cloudEndpoint = "cloud.endpoint"
+  static let cloudCustomDomain = "cloud.customDomain"
+  static let cloudExpireTime = "cloud.expireTime"
+  static let cloudConfigured = "cloud.configured"
 }

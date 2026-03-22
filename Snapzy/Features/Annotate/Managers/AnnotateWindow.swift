@@ -13,6 +13,7 @@ extension Notification.Name {
   static let annotateSave = Notification.Name("annotateSave")
   static let annotateSaveAs = Notification.Name("annotateSaveAs")
   static let annotateCopyAndClose = Notification.Name("annotateCopyAndClose")
+  static let annotateCloudUpload = Notification.Name("annotateCloudUpload")
   static let annotateTogglePin = Notification.Name("annotateTogglePin")
   static let annotateDragStarted = Notification.Name("annotateDragStarted")
   static let annotateDragEnded = Notification.Name("annotateDragEnded")
@@ -118,6 +119,12 @@ final class AnnotateWindow: NSWindow {
     // Toggle Pin — configurable (default: ⌃⌘P)
     if AnnotateShortcutManager.shared.matchesTogglePin(event) {
       NotificationCenter.default.post(name: .annotateTogglePin, object: self)
+      return true
+    }
+
+    // Cloud Upload — configurable (default: ⌘U)
+    if AnnotateShortcutManager.shared.matchesCloudUpload(event) {
+      NotificationCenter.default.post(name: .annotateCloudUpload, object: self)
       return true
     }
 

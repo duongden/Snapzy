@@ -38,6 +38,12 @@ struct QuickAccessItem: Identifiable, Equatable {
   var processingState: QuickAccessProcessingState = .idle
   /// Incremented when thumbnail changes — used by SwiftUI to detect visual updates
   let thumbnailVersion: UUID
+  /// Cloud URL after successful upload (nil if not uploaded)
+  var cloudURL: URL?
+  /// Cloud object key for overwrite uploads (nil if not uploaded)
+  var cloudKey: String?
+  /// True when image has changed since last cloud upload (needs re-upload)
+  var isCloudStale: Bool = false
 
   /// Initializer for screenshots (backward compatible)
   init(url: URL, thumbnail: NSImage) {
@@ -48,6 +54,8 @@ struct QuickAccessItem: Identifiable, Equatable {
     self.itemType = .screenshot
     self.duration = nil
     self.thumbnailVersion = UUID()
+    self.cloudURL = nil
+    self.cloudKey = nil
   }
 
   /// Initializer for videos with duration
@@ -59,10 +67,12 @@ struct QuickAccessItem: Identifiable, Equatable {
     self.itemType = .video
     self.duration = duration
     self.thumbnailVersion = UUID()
+    self.cloudURL = nil
+    self.cloudKey = nil
   }
 
   /// Initializer with explicit id (used for thumbnail retry updates)
-  init(id: UUID, url: URL, thumbnail: NSImage, capturedAt: Date, itemType: QuickAccessItemType, duration: TimeInterval?, thumbnailVersion: UUID = UUID()) {
+  init(id: UUID, url: URL, thumbnail: NSImage, capturedAt: Date, itemType: QuickAccessItemType, duration: TimeInterval?, thumbnailVersion: UUID = UUID(), cloudURL: URL? = nil, cloudKey: String? = nil, isCloudStale: Bool = false) {
     self.id = id
     self.url = url
     self.thumbnail = thumbnail
@@ -70,10 +80,13 @@ struct QuickAccessItem: Identifiable, Equatable {
     self.itemType = itemType
     self.duration = duration
     self.thumbnailVersion = thumbnailVersion
+    self.cloudURL = cloudURL
+    self.cloudKey = cloudKey
+    self.isCloudStale = isCloudStale
   }
 
   static func == (lhs: QuickAccessItem, rhs: QuickAccessItem) -> Bool {
-    lhs.id == rhs.id && lhs.processingState == rhs.processingState && lhs.thumbnailVersion == rhs.thumbnailVersion
+    lhs.id == rhs.id && lhs.processingState == rhs.processingState && lhs.thumbnailVersion == rhs.thumbnailVersion && lhs.cloudURL == rhs.cloudURL && lhs.isCloudStale == rhs.isCloudStale
   }
 
   /// Whether this item is a video

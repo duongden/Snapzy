@@ -34,13 +34,13 @@ final class AnnotateWindowController: NSWindowController, NSWindowDelegate {
         .flatMap({ img in Self.applyRetinaScaling(to: img) })
         ?? item.thumbnail
       self.originalImageData = sessionData.originalImageData
-      self.state = AnnotateState(image: image, url: item.url, quickAccessItemId: item.id)
+      self.state = AnnotateState(image: image, url: item.url, quickAccessItemId: item.id, cloudURL: item.cloudURL, cloudKey: item.cloudKey, isCloudStale: item.isCloudStale)
       self.state.annotations = sessionData.annotations
     } else {
       // First open: load image from disk and capture raw file bytes (fast, no re-encoding)
       let image = Self.loadImageWithCorrectScale(from: item.url) ?? item.thumbnail
       self.originalImageData = Self.readFileData(from: item.url)
-      self.state = AnnotateState(image: image, url: item.url, quickAccessItemId: item.id)
+      self.state = AnnotateState(image: image, url: item.url, quickAccessItemId: item.id, cloudURL: item.cloudURL, cloudKey: item.cloudKey, isCloudStale: item.isCloudStale)
     }
 
     // Fixed window size for consistent experience
@@ -265,13 +265,25 @@ final class AnnotateWindowController: NSWindowController, NSWindowDelegate {
   }
 
   private func performSaveAndClose() {
-    if let sourceURL = state.sourceURL {
+    // Cloud gate: if previously uploaded, require overwrite confirmation
+    if state.cloudURL != nil && state.hasUnsavedChanges {
+      showCloudOverwriteAlert { [weak self] in
+        self?.performCloudReUploadAndClose()
+      }
+      return
+    }
+    executeSaveAndClose()
+  }
+
+  private func executeSaveAndClose() {
+    if state.sourceURL != nil {
       // Render once, update thumbnail instantly, close, save in background
       state.markAsSaved()
       saveSessionCache()
       let renderedImage = AnnotateExporter.renderFinalImage(state: state)
       if let renderedImage = renderedImage, let itemId = quickAccessItemId {
         QuickAccessManager.shared.updateItemThumbnail(id: itemId, image: renderedImage)
+        QuickAccessManager.shared.markCloudStale(id: itemId)
       }
       let capturedState = state
       forceClose()
@@ -402,10 +414,24 @@ final class AnnotateWindowController: NSWindowController, NSWindowDelegate {
   }
 
   /// Silent save — renders once, updates thumbnail instantly, closes window, saves in background
+  /// If previously uploaded to cloud, gate behind overwrite confirmation.
   private func performSave() {
     guard state.hasImage else { return }
 
-    if let sourceURL = state.sourceURL {
+    // Cloud gate: if previously uploaded, require overwrite confirmation
+    if state.cloudURL != nil && state.hasUnsavedChanges {
+      showCloudOverwriteAlert { [weak self] in
+        self?.performCloudReUploadAndClose()
+      }
+      return
+    }
+    executeSave()
+  }
+
+  private func executeSave() {
+    guard state.hasImage else { return }
+
+    if state.sourceURL != nil {
       // Render the annotated image once
       let renderedImage = AnnotateExporter.renderFinalImage(state: state)
 
@@ -414,6 +440,7 @@ final class AnnotateWindowController: NSWindowController, NSWindowDelegate {
       saveSessionCache()
       if let renderedImage = renderedImage, let itemId = quickAccessItemId {
         QuickAccessManager.shared.updateItemThumbnail(id: itemId, image: renderedImage)
+        QuickAccessManager.shared.markCloudStale(id: itemId)
       }
 
       // Close window instantly
@@ -474,15 +501,34 @@ final class AnnotateWindowController: NSWindowController, NSWindowDelegate {
     return "\(baseName)_annotated.\(ext)"
   }
 
-  /// Copy = render once, copy to clipboard, update thumbnail, close, save in background
+  /// Copy = render once, copy to clipboard, update thumbnail, close, save in background.
+  /// If previously uploaded to cloud and has changes, gate behind overwrite confirmation.
   private func performCopy() {
+    guard state.hasImage else { return }
+
+    // Cloud gate: if previously uploaded and has changes, require overwrite confirmation
+    if state.cloudURL != nil && state.hasUnsavedChanges {
+      showCloudOverwriteAlert { [weak self] in
+        self?.performCloudReUploadCopyAndClose()
+      }
+      return
+    }
+    executeCopy()
+  }
+
+  private func executeCopy() {
     guard state.hasImage else { return }
 
     // Render once, use for everything
     let renderedImage = AnnotateExporter.renderFinalImage(state: state)
 
-    // Copy to clipboard immediately (format-aware)
-    if let renderedImage = renderedImage {
+    // Copy to clipboard — cloud link (text) if available, otherwise image
+    if let cloudURL = state.cloudURL {
+      let pasteboard = NSPasteboard.general
+      pasteboard.clearContents()
+      pasteboard.setString(cloudURL.absoluteString, forType: .string)
+      SoundManager.play("Pop")
+    } else if let renderedImage = renderedImage {
       ClipboardHelper.copyImage(renderedImage)
       SoundManager.play("Pop")
     }
@@ -494,6 +540,7 @@ final class AnnotateWindowController: NSWindowController, NSWindowDelegate {
     }
     if let renderedImage = renderedImage, let itemId = quickAccessItemId {
       QuickAccessManager.shared.updateItemThumbnail(id: itemId, image: renderedImage)
+      QuickAccessManager.shared.markCloudStale(id: itemId)
     }
 
     // Close instantly, save in background
@@ -501,6 +548,165 @@ final class AnnotateWindowController: NSWindowController, NSWindowDelegate {
     forceClose()
     Task.detached(priority: .userInitiated) {
       await AnnotateExporter.saveToFile(image: renderedImage, state: capturedState)
+    }
+  }
+
+  // MARK: - Cloud Overwrite
+
+  /// Show alert asking user to confirm overwrite of cloud file.
+  /// "Overwrite" → executes onOverwrite closure. "Cancel" → does nothing (window stays open).
+  private func showCloudOverwriteAlert(onOverwrite: @escaping () -> Void) {
+    guard let window = self.window else {
+      onOverwrite()
+      return
+    }
+
+    let alert = NSAlert()
+    alert.messageText = "Overwrite Cloud File?"
+    alert.informativeText = "This image was previously uploaded to cloud. Saving will replace the cloud file with your changes."
+    alert.alertStyle = .warning
+    alert.addButton(withTitle: "Overwrite")
+    alert.addButton(withTitle: "Cancel")
+
+    alert.beginSheetModal(for: window) { response in
+      if response == .alertFirstButtonReturn {
+        onOverwrite()
+      }
+      // Cancel: do nothing — window stays open, changes preserved but not committed
+    }
+  }
+
+  /// Save locally + re-upload to cloud + update QA card + close window.
+  /// Used when user confirms overwrite on Save or Close-Save.
+  private func performCloudReUploadAndClose() {
+    guard let sourceURL = state.sourceURL else { return }
+
+    // Render once
+    let renderedImage = AnnotateExporter.renderFinalImage(state: state)
+
+    // Save to disk first (so cloud upload reads the updated file)
+    if let renderedImage = renderedImage {
+      AnnotateExporter.saveToFile(image: renderedImage, state: state)
+    }
+
+    let oldCloudKey = state.cloudKey
+    let capturedState = state
+    let itemId = quickAccessItemId
+
+    // Re-upload to cloud
+    Task {
+      do {
+        let fileAccess = SandboxFileAccessManager.shared.beginAccessingURL(sourceURL)
+        defer { fileAccess.stop() }
+
+        let result = try await CloudManager.shared.upload(fileURL: sourceURL)
+
+        // Delete old cloud file in background
+        if let oldKey = oldCloudKey {
+          Task.detached(priority: .utility) {
+            try? await CloudManager.shared.deleteByKey(key: oldKey)
+          }
+        }
+
+        // Update state
+        capturedState.cloudURL = result.publicURL
+        capturedState.cloudKey = result.key
+        capturedState.markAsSaved()
+        capturedState.isCloudStale = false
+
+        // Update QuickAccess item: thumbnail first, then setCloudURL to reset stale
+        if let itemId = itemId {
+          if let renderedImage = renderedImage {
+            QuickAccessManager.shared.updateItemThumbnail(id: itemId, image: renderedImage)
+          }
+          QuickAccessManager.shared.setCloudURL(id: itemId, url: result.publicURL, key: result.key)
+        }
+
+        // Auto-copy cloud link
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(result.publicURL.absoluteString, forType: .string)
+
+        SoundManager.play("Pop")
+        self.forceClose()
+      } catch {
+        print("[Snapzy:Cloud] Overwrite re-upload failed: \(error.localizedDescription)")
+        // Fall back to local save only
+        capturedState.markAsSaved()
+        if let renderedImage = renderedImage, let itemId = itemId {
+          QuickAccessManager.shared.updateItemThumbnail(id: itemId, image: renderedImage)
+        }
+        self.forceClose()
+      }
+    }
+  }
+
+  /// Save locally + re-upload to cloud + copy cloud URL + close window.
+  /// Used when user confirms overwrite on Copy (⌘⇧C).
+  private func performCloudReUploadCopyAndClose() {
+    guard let sourceURL = state.sourceURL else { return }
+
+    // Render once
+    let renderedImage = AnnotateExporter.renderFinalImage(state: state)
+
+    // Save to disk first
+    if let renderedImage = renderedImage {
+      AnnotateExporter.saveToFile(image: renderedImage, state: state)
+    }
+
+    let oldCloudKey = state.cloudKey
+    let capturedState = state
+    let itemId = quickAccessItemId
+
+    // Re-upload to cloud
+    Task {
+      do {
+        let fileAccess = SandboxFileAccessManager.shared.beginAccessingURL(sourceURL)
+        defer { fileAccess.stop() }
+
+        let result = try await CloudManager.shared.upload(fileURL: sourceURL)
+
+        // Delete old cloud file
+        if let oldKey = oldCloudKey {
+          Task.detached(priority: .utility) {
+            try? await CloudManager.shared.deleteByKey(key: oldKey)
+          }
+        }
+
+        // Update state
+        capturedState.cloudURL = result.publicURL
+        capturedState.cloudKey = result.key
+        capturedState.markAsSaved()
+        capturedState.isCloudStale = false
+
+        // Update QuickAccess item: thumbnail first, then setCloudURL to reset stale
+        if let itemId = itemId {
+          if let renderedImage = renderedImage {
+            QuickAccessManager.shared.updateItemThumbnail(id: itemId, image: renderedImage)
+          }
+          QuickAccessManager.shared.setCloudURL(id: itemId, url: result.publicURL, key: result.key)
+        }
+
+        // Copy cloud link to clipboard
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(result.publicURL.absoluteString, forType: .string)
+
+        SoundManager.play("Pop")
+        self.forceClose()
+      } catch {
+        print("[Snapzy:Cloud] Overwrite re-upload (copy) failed: \(error.localizedDescription)")
+        // Fall back: copy image to clipboard, close
+        if let renderedImage = renderedImage {
+          ClipboardHelper.copyImage(renderedImage)
+        }
+        capturedState.markAsSaved()
+        if let renderedImage = renderedImage, let itemId = itemId {
+          QuickAccessManager.shared.updateItemThumbnail(id: itemId, image: renderedImage)
+        }
+        SoundManager.play("Pop")
+        self.forceClose()
+      }
     }
   }
 

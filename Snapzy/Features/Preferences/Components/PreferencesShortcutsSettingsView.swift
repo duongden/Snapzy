@@ -14,8 +14,10 @@ struct ShortcutsSettingsView: View {
   @State private var recordingShortcut: ShortcutConfig
   @State private var annotateShortcut: ShortcutConfig
   @State private var videoEditorShortcut: ShortcutConfig
+  @State private var cloudUploadsShortcut: ShortcutConfig
   @State private var copyAndCloseShortcut: ShortcutConfig
   @State private var togglePinShortcut: ShortcutConfig
+  @State private var cloudUploadShortcut: ShortcutConfig
   @State private var shortcutsEnabled: Bool
   @State private var showDisableConfirmation: Bool = false
   @State private var isConfirmedDisable: Bool = false
@@ -32,8 +34,10 @@ struct ShortcutsSettingsView: View {
     _recordingShortcut = State(initialValue: KeyboardShortcutManager.shared.recordingShortcut)
     _annotateShortcut = State(initialValue: KeyboardShortcutManager.shared.annotateShortcut)
     _videoEditorShortcut = State(initialValue: KeyboardShortcutManager.shared.videoEditorShortcut)
+    _cloudUploadsShortcut = State(initialValue: KeyboardShortcutManager.shared.cloudUploadsShortcut)
     _copyAndCloseShortcut = State(initialValue: AnnotateShortcutManager.shared.copyAndCloseShortcut)
     _togglePinShortcut = State(initialValue: AnnotateShortcutManager.shared.togglePinShortcut)
+    _cloudUploadShortcut = State(initialValue: AnnotateShortcutManager.shared.cloudUploadShortcut)
     _shortcutsEnabled = State(initialValue: KeyboardShortcutManager.shared.isEnabled)
     _hasSystemConflict = State(
       initialValue: SystemScreenshotShortcutManager.shared.hasConflictingSystemShortcuts()
@@ -268,6 +272,14 @@ struct ShortcutsSettingsView: View {
             onShortcutChanged: { manager.setVideoEditorShortcut($0) }
           )
 
+          ShortcutRecorderView(
+            label: "Cloud Uploads",
+            icon: "icloud.and.arrow.up",
+            description: "Open cloud upload history",
+            shortcut: $cloudUploadsShortcut,
+            onShortcutChanged: { manager.setCloudUploadsShortcut($0) }
+          )
+
           Text("Click a shortcut button to record new keys. Press Esc to cancel.")
             .font(.caption)
             .foregroundColor(.secondary)
@@ -293,6 +305,14 @@ struct ShortcutsSettingsView: View {
             description: "Pin or unpin the annotation window",
             shortcut: $togglePinShortcut,
             onShortcutChanged: { annotateManager.setTogglePinShortcut($0) }
+          )
+
+          ShortcutRecorderView(
+            label: "Cloud Upload",
+            icon: "icloud.and.arrow.up",
+            description: "Upload annotated image to cloud",
+            shortcut: $cloudUploadShortcut,
+            onShortcutChanged: { annotateManager.setCloudUploadShortcut($0) }
           )
         }
 
@@ -357,8 +377,10 @@ struct ShortcutsSettingsView: View {
     recordingShortcut = .defaultRecording
     annotateShortcut = .defaultAnnotate
     videoEditorShortcut = .defaultVideoEditor
+    cloudUploadsShortcut = .defaultCloudUploads
     copyAndCloseShortcut = AnnotateShortcutManager.defaultCopyAndClose
     togglePinShortcut = AnnotateShortcutManager.defaultTogglePin
+    cloudUploadShortcut = AnnotateShortcutManager.defaultCloudUpload
 
     manager.setFullscreenShortcut(.defaultFullscreen)
     manager.setAreaShortcut(.defaultArea)
@@ -366,6 +388,7 @@ struct ShortcutsSettingsView: View {
     manager.setRecordingShortcut(.defaultRecording)
     manager.setAnnotateShortcut(.defaultAnnotate)
     manager.setVideoEditorShortcut(.defaultVideoEditor)
+    manager.setCloudUploadsShortcut(.defaultCloudUploads)
 
     // Reset annotation tool + action shortcuts
     annotateManager.resetToDefaults()

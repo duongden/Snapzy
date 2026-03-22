@@ -274,6 +274,17 @@ final class AppStatusBarController: ObservableObject {
     editVideoItem.isEnabled = true
     menu?.addItem(editVideoItem)
 
+    let cloudUploadsItem = NSMenuItem(
+      title: "Cloud Uploads",
+      action: #selector(openCloudUploadsAction),
+      keyEquivalent: "l"
+    )
+    cloudUploadsItem.keyEquivalentModifierMask = [.command, .shift]
+    cloudUploadsItem.target = self
+    cloudUploadsItem.image = NSImage(systemSymbolName: "icloud.and.arrow.up", accessibilityDescription: nil)
+    cloudUploadsItem.isEnabled = CloudManager.shared.isConfigured
+    menu?.addItem(cloudUploadsItem)
+
     menu?.addItem(NSMenuItem.separator())
 
     // Permission (if not granted)
@@ -356,6 +367,11 @@ final class AppStatusBarController: ObservableObject {
 
   @objc private func editVideoAction() {
     VideoEditorManager.shared.openEmptyEditor()
+  }
+
+  @objc private func openCloudUploadsAction() {
+    CloudUploadHistoryWindowController.shared.showWindow()
+    NSApp.activate(ignoringOtherApps: true)
   }
 
   @objc private func grantPermissionAction() {

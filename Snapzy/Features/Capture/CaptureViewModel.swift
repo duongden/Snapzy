@@ -199,6 +199,9 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
       AnnotateManager.shared.openEmptyAnnotation()
     case .openVideoEditor:
       VideoEditorManager.shared.openEmptyEditor()
+    case .openCloudUploads:
+      CloudUploadHistoryWindowController.shared.showWindow()
+      NSApp.activate(ignoringOtherApps: true)
     }
   }
 

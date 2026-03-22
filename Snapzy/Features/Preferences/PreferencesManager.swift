@@ -14,6 +14,7 @@ enum AfterCaptureAction: String, CaseIterable, Codable {
   case copyFile = "copyFile"
   case save = "save"
   case openAnnotate = "openAnnotate"
+  case uploadToCloud = "uploadToCloud"
 
   var displayName: String {
     switch self {
@@ -21,6 +22,7 @@ enum AfterCaptureAction: String, CaseIterable, Codable {
     case .copyFile: return "Copy file"
     case .save: return "Save"
     case .openAnnotate: return "Open Annotate Editor"
+    case .uploadToCloud: return "Upload to Cloud & copy link"
     }
   }
 }
@@ -72,6 +74,9 @@ final class PreferencesManager: ObservableObject {
       return true
     case .openAnnotate:
       // Opt-in: disabled by default, only for screenshots
+      return false
+    case .uploadToCloud:
+      // Opt-in: disabled by default, requires user to configure cloud first
       return false
     }
   }

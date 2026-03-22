@@ -23,12 +23,16 @@ struct QuickAccessCardView: View {
   var onHover: ((Bool) -> Void)? = nil
 
   @ObservedObject private var preferencesManager = PreferencesManager.shared
+  @ObservedObject private var cloudManager = CloudManager.shared
   @State private var isHovering = false
   @State private var isDragging = false
   @State private var isDismissing = false
   @State private var dragRemovalTask: Task<Void, Never>?
   @State private var gestureMode: GestureMode = .undetermined
   @State private var swipeOffset: CGFloat = 0
+  @State private var isCloudUploading = false
+  @State private var cloudUploadProgress: Double = 0
+  @State private var showCloudOverwriteConfirmation = false
   @Environment(\.accessibilityReduceMotion) var reduceMotion
 
   private let cornerRadius: CGFloat = 16
@@ -68,14 +72,20 @@ struct QuickAccessCardView: View {
           .transition(.opacity)
       }
 
+      // Cloud upload progress overlay
+      if isCloudUploading {
+        QuickAccessProgressView(state: .processing(progress: cloudUploadProgress))
+          .transition(.opacity)
+      }
+
       // Hover overlay with staggered buttons
-      if isHovering && item.processingState == .idle {
+      if isHovering && item.processingState == .idle && !isCloudUploading {
         hoverOverlay
           .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.95)))
       }
 
-      // Corner buttons (only visible on hover)
-      if isHovering && item.processingState == .idle {
+      // Corner buttons (only visible on hover, hidden during cloud upload)
+      if isHovering && item.processingState == .idle && !isCloudUploading {
         cornerButtons
       }
     }
@@ -117,6 +127,15 @@ struct QuickAccessCardView: View {
       dragRemovalTask?.cancel()
     }
     .animation(QuickAccessAnimations.hoverOverlay, value: isHovering)
+    .alert("Overwrite Cloud File?", isPresented: $showCloudOverwriteConfirmation) {
+      Button("Overwrite") {
+        uploadToCloud()
+      }
+      .keyboardShortcut(.defaultAction)
+      Button("Cancel", role: .cancel) {}
+    } message: {
+      Text("This image was previously uploaded to cloud. Re-uploading will replace the existing file with your changes.")
+    }
   }
 
   // MARK: - Computed Properties
@@ -416,6 +435,32 @@ struct QuickAccessCardView: View {
           Spacer()
         }
       }
+
+      // Cloud upload button (bottom-right) — only for screenshots when cloud is configured
+      if shouldShowCloudButton {
+        let alreadyUploaded = item.cloudURL != nil && !item.isCloudStale
+        VStack {
+          Spacer()
+          HStack {
+            Spacer()
+            QuickAccessIconButton(
+              icon: alreadyUploaded ? "checkmark.icloud" : "icloud.and.arrow.up",
+              action: {
+                if item.cloudKey != nil && item.isCloudStale {
+                  showCloudOverwriteConfirmation = true
+                } else {
+                  uploadToCloud()
+                }
+              },
+              helpText: alreadyUploaded ? "Uploaded to Cloud" : (item.isCloudStale ? "Re-upload to Cloud" : "Upload to Cloud")
+            )
+            .transition(cornerButtonTransition(delay: 5))
+            .padding(6)
+            .disabled(isCloudUploading || alreadyUploaded)
+            .opacity(alreadyUploaded ? 0.6 : 1)
+          }
+        }
+      }
     }
   }
 
@@ -437,6 +482,77 @@ struct QuickAccessCardView: View {
       .frame(width: scaledWidth * 0.8, height: scaledHeight * 0.8)
       .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
       .shadow(color: Color.black.opacity(0.3), radius: 4, x: 0, y: 2)
+  }
+
+  // MARK: - Cloud Upload
+
+  /// Whether to show the cloud upload button
+  private var shouldShowCloudButton: Bool {
+    guard !item.isVideo else { return false }
+    guard cloudManager.isConfigured else { return false }
+    let captureType: CaptureType = .screenshot
+    return preferencesManager.isActionEnabled(.uploadToCloud, for: captureType)
+  }
+
+  /// Upload the current item to cloud storage
+  private func uploadToCloud() {
+    let alreadyUploaded = item.cloudURL != nil && !item.isCloudStale
+    guard !isCloudUploading, !alreadyUploaded else { return }
+
+    isCloudUploading = true
+    cloudUploadProgress = 0
+
+    // Animate to 80% quickly to show activity
+    withAnimation(.easeOut(duration: 0.4)) {
+      cloudUploadProgress = 0.8
+    }
+
+    let uploadStartTime = Date()
+    let oldCloudKey = item.cloudKey  // Save old key for cleanup
+
+    Task {
+      do {
+        let fileAccess = SandboxFileAccessManager.shared.beginAccessingURL(item.url)
+        defer { fileAccess.stop() }
+
+        // Always upload with a fresh key (new URL avoids CDN cache)
+        let result = try await cloudManager.upload(fileURL: item.url)
+
+        // Delete old cloud file in background (no garbage)
+        if let oldKey = oldCloudKey {
+          Task.detached(priority: .utility) {
+            try? await CloudManager.shared.deleteByKey(key: oldKey)
+          }
+        }
+
+        // Update item with new cloud URL and key
+        manager.setCloudURL(id: item.id, url: result.publicURL, key: result.key)
+
+        // Auto-copy cloud link
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(result.publicURL.absoluteString, forType: .string)
+
+        // Ensure minimum visual duration (~600ms total)
+        let elapsed = Date().timeIntervalSince(uploadStartTime)
+        let remainingDelay = max(0, 0.6 - elapsed)
+
+        withAnimation(.easeIn(duration: 0.15)) {
+          cloudUploadProgress = 1.0
+        }
+
+        if remainingDelay > 0 {
+          try? await Task.sleep(nanoseconds: UInt64(remainingDelay * 1_000_000_000))
+        }
+
+        isCloudUploading = false
+        SoundManager.play("Pop")
+      } catch {
+        isCloudUploading = false
+        cloudUploadProgress = 0
+        print("[Snapzy:Cloud] Upload failed: \(error.localizedDescription)")
+      }
+    }
   }
 }
 

@@ -10,6 +10,14 @@ import SwiftUI
 /// Bottom bar containing zoom controls and action buttons
 struct AnnotateBottomBarView: View {
   @ObservedObject var state: AnnotateState
+  @ObservedObject private var cloudManager = CloudManager.shared
+  @ObservedObject private var preferencesManager = PreferencesManager.shared
+
+  @State private var isCloudUploading = false
+  @State private var cloudUploadProgress: Double = 0
+  @State private var cloudUploadError: String?
+  @State private var showCloudNotConfiguredAlert = false
+  @State private var showOverwriteConfirmation = false
 
   var body: some View {
     VStack(spacing: 0) {
@@ -38,6 +46,38 @@ struct AnnotateBottomBarView: View {
         }
       }
       .windowBottomBarPadding()
+
+      // Cloud upload progress bar (always present to avoid layout shift)
+      ProgressView(value: cloudUploadProgress)
+        .progressViewStyle(.linear)
+        .frame(height: 3)
+        .opacity(isCloudUploading ? 1 : 0)
+    }
+    .alert("Cloud Not Configured", isPresented: $showCloudNotConfiguredAlert) {
+      Button("OK", role: .cancel) {}
+    } message: {
+      Text("Please set up your cloud credentials in Preferences → Cloud before uploading.")
+    }
+    .alert("Overwrite Cloud File?", isPresented: $showOverwriteConfirmation) {
+      Button("Overwrite") {
+        handleCloudUpload()
+      }
+      .keyboardShortcut(.defaultAction)
+      Button("Cancel", role: .cancel) {}
+    } message: {
+      Text("This image was previously uploaded to cloud. Re-uploading will replace the existing file with your changes.")
+    }
+    .onReceive(NotificationCenter.default.publisher(for: .annotateCloudUpload)) { _ in
+      // ⌘U shortcut: trigger cloud upload (with overwrite confirmation if needed)
+      let showCloudButton = preferencesManager.isActionEnabled(.uploadToCloud, for: .screenshot)
+      let needsReUpload = state.hasUnsavedChanges || state.isCloudStale
+      let alreadyUploaded = state.cloudURL != nil && !needsReUpload
+      guard showCloudButton, !isCloudUploading, !alreadyUploaded else { return }
+      if state.cloudKey != nil && needsReUpload {
+        showOverwriteConfirmation = true
+      } else {
+        handleCloudUpload()
+      }
     }
   }
 
@@ -144,8 +184,29 @@ struct AnnotateBottomBarView: View {
 
   private var actionButtons: some View {
     let annotateShortcuts = AnnotateShortcutManager.shared
+    let showCloudButton = preferencesManager.isActionEnabled(.uploadToCloud, for: .screenshot)
 
     return HStack(spacing: 12) {
+      // Cloud upload button
+      if showCloudButton {
+        // needsReUpload: true when image changed in current session OR was changed since last upload
+        let needsReUpload = state.hasUnsavedChanges || state.isCloudStale
+        let alreadyUploaded = state.cloudURL != nil && !needsReUpload
+        let uploadShortcutStr = annotateShortcuts.cloudUploadShortcut.displayString
+        BottomBarButton(
+          icon: alreadyUploaded ? "checkmark.icloud" : "icloud.and.arrow.up",
+          tooltip: alreadyUploaded ? "Uploaded to Cloud" : (state.cloudKey != nil ? "Re-upload to Cloud (\(uploadShortcutStr))" : "Upload to Cloud (\(uploadShortcutStr))")
+        ) {
+          if state.cloudKey != nil && needsReUpload {
+            showOverwriteConfirmation = true
+          } else {
+            handleCloudUpload()
+          }
+        }
+        .disabled(isCloudUploading || alreadyUploaded)
+        .opacity(alreadyUploaded ? 0.6 : 1)
+      }
+
       BottomBarButton(icon: "square.and.arrow.up", tooltip: "Share") {
         share()
       }
@@ -220,6 +281,98 @@ struct AnnotateBottomBarView: View {
       // Close the annotate window (captured before alert)
       state.hasUnsavedChanges = false
       window.close()
+    }
+  }
+
+  // MARK: - Cloud Upload
+
+  private func handleCloudUpload() {
+    guard cloudManager.isConfigured else {
+      showCloudNotConfiguredAlert = true
+      return
+    }
+
+    guard let sourceURL = state.sourceURL else { return }
+
+    // Step 1: Render flattened image with annotations BEFORE uploading
+    let renderedImage = AnnotateExporter.renderFinalImage(state: state)
+
+    // Step 2: Save rendered image to disk (so the file includes annotations)
+    if let renderedImage = renderedImage {
+      AnnotateExporter.saveToFile(image: renderedImage, state: state)
+    }
+
+    isCloudUploading = true
+    cloudUploadProgress = 0
+
+    // Animate to 80% quickly to show activity
+    withAnimation(.easeOut(duration: 0.4)) {
+      cloudUploadProgress = 0.8
+    }
+
+    let uploadStartTime = Date()
+    let oldCloudKey = state.cloudKey  // Save old key for cleanup after successful upload
+
+    Task {
+      do {
+        let fileAccess = SandboxFileAccessManager.shared.beginAccessingURL(sourceURL)
+        defer { fileAccess.stop() }
+
+        // Always upload with a fresh key (new URL avoids CDN cache issues)
+        let result = try await cloudManager.upload(fileURL: sourceURL)
+
+        // Delete the old cloud file in background (no garbage)
+        if let oldKey = oldCloudKey {
+          Task.detached(priority: .utility) {
+            try? await CloudManager.shared.deleteByKey(key: oldKey)
+          }
+        }
+
+        // Store cloud URL and key on state
+        state.cloudURL = result.publicURL
+        state.cloudKey = result.key
+
+        // Auto-copy cloud link
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(result.publicURL.absoluteString, forType: .string)
+
+        // Ensure minimum visual duration (~600ms total)
+        let elapsed = Date().timeIntervalSince(uploadStartTime)
+        let remainingDelay = max(0, 0.6 - elapsed)
+
+        withAnimation(.easeIn(duration: 0.15)) {
+          cloudUploadProgress = 1.0
+        }
+
+        if remainingDelay > 0 {
+          try? await Task.sleep(nanoseconds: UInt64(remainingDelay * 1_000_000_000))
+        }
+
+        isCloudUploading = false
+        SoundManager.play("Pop")
+
+        // Update QuickAccess thumbnail and mark as saved
+        state.markAsSaved()
+        state.isCloudStale = false
+        if let itemId = state.quickAccessItemId {
+          if let renderedImage = renderedImage {
+            QuickAccessManager.shared.updateItemThumbnail(id: itemId, image: renderedImage)
+          }
+          // Set cloud URL AFTER thumbnail update to ensure isCloudStale = false
+          QuickAccessManager.shared.setCloudURL(id: itemId, url: result.publicURL, key: result.key)
+        }
+
+        // Close window
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+          NSApp.keyWindow?.close()
+        }
+      } catch {
+        isCloudUploading = false
+        cloudUploadProgress = 0
+        cloudUploadError = error.localizedDescription
+        print("[Snapzy:Cloud] Annotate upload failed: \(error.localizedDescription)")
+      }
     }
   }
 }

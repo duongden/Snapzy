@@ -23,11 +23,13 @@ final class AnnotateShortcutManager: ObservableObject {
   /// Configurable action shortcuts (modifier+key combos)
   @Published private(set) var copyAndCloseShortcut: ShortcutConfig
   @Published private(set) var togglePinShortcut: ShortcutConfig
+  @Published private(set) var cloudUploadShortcut: ShortcutConfig
 
   /// UserDefaults key prefix
   private let keyPrefix = "annotate.shortcut."
   private let copyAndCloseKey = "annotate.action.copyAndClose"
   private let togglePinKey = "annotate.action.togglePin"
+  private let cloudUploadKey = "annotate.action.cloudUpload"
 
   /// Tools that support shortcuts (excludes mockup - internal only)
   static let configurableTools: [AnnotationToolType] = [
@@ -47,9 +49,16 @@ final class AnnotateShortcutManager: ObservableObject {
     modifiers: UInt32(cmdKey | controlKey)
   )
 
+  /// Default: ⌘U
+  static let defaultCloudUpload = ShortcutConfig(
+    keyCode: UInt32(kVK_ANSI_U),
+    modifiers: UInt32(cmdKey)
+  )
+
   private init() {
     copyAndCloseShortcut = Self.defaultCopyAndClose
     togglePinShortcut = Self.defaultTogglePin
+    cloudUploadShortcut = Self.defaultCloudUpload
     loadShortcuts()
     loadActionShortcuts()
   }
@@ -87,6 +96,7 @@ final class AnnotateShortcutManager: ObservableObject {
     // Reset action shortcuts
     setCopyAndCloseShortcut(Self.defaultCopyAndClose)
     setTogglePinShortcut(Self.defaultTogglePin)
+    setCloudUploadShortcut(Self.defaultCloudUpload)
   }
 
   // MARK: - Action Shortcut Mutation
@@ -101,6 +111,11 @@ final class AnnotateShortcutManager: ObservableObject {
     saveActionShortcut(config, forKey: togglePinKey)
   }
 
+  func setCloudUploadShortcut(_ config: ShortcutConfig) {
+    cloudUploadShortcut = config
+    saveActionShortcut(config, forKey: cloudUploadKey)
+  }
+
   /// Check if an NSEvent matches the Copy & Close shortcut
   func matchesCopyAndClose(_ event: NSEvent) -> Bool {
     matchesShortcut(copyAndCloseShortcut, event: event)
@@ -109,6 +124,11 @@ final class AnnotateShortcutManager: ObservableObject {
   /// Check if an NSEvent matches the Toggle Pin shortcut
   func matchesTogglePin(_ event: NSEvent) -> Bool {
     matchesShortcut(togglePinShortcut, event: event)
+  }
+
+  /// Check if an NSEvent matches the Cloud Upload shortcut
+  func matchesCloudUpload(_ event: NSEvent) -> Bool {
+    matchesShortcut(cloudUploadShortcut, event: event)
   }
 
   // MARK: - Validation
@@ -153,6 +173,10 @@ final class AnnotateShortcutManager: ObservableObject {
     if let data = UserDefaults.standard.data(forKey: togglePinKey),
        let config = try? decoder.decode(ShortcutConfig.self, from: data) {
       togglePinShortcut = config
+    }
+    if let data = UserDefaults.standard.data(forKey: cloudUploadKey),
+       let config = try? decoder.decode(ShortcutConfig.self, from: data) {
+      cloudUploadShortcut = config
     }
   }
 
