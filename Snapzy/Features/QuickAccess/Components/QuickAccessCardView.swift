@@ -32,7 +32,6 @@ struct QuickAccessCardView: View {
   @State private var swipeOffset: CGFloat = 0
   @State private var isCloudUploading = false
   @State private var cloudUploadProgress: Double = 0
-  @State private var showCloudOverwriteConfirmation = false
   @Environment(\.accessibilityReduceMotion) var reduceMotion
 
   private let cornerRadius: CGFloat = 16
@@ -127,15 +126,6 @@ struct QuickAccessCardView: View {
       dragRemovalTask?.cancel()
     }
     .animation(QuickAccessAnimations.hoverOverlay, value: isHovering)
-    .alert("Overwrite Cloud File?", isPresented: $showCloudOverwriteConfirmation) {
-      Button("Overwrite") {
-        uploadToCloud()
-      }
-      .keyboardShortcut(.defaultAction)
-      Button("Cancel", role: .cancel) {}
-    } message: {
-      Text("This image was previously uploaded to cloud. Re-uploading will replace the existing file with your changes.")
-    }
   }
 
   // MARK: - Computed Properties
@@ -446,11 +436,7 @@ struct QuickAccessCardView: View {
             QuickAccessIconButton(
               icon: alreadyUploaded ? "checkmark.icloud" : "icloud.and.arrow.up",
               action: {
-                if item.cloudKey != nil && item.isCloudStale {
-                  showCloudOverwriteConfirmation = true
-                } else {
-                  uploadToCloud()
-                }
+                uploadToCloud()
               },
               helpText: alreadyUploaded ? "Uploaded to Cloud" : (item.isCloudStale ? "Re-upload to Cloud" : "Upload to Cloud")
             )
