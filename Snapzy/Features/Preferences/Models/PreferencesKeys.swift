@@ -87,4 +87,5 @@ enum PreferencesKeys {
   static let cloudExpireTime = "cloud.expireTime"
   static let cloudConfigured = "cloud.configured"
   static let cloudPasswordSkipped = "cloud.passwordSkipped"
+  static let cloudUsageStatsCache = "cloud.usageStatsCache"
 }

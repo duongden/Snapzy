@@ -8,7 +8,8 @@
 import Foundation
 
 /// Snapshot of cloud bucket usage data
-struct CloudUsageInfo {
+struct CloudUsageInfo: Codable, Equatable {
+  let providerType: CloudProviderType
   let totalStorageBytes: Int64
   let objectCount: Int
   /// Active lifecycle rule expiration days for snapzy/ prefix, nil if none

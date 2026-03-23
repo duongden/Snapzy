@@ -82,6 +82,7 @@ final class CloudManager: ObservableObject {
     providerType = config.providerType
     cachedConfiguration = config
     cachedMaskedAccessKey = maskedAccessKey()
+    CloudUsageService.shared.invalidateCache()
 
     logger.info("Cloud configuration saved: \(config.providerType.displayName)")
   }
@@ -207,6 +208,7 @@ final class CloudManager: ObservableObject {
     providerType = nil
     cachedConfiguration = nil
     cachedMaskedAccessKey = "••••••••"
+    CloudUsageService.shared.invalidateCache()
 
     logger.info("Cloud configuration cleared")
   }

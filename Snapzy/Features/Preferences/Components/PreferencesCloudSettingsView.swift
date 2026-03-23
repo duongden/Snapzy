@@ -246,7 +246,7 @@ struct CloudSettingsView: View {
           Spacer()
 
           Button(action: {
-            Task { await usageService.fetchUsage() }
+            Task { await usageService.fetchUsage(forceRefresh: true) }
           }) {
             HStack(spacing: 4) {
               if usageService.isLoading {
@@ -264,6 +264,18 @@ struct CloudSettingsView: View {
           }
           .buttonStyle(.plain)
           .disabled(usageService.isLoading)
+        }
+
+        if let refreshError = usageService.error, usageService.usageInfo != nil {
+          HStack(alignment: .top, spacing: 6) {
+            Image(systemName: "exclamationmark.triangle.fill")
+              .foregroundColor(.orange)
+              .font(.system(size: 11))
+            Text(refreshError)
+              .font(.system(size: 10))
+              .foregroundColor(.orange)
+          }
+          .padding(.top, 2)
         }
       }
     } header: {
@@ -529,6 +541,7 @@ private struct CloudCredentialFormView: View {
   @State private var validationError: String?
   @State private var validationSuccess = false
   @State private var showSkipPasswordWarning = false
+  @State private var hasExistingPassword = false
 
   var body: some View {
     Group {
@@ -652,7 +665,7 @@ private struct CloudCredentialFormView: View {
       }
 
       // Protection password section
-      if !isEditing || !CloudPasswordService.shared.hasPassword {
+      if !isEditing || !hasExistingPassword {
         Section("Protection Password") {
           SettingRow(
             icon: "lock.shield",
@@ -740,6 +753,7 @@ private struct CloudCredentialFormView: View {
       }
     }
     .onAppear {
+      refreshPasswordState()
       if isEditing {
         loadExistingConfig()
       }
@@ -787,7 +801,7 @@ private struct CloudCredentialFormView: View {
     }
 
     // If no password and no existing password, warn about skipping
-    if protectionPassword.isEmpty && !CloudPasswordService.shared.hasPassword
+    if protectionPassword.isEmpty && !hasExistingPassword
       && !UserDefaults.standard.bool(forKey: PreferencesKeys.cloudPasswordSkipped)
     {
       showSkipPasswordWarning = true
@@ -836,6 +850,7 @@ private struct CloudCredentialFormView: View {
         if !protectionPassword.isEmpty {
           do {
             try CloudPasswordService.shared.savePassword(protectionPassword)
+            hasExistingPassword = true
             // Clear the skip flag since they set a password
             UserDefaults.standard.removeObject(forKey: PreferencesKeys.cloudPasswordSkipped)
           } catch {
@@ -868,6 +883,10 @@ private struct CloudCredentialFormView: View {
     expireTime = config.expireTime
     accessKey = cloudManager.loadAccessKey()
     secretKey = cloudManager.loadSecretKey()
+  }
+
+  private func refreshPasswordState() {
+    hasExistingPassword = CloudPasswordService.shared.hasPassword
   }
 }
 

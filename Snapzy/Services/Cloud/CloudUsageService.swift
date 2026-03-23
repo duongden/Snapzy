@@ -12,117 +12,64 @@ import os.log
 
 private let logger = Logger(subsystem: "Snapzy", category: "CloudUsageService")
 
-/// Fetches and caches bucket usage statistics using S3-compatible API.
-@MainActor
-final class CloudUsageService: ObservableObject {
+private struct CloudUsageCacheEntry: Codable {
+  static let currentSchemaVersion = 1
 
-  static let shared = CloudUsageService()
+  let schemaVersion: Int
+  let configFingerprint: String
+  let info: CloudUsageInfo
+}
 
-  // MARK: - Published State
-
-  @Published private(set) var usageInfo: CloudUsageInfo?
-  @Published private(set) var isLoading = false
-  @Published private(set) var error: String?
-
-  // MARK: - Pricing Constants (per GB-month)
-
-  private static let r2PricePerGB: Double = 0.015
-  private static let s3PricePerGB: Double = 0.023
-  private static let r2FreeStorageBytes: Int64 = 10 * 1_073_741_824  // 10 GB
-  private static let s3FreeStorageBytes: Int64 = 5 * 1_073_741_824   // 5 GB (year 1)
-
-  private init() {}
-
-  // MARK: - Computed Properties
-
-  /// Estimated monthly cost based on storage × unit price
-  var estimatedMonthlyCost: String {
-    guard let info = usageInfo else { return "—" }
-    let config = CloudManager.shared.loadConfiguration()
-    let providerType = config?.providerType ?? .awsS3
-
-    let storageGB = Double(info.totalStorageBytes) / 1_073_741_824.0
-    let freeBytes = providerType == .cloudflareR2
-      ? Self.r2FreeStorageBytes : Self.s3FreeStorageBytes
-    let pricePerGB = providerType == .cloudflareR2
-      ? Self.r2PricePerGB : Self.s3PricePerGB
-
-    if info.totalStorageBytes <= freeBytes {
-      return "Free tier"
-    }
-
-    let billableGB = max(0.0, storageGB - Double(freeBytes) / 1_073_741_824.0)
-    let cost = billableGB * pricePerGB
-
-    if cost < 0.01 {
-      return "< $0.01"
-    }
-    return String(format: "$%.2f", cost)
-  }
-
-  // MARK: - Fetch
-
-  /// Fetch bucket usage by listing objects and checking lifecycle config.
-  func fetchUsage() async {
-    guard !isLoading else { return }
-    guard let provider = CloudManager.shared.createProvider(),
-          let config = CloudManager.shared.loadConfiguration()
-    else {
-      error = "Cloud not configured"
-      return
-    }
-
-    isLoading = true
-    error = nil
-
-    do {
-      // 1. List all objects with snapzy/ prefix
-      let (totalBytes, objectCount) = try await listAllObjects(config: config)
-
-      // 2. Get lifecycle rule days
-      let lifecycleDays = try? await getLifecycleRuleDays(config: config)
-
-      let info = CloudUsageInfo(
-        totalStorageBytes: totalBytes,
-        objectCount: objectCount,
-        lifecycleRuleDays: lifecycleDays,
-        fetchedAt: Date()
-      )
-      usageInfo = info
-      logger.info("Usage fetched: \(info.formattedStorage), \(objectCount) objects")
-    } catch {
-      self.error = error.localizedDescription
-      logger.error("Usage fetch failed: \(error.localizedDescription)")
-    }
-
-    isLoading = false
-  }
-
-  // MARK: - ListObjectsV2
-
-  /// List all objects with `snapzy/` prefix, handling pagination.
-  /// Returns (totalBytes, objectCount).
-  private func listAllObjects(
-    config: CloudConfiguration
-  ) async throws -> (Int64, Int) {
-    let credentials = loadCredentials()
-    guard let accessKey = credentials.accessKey,
-          let secretKey = credentials.secretKey
-    else {
-      throw CloudError.notConfigured
-    }
-
+private actor CloudUsageWorker {
+  func fetchUsage(
+    config: CloudConfiguration,
+    accessKey: String,
+    secretKey: String
+  ) async throws -> CloudUsageInfo {
     let endpoint = buildEndpoint(config: config)
     let region = config.region.isEmpty ? "us-east-1" : config.region
 
+    let (totalBytes, objectCount) = try await listAllObjects(
+      config: config,
+      endpoint: endpoint,
+      region: region,
+      accessKey: accessKey,
+      secretKey: secretKey
+    )
+    let lifecycleDays = try? await getLifecycleRuleDays(
+      config: config,
+      endpoint: endpoint,
+      region: region,
+      accessKey: accessKey,
+      secretKey: secretKey
+    )
+
+    return CloudUsageInfo(
+      providerType: config.providerType,
+      totalStorageBytes: totalBytes,
+      objectCount: objectCount,
+      lifecycleRuleDays: lifecycleDays,
+      fetchedAt: Date()
+    )
+  }
+
+  private func listAllObjects(
+    config: CloudConfiguration,
+    endpoint: String,
+    region: String,
+    accessKey: String,
+    secretKey: String
+  ) async throws -> (Int64, Int) {
     var totalBytes: Int64 = 0
     var objectCount = 0
-    var continuationToken: String? = nil
+    var continuationToken: String?
 
     repeat {
       var queryString = "list-type=2&prefix=snapzy/&max-keys=1000"
       if let token = continuationToken {
-        queryString += "&continuation-token=\(token.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? token)"
+        let encodedToken =
+          token.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? token
+        queryString += "&continuation-token=\(encodedToken)"
       }
 
       let url = URL(string: "\(endpoint)/\(config.bucket)?\(queryString)")!
@@ -150,31 +97,22 @@ final class CloudUsageService: ObservableObject {
         )
       }
 
-      // Parse XML response
       let parsed = ListObjectsV2Parser.parse(data: data)
       totalBytes += parsed.totalSize
       objectCount += parsed.objectCount
       continuationToken = parsed.nextContinuationToken
-
     } while continuationToken != nil
 
     return (totalBytes, objectCount)
   }
 
-  // MARK: - Lifecycle Rule
-
-  /// Get the Snapzy lifecycle rule expiration days.
   private func getLifecycleRuleDays(
-    config: CloudConfiguration
+    config: CloudConfiguration,
+    endpoint: String,
+    region: String,
+    accessKey: String,
+    secretKey: String
   ) async throws -> Int? {
-    let credentials = loadCredentials()
-    guard let accessKey = credentials.accessKey,
-          let secretKey = credentials.secretKey
-    else { return nil }
-
-    let endpoint = buildEndpoint(config: config)
-    let region = config.region.isEmpty ? "us-east-1" : config.region
-
     let url = URL(string: "\(endpoint)/\(config.bucket)?lifecycle")!
     var request = URLRequest(url: url)
     request.httpMethod = "GET"
@@ -190,22 +128,10 @@ final class CloudUsageService: ObservableObject {
     let (data, response) = try await URLSession.shared.data(for: signedRequest)
 
     guard let httpResponse = response as? HTTPURLResponse else { return nil }
-
-    // 404 = no lifecycle config
     if httpResponse.statusCode == 404 { return nil }
-
     guard (200...299).contains(httpResponse.statusCode) else { return nil }
 
-    // Parse XML to find snapzy-auto-expire rule
     return LifecycleRuleParser.parseSnapzyExpireDays(from: data)
-  }
-
-  // MARK: - Helpers
-
-  private func loadCredentials() -> (accessKey: String?, secretKey: String?) {
-    let ak = CloudManager.shared.loadAccessKey()
-    let sk = CloudManager.shared.loadSecretKey()
-    return (ak.isEmpty ? nil : ak, sk.isEmpty ? nil : sk)
   }
 
   private func buildEndpoint(config: CloudConfiguration) -> String {
@@ -214,6 +140,225 @@ final class CloudUsageService: ObservableObject {
     }
     let region = config.region.isEmpty ? "us-east-1" : config.region
     return "https://s3.\(region).amazonaws.com"
+  }
+}
+
+/// Fetches and caches bucket usage statistics using S3-compatible API.
+@MainActor
+final class CloudUsageService: ObservableObject {
+
+  static let shared = CloudUsageService()
+
+  // MARK: - Published State
+
+  @Published private(set) var usageInfo: CloudUsageInfo?
+  @Published private(set) var isLoading = false
+  @Published private(set) var error: String?
+
+  // MARK: - Pricing Constants (per GB-month)
+
+  private static let r2PricePerGB: Double = 0.015
+  private static let s3PricePerGB: Double = 0.023
+  private static let r2FreeStorageBytes: Int64 = 10 * 1_073_741_824  // 10 GB
+  private static let s3FreeStorageBytes: Int64 = 5 * 1_073_741_824   // 5 GB (year 1)
+  private static let cacheTTL: TimeInterval = 10 * 60  // 10 minutes
+
+  private let worker = CloudUsageWorker()
+  private var inFlightTask: Task<Void, Never>?
+  private var memoryCache: CloudUsageCacheEntry?
+  private let defaults = UserDefaults.standard
+
+  private init() {
+    loadCacheIntoMemoryIfPossible()
+  }
+
+  // MARK: - Computed Properties
+
+  /// Estimated monthly cost based on storage × unit price
+  var estimatedMonthlyCost: String {
+    guard let info = usageInfo else { return "—" }
+    let providerType = info.providerType
+
+    let storageGB = Double(info.totalStorageBytes) / 1_073_741_824.0
+    let freeBytes = providerType == .cloudflareR2
+      ? Self.r2FreeStorageBytes : Self.s3FreeStorageBytes
+    let pricePerGB = providerType == .cloudflareR2
+      ? Self.r2PricePerGB : Self.s3PricePerGB
+
+    if info.totalStorageBytes <= freeBytes {
+      return "Free tier"
+    }
+
+    let billableGB = max(0.0, storageGB - Double(freeBytes) / 1_073_741_824.0)
+    let cost = billableGB * pricePerGB
+
+    if cost < 0.01 {
+      return "< $0.01"
+    }
+    return String(format: "$%.2f", cost)
+  }
+
+  // MARK: - Fetch
+
+  /// Fetch bucket usage by listing objects and checking lifecycle config.
+  func fetchUsage(forceRefresh: Bool = false) async {
+    guard let config = CloudManager.shared.loadConfiguration() else {
+      usageInfo = nil
+      error = "Cloud not configured"
+      return
+    }
+    guard let credentials = loadCredentials() else {
+      usageInfo = nil
+      error = "Cloud not configured"
+      return
+    }
+
+    let fingerprint = Self.makeConfigFingerprint(config: config)
+    let hasFreshCache = applyCachedUsageIfAvailable(fingerprint: fingerprint)
+
+    if hasFreshCache && !forceRefresh {
+      error = nil
+      return
+    }
+
+    if let inFlightTask {
+      await inFlightTask.value
+      return
+    }
+
+    isLoading = true
+    error = nil
+
+    let task = Task { [weak self] in
+      guard let self else { return }
+      defer {
+        Task { @MainActor in
+          self.isLoading = false
+          self.inFlightTask = nil
+        }
+      }
+
+      do {
+        let info = try await self.worker.fetchUsage(
+          config: config,
+          accessKey: credentials.accessKey,
+          secretKey: credentials.secretKey
+        )
+        await MainActor.run {
+          self.usageInfo = info
+          self.error = nil
+
+          let cacheEntry = CloudUsageCacheEntry(
+            schemaVersion: CloudUsageCacheEntry.currentSchemaVersion,
+            configFingerprint: fingerprint,
+            info: info
+          )
+          self.memoryCache = cacheEntry
+          self.persistCacheEntry(cacheEntry)
+          logger.info("Usage fetched: \(info.formattedStorage), \(info.objectCount) objects")
+        }
+      } catch is CancellationError {
+        logger.debug("Usage fetch cancelled")
+      } catch {
+        await MainActor.run {
+          if self.usageInfo == nil {
+            self.error = error.localizedDescription
+          } else {
+            self.error = "Couldn't refresh cloud stats. Showing cached data."
+          }
+          logger.error("Usage fetch failed: \(error.localizedDescription)")
+        }
+      }
+    }
+
+    inFlightTask = task
+    await task.value
+  }
+
+  func invalidateCache() {
+    inFlightTask?.cancel()
+    inFlightTask = nil
+    isLoading = false
+    usageInfo = nil
+    error = nil
+    memoryCache = nil
+    defaults.removeObject(forKey: PreferencesKeys.cloudUsageStatsCache)
+  }
+
+  // MARK: - Helpers
+
+  private func loadCredentials() -> (accessKey: String, secretKey: String)? {
+    let accessKey = CloudManager.shared.loadAccessKey().trimmingCharacters(in: .whitespacesAndNewlines)
+    let secretKey = CloudManager.shared.loadSecretKey().trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !accessKey.isEmpty, !secretKey.isEmpty else { return nil }
+    return (accessKey, secretKey)
+  }
+
+  @discardableResult
+  private func applyCachedUsageIfAvailable(fingerprint: String) -> Bool {
+    guard let entry = loadCacheEntry(fingerprint: fingerprint) else { return false }
+    usageInfo = entry.info
+    memoryCache = entry
+
+    let age = Date().timeIntervalSince(entry.info.fetchedAt)
+    return age <= Self.cacheTTL
+  }
+
+  private func loadCacheIntoMemoryIfPossible() {
+    guard let data = defaults.data(forKey: PreferencesKeys.cloudUsageStatsCache) else { return }
+    do {
+      let entry = try JSONDecoder().decode(CloudUsageCacheEntry.self, from: data)
+      guard entry.schemaVersion == CloudUsageCacheEntry.currentSchemaVersion else {
+        defaults.removeObject(forKey: PreferencesKeys.cloudUsageStatsCache)
+        return
+      }
+      memoryCache = entry
+    } catch {
+      defaults.removeObject(forKey: PreferencesKeys.cloudUsageStatsCache)
+      logger.error("Failed to decode usage cache at startup: \(error.localizedDescription)")
+    }
+  }
+
+  private func loadCacheEntry(fingerprint: String) -> CloudUsageCacheEntry? {
+    if let memoryCache,
+      memoryCache.schemaVersion == CloudUsageCacheEntry.currentSchemaVersion,
+      memoryCache.configFingerprint == fingerprint
+    {
+      return memoryCache
+    }
+
+    guard let data = defaults.data(forKey: PreferencesKeys.cloudUsageStatsCache) else { return nil }
+    do {
+      let entry = try JSONDecoder().decode(CloudUsageCacheEntry.self, from: data)
+      guard entry.schemaVersion == CloudUsageCacheEntry.currentSchemaVersion else {
+        defaults.removeObject(forKey: PreferencesKeys.cloudUsageStatsCache)
+        return nil
+      }
+      guard entry.configFingerprint == fingerprint else { return nil }
+      memoryCache = entry
+      return entry
+    } catch {
+      defaults.removeObject(forKey: PreferencesKeys.cloudUsageStatsCache)
+      logger.error("Failed to decode usage cache: \(error.localizedDescription)")
+      return nil
+    }
+  }
+
+  private func persistCacheEntry(_ entry: CloudUsageCacheEntry) {
+    do {
+      let data = try JSONEncoder().encode(entry)
+      defaults.set(data, forKey: PreferencesKeys.cloudUsageStatsCache)
+    } catch {
+      logger.error("Failed to encode usage cache: \(error.localizedDescription)")
+    }
+  }
+
+  private static func makeConfigFingerprint(config: CloudConfiguration) -> String {
+    let bucket = config.bucket.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    let region = config.region.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    let endpoint = (config.endpoint ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+      .lowercased()
+    return "\(config.providerType.rawValue)|\(bucket)|\(region)|\(endpoint)"
   }
 }
 
