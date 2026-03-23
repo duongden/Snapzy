@@ -11,7 +11,6 @@ import SwiftUI
 /// Cloud settings tab in Preferences
 struct CloudSettingsView: View {
   @ObservedObject private var cloudManager = CloudManager.shared
-  @ObservedObject private var historyStore = CloudUploadHistoryStore.shared
   @ObservedObject private var usageService = CloudUsageService.shared
 
   @State private var isEditing = false
@@ -117,21 +116,7 @@ struct CloudSettingsView: View {
         .padding(.top, 4)
       }
 
-      // Recent uploads section
-      if !historyStore.records.isEmpty {
-        Section("Recent Uploads") {
-          ForEach(historyStore.recentRecords(limit: 5)) { record in
-            CloudUploadRecordRow(record: record)
-          }
 
-          if historyStore.records.count > 5 {
-            Button("View All Uploads (\(historyStore.records.count))") {
-              CloudUploadHistoryWindowController.shared.showWindow()
-            }
-            .font(.system(size: 12))
-          }
-        }
-      }
     }
   }
 
@@ -540,53 +525,6 @@ private struct CloudCredentialFormView: View {
   }
 }
 
-// MARK: - Upload Record Row
-
-struct CloudUploadRecordRow: View {
-  let record: CloudUploadRecord
-
-  var body: some View {
-    HStack(spacing: 10) {
-      Image(systemName: "doc.fill")
-        .font(.system(size: 16))
-        .foregroundColor(.secondary)
-        .frame(width: 24)
-
-      VStack(alignment: .leading, spacing: 2) {
-        Text(record.fileName)
-          .font(.system(size: 12, weight: .medium))
-          .lineLimit(1)
-        HStack(spacing: 8) {
-          Text(record.formattedDate)
-            .font(.system(size: 10))
-            .foregroundColor(.secondary)
-          Text(record.formattedFileSize)
-            .font(.system(size: 10))
-            .foregroundColor(.secondary)
-          if record.isExpired {
-            Text("Expired")
-              .font(.system(size: 10, weight: .medium))
-              .foregroundColor(.orange)
-          }
-        }
-      }
-
-      Spacer()
-
-      Button(action: {
-        let pasteboard = NSPasteboard.general
-        pasteboard.clearContents()
-        pasteboard.setString(record.publicURL.absoluteString, forType: .string)
-      }) {
-        Image(systemName: "doc.on.doc")
-          .font(.system(size: 11))
-      }
-      .buttonStyle(.plain)
-      .help("Copy link")
-    }
-    .padding(.vertical, 2)
-  }
-}
 
 #Preview {
   CloudSettingsView()
