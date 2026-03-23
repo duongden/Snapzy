@@ -187,6 +187,10 @@ struct AnnotateBottomBarView: View {
     let showCloudButton = preferencesManager.isActionEnabled(.uploadToCloud, for: .screenshot)
 
     return HStack(spacing: 12) {
+      BottomBarButton(icon: "square.and.arrow.up", tooltip: "Share") {
+        share()
+      }
+
       // Cloud upload button
       if showCloudButton {
         // needsReUpload: true when image changed in current session OR was changed since last upload
@@ -205,10 +209,6 @@ struct AnnotateBottomBarView: View {
         }
         .disabled(isCloudUploading || alreadyUploaded)
         .opacity(alreadyUploaded ? 0.6 : 1)
-      }
-
-      BottomBarButton(icon: "square.and.arrow.up", tooltip: "Share") {
-        share()
       }
 
       BottomBarButton(icon: state.isPinned ? "pin.fill" : "pin", tooltip: state.isPinned ? "Unpin window (\(annotateShortcuts.togglePinShortcut.displayString))" : "Pin window (\(annotateShortcuts.togglePinShortcut.displayString))") {
