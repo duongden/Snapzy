@@ -194,15 +194,8 @@ final class S3CloudProvider: CloudProvider {
     var existingRules = try await getLifecycleRulesXML()
     existingRules.removeAll { $0.contains("<ID>\(Self.lifecycleRuleID)</ID>") }
 
-    // 2. Build new Snapzy rule
-    let snapzyRule = """
-      <Rule>
-        <ID>\(Self.lifecycleRuleID)</ID>
-        <Filter><Prefix>\(Self.objectPrefix)</Prefix></Filter>
-        <Status>Enabled</Status>
-        <Expiration><Days>\(days)</Days></Expiration>
-      </Rule>
-      """
+    // 2. Build new Snapzy rule (compact XML — R2 is strict about whitespace)
+    let snapzyRule = "<Rule><ID>\(Self.lifecycleRuleID)</ID><Filter><Prefix>\(Self.objectPrefix)</Prefix></Filter><Status>Enabled</Status><Expiration><Days>\(days)</Days></Expiration></Rule>"
     existingRules.append(snapzyRule)
 
     // 3. PUT merged config
@@ -266,13 +259,10 @@ final class S3CloudProvider: CloudProvider {
 
   /// PUT a lifecycle configuration with the given rules
   private func putLifecycleConfiguration(rules: [String]) async throws {
-    let xmlBody = """
-      <?xml version="1.0" encoding="UTF-8"?>
-      <LifecycleConfiguration xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
-      \(rules.joined(separator: "\n"))
-      </LifecycleConfiguration>
-      """
+    let rulesXML = rules.joined()
+    let xmlBody = "<LifecycleConfiguration>\(rulesXML)</LifecycleConfiguration>"
 
+    logger.debug("Lifecycle XML body: \(xmlBody)")
     let bodyData = xmlBody.data(using: .utf8)!
     let url = URL(string: "\(endpoint.absoluteString)/\(bucket)?lifecycle")!
     var request = URLRequest(url: url)

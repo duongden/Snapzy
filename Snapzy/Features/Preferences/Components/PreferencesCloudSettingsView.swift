@@ -504,12 +504,14 @@ private struct CloudCredentialFormView: View {
         )
         try await cloudManager.validateCredentials()
 
-        // Apply lifecycle rule (non-blocking — permission errors show as warning)
+        // Apply lifecycle rule — treat failure as a save failure
         do {
           try await cloudManager.applyLifecycleRule()
         } catch {
-          // Lifecycle rule failed (likely missing permissions) — save still succeeds
           validationError = "Configuration saved, but lifecycle rule failed: \(error.localizedDescription). Ensure your credentials have lifecycle management permissions."
+          isValidating = false
+          // Don't set validationSuccess — form stays open for user to review
+          return
         }
 
         validationSuccess = true
