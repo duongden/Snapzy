@@ -32,8 +32,8 @@ final class CloudManager: ObservableObject {
   // MARK: - Keychain Keys
 
   private enum KeychainKeys {
-    static let accessKey = "com.snapzy.cloud.accessKey"
-    static let secretKey = "com.snapzy.cloud.secretKey"
+    static let accessKey = "com.trongduong.snapzy.cloud.accessKey"
+    static let secretKey = "com.trongduong.snapzy.cloud.secretKey"
   }
 
   // MARK: - Init
@@ -389,7 +389,7 @@ final class CloudManager: ObservableObject {
     let query: [String: Any] = [
       kSecClass as String: kSecClassGenericPassword,
       kSecAttrAccount as String: key,
-      kSecAttrService as String: "com.snapzy.cloud",
+      kSecAttrService as String: "com.trongduong.snapzy.cloud",
       kSecValueData as String: data,
       kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlocked,
     ]
@@ -404,7 +404,7 @@ final class CloudManager: ObservableObject {
     let query: [String: Any] = [
       kSecClass as String: kSecClassGenericPassword,
       kSecAttrAccount as String: key,
-      kSecAttrService as String: "com.snapzy.cloud",
+      kSecAttrService as String: "com.trongduong.snapzy.cloud",
       kSecReturnData as String: true,
       kSecMatchLimit as String: kSecMatchLimitOne,
     ]
@@ -420,7 +420,7 @@ final class CloudManager: ObservableObject {
     let query: [String: Any] = [
       kSecClass as String: kSecClassGenericPassword,
       kSecAttrAccount as String: key,
-      kSecAttrService as String: "com.snapzy.cloud",
+      kSecAttrService as String: "com.trongduong.snapzy.cloud",
     ]
     SecItemDelete(query as CFDictionary)
   }
