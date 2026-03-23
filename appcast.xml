@@ -6,6 +6,22 @@
     <description>Snapzy application updates</description>
     <language>en</language>
     <item>
+      <title>Version 1.4.0</title>
+      <sparkle:version>31</sparkle:version>
+      <sparkle:shortVersionString>1.4.0</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <pubDate>Mon, 23 Mar 2026 10:28:17 +0000</pubDate>
+      <description><![CDATA[
+        <style>:root { color-scheme: light dark; } body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 13px; line-height: 1.5; padding: 8px 16px; } h3 { font-size: 14px; margin: 12px 0 6px; } ul { padding-left: 20px; margin: 4px 0; } li { margin: 3px 0; }</style>
+        <h3>✨ Features</h3><ul><li>Implement LazyView for deferred SwiftUI tab loading and cache cloud configuration details.</li><li>Enhance cloud upload records with content type and thumbnail support, and add advanced filtering, sorting, and display modes to the upload history view.</li><li>Add cloud usage service to track and display bucket storage, object count, and lifecycle rules.</li><li>Implement cloud object lifecycle management to configure and remove expiration rules for S3 and R2 storage providers.</li><li>Improve UI of cloud configuration.</li><li>Remove cloud overwrite confirmation alert and directly trigger cloud upload.</li><li>Ensure removes history records when overwrited upload screenshot</li><li>Implement cloud storage integration with S3/R2 providers, preferences, and overwrite handling for annotated images.</li></ul><h3>🐛 Bug Fixes</h3><ul><li>Improve keystroke name resolution in  by using -based mapping for global monitor reliability.</li><li>Add support for punctuation, keypad, and navigation keys to .</li></ul>
+      ]]></description>
+      <enclosure
+        url="https://github.com/duongductrong/Snapzy/releases/download/v1.4.0/Snapzy-v1.4.0.dmg"
+        sparkle:edSignature="EiVVu+FgLaHe2vjtOQgAl4hrdh62Ti51W+E2taEoUU67GPzkcDOBp2N45hPB1SMaxQFTy/9PKvXSEoHthIMlAg=="
+        length="11479098"
+        type="application/octet-stream"/>
+    </item>
+    <item>
       <title>Version 1.3.5</title>
       <sparkle:version>30</sparkle:version>
       <sparkle:shortVersionString>1.3.5</sparkle:shortVersionString>
