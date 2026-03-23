@@ -157,6 +157,9 @@ final class CloudManager: ObservableObject {
     deleteFromKeychain(key: KeychainKeys.accessKey)
     deleteFromKeychain(key: KeychainKeys.secretKey)
 
+    // Clear password protection
+    CloudPasswordService.shared.removePassword()
+
     let defaults = UserDefaults.standard
     defaults.removeObject(forKey: PreferencesKeys.cloudProviderType)
     defaults.removeObject(forKey: PreferencesKeys.cloudBucket)
@@ -165,6 +168,7 @@ final class CloudManager: ObservableObject {
     defaults.removeObject(forKey: PreferencesKeys.cloudCustomDomain)
     defaults.removeObject(forKey: PreferencesKeys.cloudExpireTime)
     defaults.set(false, forKey: PreferencesKeys.cloudConfigured)
+    defaults.removeObject(forKey: PreferencesKeys.cloudPasswordSkipped)
 
     isConfigured = false
     providerType = nil
