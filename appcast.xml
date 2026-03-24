@@ -6,6 +6,22 @@
     <description>Snapzy application updates</description>
     <language>en</language>
     <item>
+      <title>Version 1.4.4</title>
+      <sparkle:version>35</sparkle:version>
+      <sparkle:shortVersionString>1.4.4</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <pubDate>Tue, 24 Mar 2026 11:47:19 +0000</pubDate>
+      <description><![CDATA[
+        <style>:root { color-scheme: light dark; } body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 13px; line-height: 1.5; padding: 8px 16px; } h3 { font-size: 14px; margin: 12px 0 6px; } ul { padding-left: 20px; margin: 4px 0; } li { margin: 3px 0; }</style>
+        <h3>✨ Features</h3><ul><li>Refactor zoom segment layout and interaction to ensure a minimum visual width and improve UI adaptation for small blocks.</li><li>Align video preview zoom and pan calculations with export output for accuracy and update camera transition duration.</li><li>Enhance auto-focus engine with improved path generation, quality metrics, and canonical mouse sample handling.</li></ul>
+      ]]></description>
+      <enclosure
+        url="https://github.com/duongductrong/Snapzy/releases/download/v1.4.4/Snapzy-v1.4.4.dmg"
+        sparkle:edSignature="Mpnl4w5RtQK0ThDr8BBiXMrP9KhmmeOebG2C8FDJKKV8LvknnBz7m6Z3yAUmckfmU5Yyz7DCOCt70EW3XJUhCw=="
+        length="11633144"
+        type="application/octet-stream"/>
+    </item>
+    <item>
       <title>Version 1.4.3</title>
       <sparkle:version>34</sparkle:version>
       <sparkle:shortVersionString>1.4.3</sparkle:shortVersionString>
