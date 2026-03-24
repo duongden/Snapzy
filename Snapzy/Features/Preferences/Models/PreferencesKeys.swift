@@ -34,6 +34,7 @@ enum PreferencesKeys {
 
   // Screenshot
   static let screenshotFormat = "screenshot.format"
+  static let screenshotFileNameTemplate = "screenshot.fileNameTemplate"
   static let screenshotIncludeOwnApp = "screenshot.includeOwnApp"
 
   // Floating Screenshot (Quick Access)
@@ -46,6 +47,7 @@ enum PreferencesKeys {
 
   // Recording
   static let recordingFormat = "recording.format"
+  static let recordingFileNameTemplate = "recording.fileNameTemplate"
   static let recordingFPS = "recording.fps"
   static let recordingQuality = "recording.quality"
   static let recordingCaptureAudio = "recording.captureAudio"

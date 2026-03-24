@@ -181,6 +181,7 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
     captureSystemAudio: Bool = true,
     captureMicrophone: Bool = false,
     saveDirectory: URL,
+    fileName: String? = nil,
     excludeDesktopIcons: Bool = false,
     excludeDesktopWidgets: Bool = false,
     excludeOwnApplication: Bool = true,
@@ -282,8 +283,11 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
     )
     self.recordingRect = captureGeometry.globalCaptureRect
 
-    // Generate output URL
-    let fileName = generateFileName()
+    // Generate output URL using user-configurable template (with legacy fallback).
+    let resolvedFileName = CaptureOutputNaming.resolveBaseName(
+      customName: fileName,
+      kind: .recording
+    )
     exportDirectoryAccess?.stop()
     let directoryAccess = SandboxFileAccessManager.shared.beginAccessingURL(saveDirectory)
     exportDirectoryAccess = directoryAccess
@@ -301,7 +305,11 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
       throw RecordingError.writeFailed(error.localizedDescription)
     }
 
-    outputURL = scopedSaveDirectory.appendingPathComponent("\(fileName).\(format.fileExtension)")
+    outputURL = CaptureOutputNaming.makeUniqueFileURL(
+      in: scopedSaveDirectory,
+      baseName: resolvedFileName,
+      fileExtension: format.fileExtension
+    )
 
     // Setup AVAssetWriter
     try setupAssetWriter(
@@ -831,12 +839,6 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
     }
 
     DiagnosticLogger.shared.log(.info, .recording, "Recording frame diagnostics", context: context)
-  }
-
-  private func generateFileName() -> String {
-    let formatter = DateFormatter()
-    formatter.dateFormat = "yyyy-MM-dd_HH-mm-ss"
-    return "Snapzy_Recording_\(formatter.string(from: Date()))"
   }
 
   private func cleanup() {

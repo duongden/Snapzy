@@ -14,9 +14,13 @@ struct CaptureSettingsView: View {
   @AppStorage(PreferencesKeys.hideDesktopWidgets) private var hideDesktopWidgets = false
   @AppStorage(PreferencesKeys.screenshotIncludeOwnApp) private var includeOwnAppInScreenshots = false
   @AppStorage(PreferencesKeys.screenshotFormat) private var screenshotFormat = "png"
+  @AppStorage(PreferencesKeys.screenshotFileNameTemplate)
+  private var screenshotFileNameTemplate = CaptureOutputKind.screenshot.defaultTemplate
 
   // Recording settings
   @AppStorage(PreferencesKeys.recordingFormat) private var format = "mov"
+  @AppStorage(PreferencesKeys.recordingFileNameTemplate)
+  private var recordingFileNameTemplate = CaptureOutputKind.recording.defaultTemplate
   @AppStorage(PreferencesKeys.recordingFPS) private var fps = 30
   @AppStorage(PreferencesKeys.recordingQuality) private var quality = "high"
   @AppStorage(PreferencesKeys.recordingCaptureAudio) private var captureAudio = true
@@ -125,6 +129,58 @@ struct CaptureSettingsView: View {
               .fixedSize(horizontal: false, vertical: true)
           }
           .padding(.vertical, 4)
+        }
+      }
+
+      Section("Output Naming") {
+        SettingRow(
+          icon: "textformat",
+          title: "Screenshot Template",
+          description: "Pattern for auto-saved screenshot filename"
+        ) {
+          TextField("", text: $screenshotFileNameTemplate)
+            .textFieldStyle(.roundedBorder)
+            .frame(width: 260)
+        }
+
+        SettingRow(
+          icon: "textformat.abc",
+          title: "Recording Template",
+          description: "Pattern for auto-saved recording filename"
+        ) {
+          TextField("", text: $recordingFileNameTemplate)
+            .textFieldStyle(.roundedBorder)
+            .frame(width: 260)
+        }
+
+        HStack(alignment: .top, spacing: 6) {
+          Image(systemName: "info.circle")
+            .foregroundColor(.secondary)
+            .font(.system(size: 12))
+            .padding(.top, 1)
+          Text("Available tokens: {datetime}, {date}, {time}, {ms}, {timestamp}, {type}")
+            .font(.system(size: 11))
+            .foregroundColor(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.vertical, 2)
+
+        VStack(alignment: .leading, spacing: 2) {
+          Text("Screenshot preview: \(screenshotFilenamePreview)")
+          Text("Recording preview: \(recordingFilenamePreview)")
+        }
+        .font(.system(size: 11))
+        .foregroundColor(.secondary)
+        .padding(.top, 2)
+
+        HStack {
+          Spacer()
+          Button("Reset Naming Defaults") {
+            resetOutputNamingDefaults()
+          }
+          .font(.system(size: 11))
+          .foregroundColor(.secondary)
+          .buttonStyle(.plain)
         }
       }
 
@@ -295,6 +351,30 @@ struct CaptureSettingsView: View {
     return "Capture your voice"
   }
 
+  private var screenshotFilenamePreview: String {
+    let baseName = CaptureOutputNaming.resolveBaseName(
+      customName: screenshotFileNameTemplate,
+      kind: .screenshot
+    )
+    return "\(baseName).\(screenshotFileExtension)"
+  }
+
+  private var recordingFilenamePreview: String {
+    let baseName = CaptureOutputNaming.resolveBaseName(
+      customName: recordingFileNameTemplate,
+      kind: .recording
+    )
+    return "\(baseName).\(recordingFileExtension)"
+  }
+
+  private var screenshotFileExtension: String {
+    ImageFormatOption(rawValue: screenshotFormat)?.format.fileExtension ?? "png"
+  }
+
+  private var recordingFileExtension: String {
+    VideoFormat(rawValue: format)?.fileExtension ?? "mov"
+  }
+
   private func handleMicrophoneEnable() {
     let status = AVCaptureDevice.authorizationStatus(for: .audio)
 
@@ -326,6 +406,11 @@ struct CaptureSettingsView: View {
   }
 
   // MARK: - Reset Defaults
+
+  private func resetOutputNamingDefaults() {
+    screenshotFileNameTemplate = CaptureOutputKind.screenshot.defaultTemplate
+    recordingFileNameTemplate = CaptureOutputKind.recording.defaultTemplate
+  }
 
   private func resetMouseHighlightDefaults() {
     mouseHighlightSize = MouseHighlightConfiguration.defaultHighlightSize

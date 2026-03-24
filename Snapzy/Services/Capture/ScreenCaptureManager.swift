@@ -385,17 +385,20 @@ final class ScreenCaptureManager: ObservableObject {
     defer { directoryAccess.stop() }
     let scopedDirectory = directoryAccess.url
 
-    // Generate filename on main actor (uses Date())
-    let name = fileName ?? generateFileName()
-    let fileURL = scopedDirectory.appendingPathComponent("\(name).\(format.fileExtension)")
+    // Resolve filename using user-configurable template (with legacy fallback).
+    let baseName = CaptureOutputNaming.resolveBaseName(
+      customName: fileName,
+      kind: .screenshot
+    )
+    let fileExtension = format.fileExtension
 
-    logger.info("Saving capture to \(scopedDirectory.lastPathComponent)/\(name).\(format.fileExtension)")
+    logger.info("Saving capture to \(scopedDirectory.lastPathComponent)/\(baseName).\(fileExtension)")
 
     // Capture format properties before entering detached task
     let utType = format.utType
 
     // Move file I/O to background thread to avoid blocking main thread
-    let isWebP = format.fileExtension == "webp"
+    let isWebP = fileExtension == "webp"
     let writeResult: Result<URL, CaptureError> = await Task.detached {
       // Create directory if needed
       do {
@@ -403,6 +406,12 @@ final class ScreenCaptureManager: ObservableObject {
       } catch {
         return .failure(.saveFailed("Could not create directory: \(error.localizedDescription)"))
       }
+
+      let fileURL = CaptureOutputNaming.makeUniqueFileURL(
+        in: scopedDirectory,
+        baseName: baseName,
+        fileExtension: fileExtension
+      )
 
       if isWebP {
         // WebP: use WebPEncoder (cwebp CLI) since ImageIO doesn't support WebP encoding
@@ -469,13 +478,6 @@ final class ScreenCaptureManager: ObservableObject {
     }
     logger.error("File verification failed after \(maxAttempts) attempts: \(url.lastPathComponent)")
     return false
-  }
-
-  /// Generate a timestamp-based filename
-  private func generateFileName() -> String {
-    let formatter = DateFormatter()
-    formatter.dateFormat = "yyyy-MM-dd_HH-mm-ss-SSS"
-    return "Snapzy_\(formatter.string(from: Date()))"
   }
 
   // MARK: - Utility
