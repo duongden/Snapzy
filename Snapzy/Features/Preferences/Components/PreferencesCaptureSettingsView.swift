@@ -66,11 +66,11 @@ struct CaptureSettingsView: View {
 
   var body: some View {
     Form {
-      Section("Snapzy Windows") {
+      Section("App Windows") {
         SettingRow(
           icon: "photo.on.rectangle",
-          title: "Show Snapzy in screenshots",
-          description: "Allow windows like Annotate to appear in captured images"
+          title: "Include in Screenshots",
+          description: "Show Snapzy windows such as Annotate in captured images"
         ) {
           Toggle("", isOn: $includeOwnAppInScreenshots)
             .labelsHidden()
@@ -78,8 +78,8 @@ struct CaptureSettingsView: View {
 
         SettingRow(
           icon: "video",
-          title: "Show Snapzy in recordings",
-          description: "Allow windows like Annotate to appear in recorded video"
+          title: "Include in Recordings",
+          description: "Show Snapzy windows such as Annotate in recorded videos"
         ) {
           Toggle("", isOn: $includeOwnAppInRecordings)
             .labelsHidden()
