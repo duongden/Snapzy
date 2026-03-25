@@ -45,6 +45,12 @@ final class VideoEditorState: ObservableObject {
     }
   }
 
+  private struct FrameExtractionProfile {
+    let frameCount: Int
+    let tolerance: CMTime
+    let strategyLabel: String
+  }
+
   // MARK: - Video Source
 
   private(set) var sourceURL: URL
@@ -440,25 +446,88 @@ final class VideoEditorState: ObservableObject {
     isExtractingFrames = true
     defer { isExtractingFrames = false }
 
-    let generator = AVAssetImageGenerator(asset: asset)
-    generator.appliesPreferredTrackTransform = true
-    generator.maximumSize = CGSize(width: 120, height: 68)
-    generator.requestedTimeToleranceBefore = .zero
-    generator.requestedTimeToleranceAfter = .zero
-
-    let count = 25
+    let startedAt = Date()
+    let profile = await determineFrameExtractionProfile()
     let totalSeconds = CMTimeGetSeconds(duration)
-    let interval = totalSeconds / Double(count)
+    let cgImages = await generateFrameThumbnails(
+      frameCount: profile.frameCount,
+      totalSeconds: totalSeconds,
+      tolerance: profile.tolerance
+    )
 
-    var images: [NSImage] = []
-    for i in 0..<count {
-      let time = CMTime(seconds: Double(i) * interval, preferredTimescale: 600)
-      if let cgImage = try? generator.copyCGImage(at: time, actualTime: nil) {
-        let image = NSImage(cgImage: cgImage, size: NSSize(width: 120, height: 68))
-        images.append(image)
+    frameThumbnails = cgImages.map { image in
+      NSImage(cgImage: image, size: NSSize(width: 120, height: 68))
+    }
+
+    DiagnosticLogger.shared.log(.info, .editor, "Frame strip extracted", context: [
+      "strategy": profile.strategyLabel,
+      "requestedFrames": "\(profile.frameCount)",
+      "generatedFrames": "\(frameThumbnails.count)",
+      "elapsedMs": "\(Int(Date().timeIntervalSince(startedAt) * 1000))",
+    ])
+  }
+
+  private func determineFrameExtractionProfile() async -> FrameExtractionProfile {
+    guard let track = try? await asset.loadTracks(withMediaType: .video).first else {
+      return FrameExtractionProfile(frameCount: 25, tolerance: .zero, strategyLabel: "default-no-track")
+    }
+
+    let estimatedDataRate = (try? await track.load(.estimatedDataRate)) ?? 0
+    let pixelCount = naturalSize.width * naturalSize.height
+
+    // Guardrail: heavier files (high resolution / high bitrate) get lighter extraction to keep UI responsive.
+    if pixelCount >= 7_000_000 || estimatedDataRate >= 80_000_000 {
+      return FrameExtractionProfile(
+        frameCount: 12,
+        tolerance: CMTime(value: 1, timescale: 20),
+        strategyLabel: "very-heavy"
+      )
+    }
+
+    if pixelCount >= 3_700_000 || estimatedDataRate >= 45_000_000 {
+      return FrameExtractionProfile(
+        frameCount: 16,
+        tolerance: CMTime(value: 1, timescale: 30),
+        strategyLabel: "heavy"
+      )
+    }
+
+    return FrameExtractionProfile(frameCount: 25, tolerance: .zero, strategyLabel: "default")
+  }
+
+  private func generateFrameThumbnails(
+    frameCount: Int,
+    totalSeconds: Double,
+    tolerance: CMTime
+  ) async -> [CGImage] {
+    let safeCount = max(frameCount, 1)
+    let targetSize = CGSize(width: 120, height: 68)
+    let inputURL = sourceURL
+
+    return await withCheckedContinuation { continuation in
+      DispatchQueue.global(qos: .userInitiated).async {
+        autoreleasepool {
+          let generator = AVAssetImageGenerator(asset: AVAsset(url: inputURL))
+          generator.appliesPreferredTrackTransform = true
+          generator.maximumSize = targetSize
+          generator.requestedTimeToleranceBefore = tolerance
+          generator.requestedTimeToleranceAfter = tolerance
+
+          var images: [CGImage] = []
+          images.reserveCapacity(safeCount)
+
+          for i in 0..<safeCount {
+            let progress = safeCount > 1 ? Double(i) / Double(safeCount - 1) : 0
+            let time = CMTime(seconds: totalSeconds * progress, preferredTimescale: 600)
+            if let cgImage = try? generator.copyCGImage(at: time, actualTime: nil) {
+              images.append(cgImage)
+            }
+          }
+
+          continuation.resume(returning: images)
+        }
       }
     }
-    frameThumbnails = images
   }
 
   // MARK: - Save State

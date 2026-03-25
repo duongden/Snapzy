@@ -37,6 +37,9 @@ final class RecordingSession: @unchecked Sendable {
   private var _videoFramesAppended = 0
   private var _videoFramesDroppedBackpressure = 0
   private var _videoFramesFailedAppend = 0
+  private var _expectedVideoWidth: Int?
+  private var _expectedVideoHeight: Int?
+  private var _didLogFrameDimensionMismatch = false
 
   init() {}
   
@@ -80,6 +83,14 @@ final class RecordingSession: @unchecked Sendable {
       _onFirstVideoFrame = callback
     }
   }
+
+  func configureExpectedVideoDimensions(width: Int, height: Int) {
+    lock.withLock {
+      _expectedVideoWidth = width
+      _expectedVideoHeight = height
+      _didLogFrameDimensionMismatch = false
+    }
+  }
   
   /// Thread-safe check if ready to write frames
   func canWriteFrames() -> Bool {
@@ -117,6 +128,19 @@ final class RecordingSession: @unchecked Sendable {
       // Complete frame should have pixel buffer - this is unexpected
       print("[RecordingSession] Complete frame missing pixel buffer")
       return
+    }
+
+    let pixelWidth = CVPixelBufferGetWidth(pixelBuffer)
+    let pixelHeight = CVPixelBufferGetHeight(pixelBuffer)
+    let expectedDimensions = lock.withLock { (_expectedVideoWidth, _expectedVideoHeight, _didLogFrameDimensionMismatch) }
+    if let expectedWidth = expectedDimensions.0,
+       let expectedHeight = expectedDimensions.1,
+       (pixelWidth != expectedWidth || pixelHeight != expectedHeight),
+       !expectedDimensions.2 {
+      lock.withLock { _didLogFrameDimensionMismatch = true }
+      print(
+        "[RecordingSession] Frame dimension mismatch. expected=\(expectedWidth)x\(expectedHeight), actual=\(pixelWidth)x\(pixelHeight)"
+      )
     }
 
     let timestamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
@@ -292,6 +316,9 @@ final class RecordingSession: @unchecked Sendable {
       _videoFramesAppended = 0
       _videoFramesDroppedBackpressure = 0
       _videoFramesFailedAppend = 0
+      _expectedVideoWidth = nil
+      _expectedVideoHeight = nil
+      _didLogFrameDimensionMismatch = false
     }
   }
 }

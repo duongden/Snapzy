@@ -42,12 +42,40 @@ enum VideoQuality: String, CaseIterable, Codable {
   case medium
   case low
 
-  /// Bitrate multiplier per pixel (bits per pixel per second)
-  var bitrateMultiplier: Int {
+  /// Bits-per-pixel-per-frame target for screen content.
+  /// Effective bitrate = width * height * fps * bitsPerPixelPerFrame, then clamped.
+  var bitsPerPixelPerFrame: Double {
     switch self {
-    case .high: return 6
-    case .medium: return 4
-    case .low: return 2
+    case .high: return 0.20
+    case .medium: return 0.13
+    case .low: return 0.08
+    }
+  }
+
+  /// Floor bitrate (bps) to keep UI/text legible for each preset.
+  var minBitrate: Int {
+    switch self {
+    case .high: return 2_500_000
+    case .medium: return 1_600_000
+    case .low: return 1_000_000
+    }
+  }
+
+  /// Cap bitrate (bps) to avoid encoder pressure and editor lag spikes.
+  var maxBitrate: Int {
+    switch self {
+    case .high: return 60_000_000
+    case .medium: return 35_000_000
+    case .low: return 20_000_000
+    }
+  }
+
+  /// H.264 profile per preset.
+  var h264ProfileLevel: String {
+    switch self {
+    case .high: return AVVideoProfileLevelH264HighAutoLevel
+    case .medium: return AVVideoProfileLevelH264MainAutoLevel
+    case .low: return AVVideoProfileLevelH264BaselineAutoLevel
     }
   }
 
@@ -494,24 +522,47 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
     try? FileManager.default.removeItem(at: url)
 
     let writer = try AVAssetWriter(outputURL: url, fileType: videoFormat.fileType)
+    writer.shouldOptimizeForNetworkUse = videoFormat == .mp4
     session.assetWriter = writer
+    session.configureExpectedVideoDimensions(width: width, height: height)
 
-    // Video settings (H.264)
-    let bitrate = width * height * videoQuality.bitrateMultiplier
-    let videoSettings: [String: Any] = [
-      AVVideoCodecKey: AVVideoCodecType.h264,
-      AVVideoWidthKey: width,
-      AVVideoHeightKey: height,
-      AVVideoCompressionPropertiesKey: [
-        AVVideoAverageBitRateKey: bitrate,
-        AVVideoExpectedSourceFrameRateKey: fps,
-        AVVideoMaxKeyFrameIntervalKey: fps,
-      ],
-    ]
-    let videoIn = AVAssetWriterInput(mediaType: .video, outputSettings: videoSettings)
+    var selectedCodec = preferredVideoCodec()
+    var selectedBitrate = calculatedVideoBitrate(width: width, height: height, codec: selectedCodec)
+    var videoSettings = makeVideoSettings(
+      width: width,
+      height: height,
+      codec: selectedCodec,
+      bitrate: selectedBitrate
+    )
+
+    var videoIn = AVAssetWriterInput(mediaType: .video, outputSettings: videoSettings)
+    // If HEVC cannot be added (unsupported path), fallback to H.264.
+    if !writer.canAdd(videoIn), selectedCodec == .hevc {
+      selectedCodec = .h264
+      selectedBitrate = calculatedVideoBitrate(width: width, height: height, codec: selectedCodec)
+      videoSettings = makeVideoSettings(
+        width: width,
+        height: height,
+        codec: selectedCodec,
+        bitrate: selectedBitrate
+      )
+      videoIn = AVAssetWriterInput(mediaType: .video, outputSettings: videoSettings)
+    }
+
+    guard writer.canAdd(videoIn) else {
+      throw RecordingError.setupFailed("Cannot add video writer input")
+    }
+
     videoIn.expectsMediaDataInRealTime = true
     session.videoInput = videoIn
     writer.add(videoIn)
+    DiagnosticLogger.shared.log(.info, .recording, "Video encoding settings", context: [
+      "codec": selectedCodec == .hevc ? "hevc" : "h264",
+      "qualityPreset": videoQuality.rawValue,
+      "bitrateBps": "\(selectedBitrate)",
+      "fps": "\(fps)",
+      "outputSize": "\(width)x\(height)",
+    ])
 
     // Create pixel buffer adaptor for BGRA input from ScreenCaptureKit
     let sourcePixelBufferAttributes: [String: Any] = [
@@ -535,6 +586,9 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
       ]
       let audioIn = AVAssetWriterInput(mediaType: .audio, outputSettings: audioSettings)
       audioIn.expectsMediaDataInRealTime = true
+      guard writer.canAdd(audioIn) else {
+        throw RecordingError.setupFailed("Cannot add system audio writer input")
+      }
       session.audioInput = audioIn
       writer.add(audioIn)
     }
@@ -549,9 +603,63 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
       ]
       let micIn = AVAssetWriterInput(mediaType: .audio, outputSettings: micSettings)
       micIn.expectsMediaDataInRealTime = true
+      guard writer.canAdd(micIn) else {
+        throw RecordingError.setupFailed("Cannot add microphone writer input")
+      }
       session.microphoneInput = micIn
       writer.add(micIn)
     }
+  }
+
+  private func preferredVideoCodec() -> AVVideoCodecType {
+    guard videoFormat == .mov else { return .h264 }
+    guard videoQuality == .high else { return .h264 }
+    // Use HEVC for high-quality MOV on Apple Silicon by default.
+    // Writer input creation still has a safe fallback to H.264.
+    #if arch(arm64)
+      return .hevc
+    #else
+      return .h264
+    #endif
+  }
+
+  private func calculatedVideoBitrate(width: Int, height: Int, codec: AVVideoCodecType) -> Int {
+    let base = Double(width) * Double(height) * Double(fps) * videoQuality.bitsPerPixelPerFrame
+    // HEVC is more efficient at equivalent quality, so we can trim bitrate a bit.
+    let codecAdjusted = codec == .hevc ? base * 0.90 : base
+    let clamped = min(max(codecAdjusted, Double(videoQuality.minBitrate)), Double(videoQuality.maxBitrate))
+    return Int(clamped.rounded())
+  }
+
+  private func makeVideoSettings(
+    width: Int,
+    height: Int,
+    codec: AVVideoCodecType,
+    bitrate: Int
+  ) -> [String: Any] {
+    var compression: [String: Any] = [
+      AVVideoAverageBitRateKey: bitrate,
+      AVVideoExpectedSourceFrameRateKey: fps,
+      AVVideoMaxKeyFrameIntervalKey: fps,
+    ]
+
+    if codec == .h264 {
+      compression[AVVideoProfileLevelKey] = videoQuality.h264ProfileLevel
+    }
+
+    let colorProperties: [String: Any] = [
+      AVVideoColorPrimariesKey: AVVideoColorPrimaries_ITU_R_709_2,
+      AVVideoTransferFunctionKey: AVVideoTransferFunction_ITU_R_709_2,
+      AVVideoYCbCrMatrixKey: AVVideoYCbCrMatrix_ITU_R_709_2,
+    ]
+
+    return [
+      AVVideoCodecKey: codec,
+      AVVideoWidthKey: width,
+      AVVideoHeightKey: height,
+      AVVideoCompressionPropertiesKey: compression,
+      AVVideoColorPropertiesKey: colorProperties,
+    ]
   }
 
   private func resolveCaptureGeometry(
@@ -580,27 +688,50 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
       throw RecordingError.setupFailed("Selection area is outside display bounds")
     }
 
+    let alignedRect = pixelAlignedRect(clampedRect, scaleFactor: scaleFactor, bounds: screenBounds)
+    guard !alignedRect.isEmpty else {
+      throw RecordingError.setupFailed("Selection area is outside display bounds")
+    }
+
     // ScreenCaptureKit sourceRect uses top-left origin relative to display.
-    let flippedY = screenFrame.height - clampedRect.origin.y - clampedRect.height
+    let flippedY = screenFrame.height - alignedRect.origin.y - alignedRect.height
     let sourceRect = CGRect(
-      x: clampedRect.origin.x,
+      x: alignedRect.origin.x,
       y: flippedY,
-      width: clampedRect.width,
-      height: clampedRect.height
+      width: alignedRect.width,
+      height: alignedRect.height
     )
     let globalCaptureRect = CGRect(
-      x: clampedRect.origin.x + screenFrame.origin.x,
-      y: clampedRect.origin.y + screenFrame.origin.y,
-      width: clampedRect.width,
-      height: clampedRect.height
+      x: alignedRect.origin.x + screenFrame.origin.x,
+      y: alignedRect.origin.y + screenFrame.origin.y,
+      width: alignedRect.width,
+      height: alignedRect.height
     )
 
     return CaptureGeometry(
       sourceRect: sourceRect,
       globalCaptureRect: globalCaptureRect,
-      outputWidth: Int(ceil(clampedRect.width * scaleFactor)),
-      outputHeight: Int(ceil(clampedRect.height * scaleFactor))
+      outputWidth: max(1, Int((alignedRect.width * scaleFactor).rounded())),
+      outputHeight: max(1, Int((alignedRect.height * scaleFactor).rounded()))
     )
+  }
+
+  private func pixelAlignedRect(_ rect: CGRect, scaleFactor: CGFloat, bounds: CGRect) -> CGRect {
+    guard scaleFactor > 0 else { return rect.intersection(bounds) }
+
+    let minX = floor(rect.minX * scaleFactor) / scaleFactor
+    let minY = floor(rect.minY * scaleFactor) / scaleFactor
+    let maxX = ceil(rect.maxX * scaleFactor) / scaleFactor
+    let maxY = ceil(rect.maxY * scaleFactor) / scaleFactor
+
+    let aligned = CGRect(
+      x: minX,
+      y: minY,
+      width: max(0, maxX - minX),
+      height: max(0, maxY - minY)
+    )
+
+    return aligned.intersection(bounds)
   }
 
   private func setupStream(
@@ -621,6 +752,15 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
     config.pixelFormat = kCVPixelFormatType_32BGRA
     config.showsCursor = true
     config.sourceRect = captureGeometry.sourceRect
+    let captureResolutionMode: String
+    if #available(macOS 14.2, *) {
+      config.captureResolution = .best
+      captureResolutionMode = "best"
+    } else {
+      // Fallback for macOS 13/14.0/14.1:
+      // rely on explicit native-scaled dimensions + pixel-aligned sourceRect.
+      captureResolutionMode = "fallback-native-dimensions"
+    }
 
     // System audio configuration
     if captureSystemAudio {
@@ -674,6 +814,19 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
         registeredOutputTypes.insert(.microphone)
       }
     }
+
+    DiagnosticLogger.shared.log(.info, .recording, "Stream configuration", context: [
+      "outputSize": "\(captureGeometry.outputWidth)x\(captureGeometry.outputHeight)",
+      "fps": "\(fps)",
+      "captureResolutionMode": captureResolutionMode,
+      "sourceRect": String(
+        format: "%.2f,%.2f %.2fx%.2f",
+        captureGeometry.sourceRect.origin.x,
+        captureGeometry.sourceRect.origin.y,
+        captureGeometry.sourceRect.size.width,
+        captureGeometry.sourceRect.size.height
+      ),
+    ])
   }
 
   private func makeContentFilter(display: SCDisplay, content: SCShareableContent) -> SCContentFilter {
