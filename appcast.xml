@@ -6,6 +6,22 @@
     <description>Snapzy application updates</description>
     <language>en</language>
     <item>
+      <title>Version 1.4.6</title>
+      <sparkle:version>37</sparkle:version>
+      <sparkle:shortVersionString>1.4.6</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <pubDate>Wed, 25 Mar 2026 17:11:51 +0000</pubDate>
+      <description><![CDATA[
+        <style>:root { color-scheme: light dark; } body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 13px; line-height: 1.5; padding: 8px 16px; } h3 { font-size: 14px; margin: 12px 0 6px; } ul { padding-left: 20px; margin: 4px 0; } li { margin: 3px 0; }</style>
+        <h3>✨ Features</h3><ul><li>Enhance video encoding with dynamic bitrate, HEVC/H.264 codec selection, pixel-aligned capture, and diagnostic logging for recording.</li></ul>
+      ]]></description>
+      <enclosure
+        url="https://github.com/duongductrong/Snapzy/releases/download/v1.4.6/Snapzy-v1.4.6.dmg"
+        sparkle:edSignature="gWTk4i6mA79K6IdVl5W3OeO1qM4hbQ1FQi6o1GVLivLp9GXCfQ5/hWsF4S1Je4nPPdehyV/2Pvm3ERV8oFFwBg=="
+        length="11669102"
+        type="application/octet-stream"/>
+    </item>
+    <item>
       <title>Version 1.4.5</title>
       <sparkle:version>36</sparkle:version>
       <sparkle:shortVersionString>1.4.5</sparkle:shortVersionString>
