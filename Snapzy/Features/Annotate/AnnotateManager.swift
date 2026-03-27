@@ -9,11 +9,24 @@ import AppKit
 import Foundation
 
 /// In-memory annotation session data for re-editing annotations
+struct AnnotationCanvasEffects {
+  var backgroundStyle: BackgroundStyle = .none
+  var padding: CGFloat = 0
+  var inset: CGFloat = 0
+  var autoBalance: Bool = true
+  var shadowIntensity: CGFloat = 0.3
+  var cornerRadius: CGFloat = 8
+  var imageAlignment: ImageAlignment = .center
+  var aspectRatio: AspectRatioOption = .auto
+}
+
+/// In-memory annotation session data for re-editing annotations
 /// Preserved until the Quick Access card is dismissed
 struct AnnotationSessionData {
   /// Compressed PNG data of the original image (before any annotations were baked)
   let originalImageData: Data
   var annotations: [AnnotationItem]
+  var canvasEffects: AnnotationCanvasEffects
 }
 
 /// Manages annotation window instances
@@ -197,10 +210,16 @@ final class AnnotateManager {
   // MARK: - Session Cache
 
   /// Save annotation session data for re-editing
-  func saveSessionData(for itemId: UUID, originalImageData: Data, annotations: [AnnotationItem]) {
+  func saveSessionData(
+    for itemId: UUID,
+    originalImageData: Data,
+    annotations: [AnnotationItem],
+    canvasEffects: AnnotationCanvasEffects
+  ) {
     sessionCache[itemId] = AnnotationSessionData(
       originalImageData: originalImageData,
-      annotations: annotations
+      annotations: annotations,
+      canvasEffects: canvasEffects
     )
   }
 

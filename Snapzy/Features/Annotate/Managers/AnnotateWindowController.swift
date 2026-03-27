@@ -36,6 +36,7 @@ final class AnnotateWindowController: NSWindowController, NSWindowDelegate {
       self.originalImageData = sessionData.originalImageData
       self.state = AnnotateState(image: image, url: item.url, quickAccessItemId: item.id, cloudURL: item.cloudURL, cloudKey: item.cloudKey, isCloudStale: item.isCloudStale)
       self.state.annotations = sessionData.annotations
+      self.state.applyCanvasEffects(sessionData.canvasEffects)
     } else {
       // First open: load image from disk and capture raw file bytes (fast, no re-encoding)
       let image = Self.loadImageWithCorrectScale(from: item.url) ?? item.thumbnail
@@ -719,7 +720,8 @@ final class AnnotateWindowController: NSWindowController, NSWindowDelegate {
     AnnotateManager.shared.saveSessionData(
       for: itemId,
       originalImageData: imageData,
-      annotations: state.annotations
+      annotations: state.annotations,
+      canvasEffects: state.canvasEffectsSnapshot
     )
   }
 }

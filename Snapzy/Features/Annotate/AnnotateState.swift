@@ -195,6 +195,35 @@ final class AnnotateState: ObservableObject {
   @Published var imageAlignment: ImageAlignment = .center
   @Published var aspectRatio: AspectRatioOption = .auto
 
+  var canvasEffectsSnapshot: AnnotationCanvasEffects {
+    AnnotationCanvasEffects(
+      backgroundStyle: backgroundStyle,
+      padding: padding,
+      inset: inset,
+      autoBalance: autoBalance,
+      shadowIntensity: shadowIntensity,
+      cornerRadius: cornerRadius,
+      imageAlignment: imageAlignment,
+      aspectRatio: aspectRatio
+    )
+  }
+
+  func applyCanvasEffects(_ effects: AnnotationCanvasEffects) {
+    backgroundStyle = effects.backgroundStyle
+    padding = effects.padding
+    inset = effects.inset
+    autoBalance = effects.autoBalance
+    shadowIntensity = effects.shadowIntensity
+    cornerRadius = effects.cornerRadius
+    imageAlignment = effects.imageAlignment
+    aspectRatio = effects.aspectRatio
+
+    previewPadding = nil
+    previewInset = nil
+    previewShadowIntensity = nil
+    previewCornerRadius = nil
+  }
+
   // MARK: - Preview Values (for smooth slider dragging)
 
   /// Preview values during slider drag - nil when not dragging
