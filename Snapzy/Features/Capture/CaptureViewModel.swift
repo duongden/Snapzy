@@ -125,6 +125,10 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
     UserDefaults.standard.object(forKey: PreferencesKeys.screenshotShowCursor) as? Bool ?? false
   }
 
+  private var isBackgroundCutoutAutoCropEnabled: Bool {
+    UserDefaults.standard.object(forKey: PreferencesKeys.backgroundCutoutAutoCropEnabled) as? Bool ?? true
+  }
+
   /// Always read format from UserDefaults to stay in sync with Settings @AppStorage
   private var resolvedFormat: ImageFormat {
     if let raw = UserDefaults.standard.string(forKey: PreferencesKeys.screenshotFormat),
@@ -594,9 +598,22 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
               return
             }
 
-            let cutoutImage = try await ForegroundCutoutService.shared.extractForeground(
-              from: capturedImage,
-              cropToSubject: false
+            let cutoutResult = try await ForegroundCutoutService.shared.extractForegroundResult(
+              from: capturedImage
+            )
+            let (outputImage, didAutoCrop) = self.resolveObjectCutoutOutputImage(
+              from: cutoutResult,
+              autoCropEnabled: self.isBackgroundCutoutAutoCropEnabled
+            )
+            DiagnosticLogger.shared.log(
+              .info,
+              .capture,
+              "Object cutout auto-crop evaluation",
+              context: [
+                "autoCropEnabled": "\(self.isBackgroundCutoutAutoCropEnabled)",
+                "decision": cutoutResult.autoCropDecision.rawValue,
+                "autoCropApplied": "\(didAutoCrop)"
+              ]
             )
 
             // Transparency cannot be stored in JPEG. For this mode we force alpha-capable output.
@@ -615,7 +632,7 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
             )
 
             let result = await self.captureManager.saveProcessedImage(
-              cutoutImage,
+              outputImage,
               to: actualSaveDirectory,
               format: output.format
             )
@@ -643,6 +660,31 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
         }
       }
     }
+  }
+
+  private func resolveObjectCutoutOutputImage(
+    from result: ForegroundCutoutResult,
+    autoCropEnabled: Bool
+  ) -> (image: CGImage, didAutoCrop: Bool) {
+    guard autoCropEnabled,
+          result.autoCropDecision == .suggested,
+          let suggestedRect = result.suggestedAutoCropRect?.integral,
+          suggestedRect.width > 0,
+          suggestedRect.height > 0
+    else {
+      return (result.fullCanvasImage, false)
+    }
+
+    guard let croppedImage = result.fullCanvasImage.cropping(to: suggestedRect) else {
+      DiagnosticLogger.shared.log(
+        .warning,
+        .capture,
+        "Object cutout auto-crop skipped because crop operation failed",
+        context: ["rect": "\(suggestedRect)"]
+      )
+      return (result.fullCanvasImage, false)
+    }
+    return (croppedImage, true)
   }
 
   private func resolvedCutoutOutputFormat() -> (format: ImageFormat, didOverrideFromJPEG: Bool) {

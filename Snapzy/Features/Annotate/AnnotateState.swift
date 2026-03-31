@@ -51,6 +51,10 @@ final class AnnotateState: ObservableObject {
     return false
   }
 
+  var isBackgroundCutoutAutoCropEnabled: Bool {
+    UserDefaults.standard.object(forKey: PreferencesKeys.backgroundCutoutAutoCropEnabled) as? Bool ?? true
+  }
+
   // MARK: - Tool State
 
   @Published var selectedTool: AnnotationToolType = .selection {
@@ -368,6 +372,10 @@ final class AnnotateState: ObservableObject {
   @Published var isCropShiftLocked: Bool = false
   /// Restore sidebar when leaving crop if it was auto-collapsed on crop entry.
   private var shouldRestoreSidebarAfterCropInteraction: Bool = false
+  /// True when current crop was auto-applied from the latest background cutout.
+  private var didCutoutAutoApplyCrop: Bool = false
+  /// Tracks the exact crop rect auto-applied by background cutout for safe revert behavior.
+  private var cutoutAutoAppliedCropRect: CGRect?
 
   // MARK: - Mockup State
 
@@ -516,20 +524,23 @@ final class AnnotateState: ObservableObject {
 
     let operationID = UUID()
     activeCutoutOperationID = operationID
+    clearCutoutAutoCropTracking()
     isCutoutProcessing = true
     cutoutErrorMessage = nil
 
-    Task { [sourceCGImage, sourceSize = sourceImage.size] in
+    Task {
       do {
-        let cutoutCGImage = try await ForegroundCutoutService.shared.extractForeground(
-          from: sourceCGImage,
-          cropToSubject: false
-        )
+        let cutoutResult = try await ForegroundCutoutService.shared.extractForegroundResult(from: sourceCGImage)
 
         guard activeCutoutOperationID == operationID else { return }
-        cutoutImage = NSImage(cgImage: cutoutCGImage, size: sourceSize)
+        cutoutImage = NSImage(cgImage: cutoutResult.fullCanvasImage, size: sourceImage.size)
         isCutoutApplied = true
         isCutoutProcessing = false
+        applyCutoutSuggestedAutoCropIfNeeded(
+          cutoutResult: cutoutResult,
+          sourceCGImage: sourceCGImage,
+          autoCropEnabled: isBackgroundCutoutAutoCropEnabled
+        )
         hasUnsavedChanges = true
       } catch {
         guard activeCutoutOperationID == operationID else { return }
@@ -547,6 +558,8 @@ final class AnnotateState: ObservableObject {
   func resetBackgroundCutoutState(markUnsaved: Bool) {
     activeCutoutOperationID = nil
     isCutoutProcessing = false
+    revertCutoutAutoCropIfNeeded()
+    clearCutoutAutoCropTracking()
     cutoutImage = nil
     isCutoutApplied = false
     cutoutErrorMessage = nil
@@ -557,17 +570,32 @@ final class AnnotateState: ObservableObject {
   }
 
   /// Snapshot cutout state for Quick Access session caching.
-  func cutoutSnapshot() -> (isApplied: Bool, cutoutImageData: Data?) {
-    guard isCutoutApplied, let cutoutImage else { return (false, nil) }
+  func cutoutSnapshot() -> (
+    isApplied: Bool,
+    cutoutImageData: Data?,
+    didAutoApplyCrop: Bool,
+    autoAppliedCropRect: CGRect?
+  ) {
+    guard isCutoutApplied, let cutoutImage else { return (false, nil, false, nil) }
     guard let cutoutImageData = Self.pngData(from: cutoutImage) else {
       DiagnosticLogger.shared.log(.warning, .annotate, "Cutout snapshot skipped: PNG encoding failed")
-      return (false, nil)
+      return (false, nil, false, nil)
     }
-    return (true, cutoutImageData)
+    return (
+      true,
+      cutoutImageData,
+      didCutoutAutoApplyCrop,
+      didCutoutAutoApplyCrop ? cutoutAutoAppliedCropRect : nil
+    )
   }
 
   /// Restore cutout state from Quick Access session cache.
-  func restoreBackgroundCutout(isApplied: Bool, cutoutImageData: Data?) {
+  func restoreBackgroundCutout(
+    isApplied: Bool,
+    cutoutImageData: Data?,
+    didAutoApplyCrop: Bool = false,
+    autoAppliedCropRect: CGRect? = nil
+  ) {
     activeCutoutOperationID = nil
     isCutoutProcessing = false
     cutoutErrorMessage = nil
@@ -577,6 +605,7 @@ final class AnnotateState: ObservableObject {
           let restoredImage = NSImage(data: cutoutImageData) else {
       cutoutImage = nil
       isCutoutApplied = false
+      clearCutoutAutoCropTracking()
       return
     }
 
@@ -585,6 +614,79 @@ final class AnnotateState: ObservableObject {
     }
     cutoutImage = restoredImage
     isCutoutApplied = true
+    if didAutoApplyCrop, let autoAppliedCropRect {
+      didCutoutAutoApplyCrop = true
+      cutoutAutoAppliedCropRect = autoAppliedCropRect
+    } else {
+      clearCutoutAutoCropTracking()
+    }
+  }
+
+  private func applyCutoutSuggestedAutoCropIfNeeded(
+    cutoutResult: ForegroundCutoutResult,
+    sourceCGImage: CGImage,
+    autoCropEnabled: Bool
+  ) {
+    guard autoCropEnabled else { return }
+    guard cropRect == nil, !isCropActive else { return }
+    guard cutoutResult.autoCropDecision == .suggested,
+          let suggestedPixelRect = cutoutResult.suggestedAutoCropRect else { return }
+
+    let convertedRect = Self.convertAutoCropRectToImageCoordinates(
+      pixelRectTopLeft: suggestedPixelRect,
+      sourceImageSize: sourceImage?.size ?? .zero,
+      sourcePixelSize: CGSize(width: sourceCGImage.width, height: sourceCGImage.height)
+    )
+    guard !convertedRect.isEmpty else { return }
+
+    let clampedRect = constrainCropToImageBounds(convertedRect)
+    cropRect = clampedRect
+    didCutoutAutoApplyCrop = true
+    cutoutAutoAppliedCropRect = clampedRect
+  }
+
+  private func revertCutoutAutoCropIfNeeded() {
+    guard didCutoutAutoApplyCrop,
+          let autoCropRect = cutoutAutoAppliedCropRect,
+          let currentCropRect = cropRect else { return }
+    if Self.rectApproximatelyEqual(currentCropRect, autoCropRect) {
+      cropRect = nil
+      isCropActive = false
+    }
+  }
+
+  private func clearCutoutAutoCropTracking() {
+    didCutoutAutoApplyCrop = false
+    cutoutAutoAppliedCropRect = nil
+  }
+
+  private static func rectApproximatelyEqual(_ lhs: CGRect, _ rhs: CGRect, tolerance: CGFloat = 0.5) -> Bool {
+    abs(lhs.origin.x - rhs.origin.x) <= tolerance &&
+      abs(lhs.origin.y - rhs.origin.y) <= tolerance &&
+      abs(lhs.width - rhs.width) <= tolerance &&
+      abs(lhs.height - rhs.height) <= tolerance
+  }
+
+  private static func convertAutoCropRectToImageCoordinates(
+    pixelRectTopLeft: CGRect,
+    sourceImageSize: CGSize,
+    sourcePixelSize: CGSize
+  ) -> CGRect {
+    guard sourceImageSize.width > 0,
+          sourceImageSize.height > 0,
+          sourcePixelSize.width > 0,
+          sourcePixelSize.height > 0 else { return .zero }
+
+    let scaleX = sourceImageSize.width / sourcePixelSize.width
+    let scaleY = sourceImageSize.height / sourcePixelSize.height
+
+    let x = pixelRectTopLeft.origin.x * scaleX
+    let width = pixelRectTopLeft.width * scaleX
+    let height = pixelRectTopLeft.height * scaleY
+    let topY = pixelRectTopLeft.origin.y * scaleY
+    let y = sourceImageSize.height - topY - height
+
+    return CGRect(x: x, y: y, width: width, height: height)
   }
 
   private static func pngData(from image: NSImage) -> Data? {
@@ -721,6 +823,12 @@ final class AnnotateState: ObservableObject {
     DiagnosticLogger.shared.log(.info, .annotate, "Crop applied", context: [
       "rect": cropRect.map { "\(Int($0.width))x\(Int($0.height))" } ?? "nil"
     ])
+    if didCutoutAutoApplyCrop,
+       let currentCropRect = cropRect,
+       let autoCropRect = cutoutAutoAppliedCropRect,
+       !Self.rectApproximatelyEqual(currentCropRect, autoCropRect) {
+      clearCutoutAutoCropTracking()
+    }
     isCropActive = false
     hasUnsavedChanges = true
     restoreSidebarAfterCropInteractionIfNeeded()
@@ -736,6 +844,7 @@ final class AnnotateState: ObservableObject {
     DiagnosticLogger.shared.log(.info, .annotate, "Crop cancelled")
     cropRect = nil
     isCropActive = false
+    clearCutoutAutoCropTracking()
     selectedTool = .selection
     restoreSidebarAfterCropInteractionIfNeeded()
   }
@@ -744,6 +853,7 @@ final class AnnotateState: ObservableObject {
   func resetCrop() {
     cropRect = nil
     isCropActive = false
+    clearCutoutAutoCropTracking()
     cropAspectRatio = .free
     isCropResizing = false
     isCropShiftLocked = false
@@ -771,12 +881,24 @@ final class AnnotateState: ObservableObject {
       rect.size.height = newHeight
     }
 
-    cropRect = constrainCropToImageBounds(rect)
+    let constrainedRect = constrainCropToImageBounds(rect)
+    if didCutoutAutoApplyCrop,
+       let autoCropRect = cutoutAutoAppliedCropRect,
+       !Self.rectApproximatelyEqual(constrainedRect, autoCropRect) {
+      clearCutoutAutoCropTracking()
+    }
+    cropRect = constrainedRect
   }
 
   /// Update crop rect with bounds constraint
   func updateCropRect(_ newRect: CGRect) {
-    cropRect = constrainCropToImageBounds(newRect)
+    let constrainedRect = constrainCropToImageBounds(newRect)
+    if didCutoutAutoApplyCrop,
+       let autoCropRect = cutoutAutoAppliedCropRect,
+       !Self.rectApproximatelyEqual(constrainedRect, autoCropRect) {
+      clearCutoutAutoCropTracking()
+    }
+    cropRect = constrainedRect
   }
 
   /// Constrain crop rect to image bounds with minimum size

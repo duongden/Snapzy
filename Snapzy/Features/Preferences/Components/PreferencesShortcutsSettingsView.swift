@@ -241,7 +241,7 @@ struct ShortcutsSettingsView: View {
           ShortcutRecorderView(
             label: "Capture Object (Transparent)",
             icon: "person.crop.rectangle",
-            description: "Select an area and remove background automatically",
+            description: "Select an area, remove background, and optionally auto-crop",
             shortcut: $objectCutoutShortcut,
             onShortcutChanged: { manager.setObjectCutoutShortcut($0) }
           )

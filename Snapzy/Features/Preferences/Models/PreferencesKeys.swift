@@ -37,6 +37,7 @@ enum PreferencesKeys {
   static let screenshotFileNameTemplate = "screenshot.fileNameTemplate"
   static let screenshotIncludeOwnApp = "screenshot.includeOwnApp"
   static let screenshotShowCursor = "screenshot.showCursor"
+  static let backgroundCutoutAutoCropEnabled = "backgroundCutout.autoCropEnabled"
 
   // Floating Screenshot (Quick Access)
   static let floatingEnabled = "floatingScreenshot.enabled"

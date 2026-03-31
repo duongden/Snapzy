@@ -10,6 +10,7 @@ import SwiftUI
 /// Top toolbar containing all annotation tools
 struct AnnotateToolbarView: View {
   @ObservedObject var state: AnnotateState
+  @AppStorage(PreferencesKeys.backgroundCutoutAutoCropEnabled) private var backgroundCutoutAutoCropEnabled = true
 
   var body: some View {
     HStack(spacing: WindowSpacingConfiguration.default.toolbarItemSpacing) {
@@ -78,7 +79,11 @@ struct AnnotateToolbarView: View {
       .opacity((!state.canUseBackgroundCutout || !state.hasImage) ? 0.4 : 1)
       .help(
         state.canUseBackgroundCutout
-          ? (state.isCutoutApplied ? "Background Removed (Click to restore)" : "Remove Background")
+          ? (state.isCutoutApplied
+            ? "Background Removed (Click to restore)"
+            : (backgroundCutoutAutoCropEnabled
+              ? "Remove Background (Auto-crops when safe)"
+              : "Remove Background (Auto-crop disabled in Settings)"))
           : "Requires macOS 14+"
       )
 

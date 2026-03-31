@@ -15,6 +15,7 @@ struct CaptureSettingsView: View {
   @AppStorage(PreferencesKeys.screenshotIncludeOwnApp) private var includeOwnAppInScreenshots = false
   @AppStorage(PreferencesKeys.screenshotShowCursor) private var screenshotShowCursor = false
   @AppStorage(PreferencesKeys.screenshotFormat) private var screenshotFormat = "png"
+  @AppStorage(PreferencesKeys.backgroundCutoutAutoCropEnabled) private var backgroundCutoutAutoCropEnabled = true
   @AppStorage(PreferencesKeys.screenshotFileNameTemplate)
   private var screenshotFileNameTemplate = CaptureOutputKind.screenshot.defaultTemplate
 
@@ -361,6 +362,19 @@ struct CaptureSettingsView: View {
 
       Section("After Capture") {
         AfterCaptureMatrixView()
+
+        Text("Remove Background")
+          .font(.caption)
+          .foregroundColor(.secondary)
+
+        SettingRow(
+          icon: "person.crop.rectangle",
+          title: "Auto-Crop Subject",
+          description: "Applies to remove background in both Capture Object and Annotate"
+        ) {
+          Toggle("", isOn: $backgroundCutoutAutoCropEnabled)
+            .labelsHidden()
+        }
       }
     }
     .formStyle(.grouped)

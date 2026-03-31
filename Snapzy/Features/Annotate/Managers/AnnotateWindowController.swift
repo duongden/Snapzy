@@ -41,7 +41,9 @@ final class AnnotateWindowController: NSWindowController, NSWindowDelegate {
       self.state.isCropActive = false
       self.state.restoreBackgroundCutout(
         isApplied: sessionData.isCutoutApplied,
-        cutoutImageData: sessionData.cutoutImageData
+        cutoutImageData: sessionData.cutoutImageData,
+        didAutoApplyCrop: sessionData.didCutoutAutoApplyCrop,
+        autoAppliedCropRect: sessionData.cutoutAutoAppliedCropRect
       )
     } else {
       // First open: load image from disk and capture raw file bytes (fast, no re-encoding)
@@ -740,7 +742,9 @@ final class AnnotateWindowController: NSWindowController, NSWindowDelegate {
       canvasEffects: state.canvasEffectsSnapshot,
       cropRect: state.cropRect,
       isCutoutApplied: cutoutSnapshot.isApplied,
-      cutoutImageData: cutoutSnapshot.cutoutImageData
+      cutoutImageData: cutoutSnapshot.cutoutImageData,
+      didCutoutAutoApplyCrop: cutoutSnapshot.didAutoApplyCrop,
+      cutoutAutoAppliedCropRect: cutoutSnapshot.autoAppliedCropRect
     )
   }
 }

@@ -33,6 +33,10 @@ struct AnnotationSessionData {
   var isCutoutApplied: Bool = false
   /// PNG data for the cutout source image (alpha preserved) when cutout is active.
   var cutoutImageData: Data? = nil
+  /// True if current crop was auto-applied by cutout logic.
+  var didCutoutAutoApplyCrop: Bool = false
+  /// Stored auto-applied crop rect to preserve deterministic toggle-off behavior.
+  var cutoutAutoAppliedCropRect: CGRect? = nil
 }
 
 /// Manages annotation window instances
@@ -223,7 +227,9 @@ final class AnnotateManager {
     canvasEffects: AnnotationCanvasEffects,
     cropRect: CGRect?,
     isCutoutApplied: Bool = false,
-    cutoutImageData: Data? = nil
+    cutoutImageData: Data? = nil,
+    didCutoutAutoApplyCrop: Bool = false,
+    cutoutAutoAppliedCropRect: CGRect? = nil
   ) {
     sessionCache[itemId] = AnnotationSessionData(
       originalImageData: originalImageData,
@@ -231,7 +237,9 @@ final class AnnotateManager {
       canvasEffects: canvasEffects,
       cropRect: cropRect,
       isCutoutApplied: isCutoutApplied,
-      cutoutImageData: cutoutImageData
+      cutoutImageData: cutoutImageData,
+      didCutoutAutoApplyCrop: didCutoutAutoApplyCrop,
+      cutoutAutoAppliedCropRect: cutoutAutoAppliedCropRect
     )
   }
 
