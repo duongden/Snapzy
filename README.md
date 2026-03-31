@@ -29,9 +29,10 @@
 
 ## Features
 
-- **Screenshot**: fullscreen or selected-area capture, OCR text extraction, window shadow capture (macOS 14+), multi-format export (PNG/JPG/WebP), hide desktop icons/widgets, quick screenshot during recording
+- **Screenshot**: fullscreen or selected-area capture, OCR text extraction, transparent object cutout capture with optional safe auto-crop, window shadow capture (macOS 14+), multi-format export (PNG/JPG/WebP), hide desktop icons/widgets, quick screenshot during recording
 - **Screen Recording**: video or GIF output, system audio + microphone, mouse click highlights, keystroke overlays, live on-screen annotations, remember last area, GIF resizing
-- **Annotation Editor**: shapes, arrows, text, filled rectangles, blur/pixelate, counters, crop, mockup backgrounds with 3D renderer, zoom/pan (pinch + keyboard), drag-to-app, configurable tool shortcuts
+- **Annotation Editor**: shapes, arrows, text, filled rectangles, blur/pixelate, counters, crop, remove background with crop-aware auto-crop support, mockup backgrounds with 3D renderer, zoom/pan (pinch + keyboard), drag-to-app, configurable tool shortcuts
+- **After Capture Settings**: per-mode action matrix for screenshot/recording plus a separate global remove-background auto-crop toggle (enabled by default)
 - **Video Editor**: trim with visual timeline + frame strip, zoom segments with auto-focus (Follow Mouse), wallpaper backgrounds + padding, custom export dimensions, animated GIF viewer, undo/redo
 - **Quick Access**: floating panel after every capture with copy, edit, drag-to-app, open, and delete actions
 - **Shortcuts**: fully configurable global shortcuts for capture, recording, and annotation tools with system conflict detection
