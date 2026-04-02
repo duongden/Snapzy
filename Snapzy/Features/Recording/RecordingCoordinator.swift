@@ -629,7 +629,7 @@ final class RecordingCoordinator: ObservableObject {
 
       switch result {
       case .success:
-        SoundManager.play("Glass")
+        SoundManager.playScreenshotCapture()
         // PostCaptureActionHandler is triggered automatically via
         // ScreenCaptureManager.captureCompletedPublisher → ScreenCaptureViewModel
       case .failure(let error):

@@ -274,7 +274,7 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
       lastCaptureResult = result
 
       if case .success = result {
-        SoundManager.play("Glass")
+        SoundManager.playScreenshotCapture()
       }
     }
   }
@@ -354,7 +354,7 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
           self.lastCaptureResult = result
 
           if case .success = result {
-            SoundManager.play("Glass")
+            SoundManager.playScreenshotCapture()
           }
         }
       }
@@ -641,7 +641,7 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
 
             switch result {
             case .success:
-              SoundManager.play("Glass")
+              SoundManager.playScreenshotCapture()
             case .failure(let error):
               AppToastManager.shared.show(
                 message: error.localizedDescription,
