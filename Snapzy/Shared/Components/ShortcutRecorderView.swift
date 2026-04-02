@@ -41,55 +41,50 @@ struct ShortcutRecorderView: View {
   }
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 4) {
-      HStack(spacing: 12) {
-        Image(systemName: icon)
-          .font(.title2)
-          .foregroundColor(.secondary)
-          .frame(width: 28)
+    HStack(spacing: 12) {
+      Image(systemName: icon)
+        .font(.title2)
+        .foregroundColor(.secondary)
+        .frame(width: 28)
 
-        VStack(alignment: .leading, spacing: 2) {
-          Text(label)
-            .fontWeight(.medium)
-          if !description.isEmpty {
-            Text(description)
-              .font(.caption)
-              .foregroundColor(.secondary)
-          }
-        }
-
-        Spacer()
-
-        Button {
-          startRecording()
-        } label: {
-          if isRecording {
-            Text("Press keys...")
-              .font(.system(size: 12, weight: .medium))
-              .foregroundColor(.accentColor)
-              .frame(minWidth: 100)
-          } else {
-            KeyCapGroupView(parts: shortcut.displayParts)
-          }
-        }
-        .buttonStyle(ShortcutKeycapButtonStyle(isRecording: isRecording))
-        .disabled(!isInteractionEnabled)
-        .help(isInteractionEnabled ? "Click to record a shortcut." : "Turn this shortcut on to edit it.")
-
-        if let toggleBinding {
-          HStack(spacing: 6) {
-            Text(toggleBinding.wrappedValue ? "On" : "Off")
-              .font(.caption)
-              .foregroundColor(.secondary)
-
-            Toggle("", isOn: toggleBinding)
-              .labelsHidden()
-          }
+      VStack(alignment: .leading, spacing: 2) {
+        Text(label)
+          .fontWeight(.medium)
+        if !description.isEmpty {
+          Text(description)
+            .font(.caption)
+            .foregroundColor(.secondary)
         }
       }
 
-      if let validationIssue {
-        ShortcutValidationMessageView(issue: validationIssue, leadingInset: 40)
+      Spacer()
+
+      Button {
+        startRecording()
+      } label: {
+        if isRecording {
+          Text("Press keys...")
+            .font(.system(size: 12, weight: .medium))
+            .foregroundColor(.accentColor)
+            .frame(minWidth: 100)
+        } else {
+          KeyCapGroupView(parts: shortcut.displayParts)
+        }
+      }
+      .buttonStyle(ShortcutKeycapButtonStyle(isRecording: isRecording))
+      .shortcutValidationHighlight(issue: validationIssue)
+      .disabled(!isInteractionEnabled)
+      .help(isInteractionEnabled ? "Click to record a shortcut." : "Turn this shortcut on to edit it.")
+
+      if let toggleBinding {
+        HStack(spacing: 6) {
+          Text(toggleBinding.wrappedValue ? "On" : "Off")
+            .font(.caption)
+            .foregroundColor(.secondary)
+
+          Toggle("", isOn: toggleBinding)
+            .labelsHidden()
+        }
       }
     }
     .padding(.vertical, 4)
@@ -185,43 +180,137 @@ struct ShortcutKeycapButtonStyle: ButtonStyle {
   }
 }
 
-struct ShortcutValidationMessageView: View {
+// MARK: - Validation Highlight + Popover
+
+/// Lightweight coordinator ensuring only one validation popover is visible at a time.
+/// Uses a closure callback to dismiss the previous popover — no Combine import needed.
+@MainActor
+enum ShortcutValidationPopoverCoordinator {
+  private static var activeDismiss: (() -> Void)?
+  private static var activeID: String?
+
+  static func show(id: String, dismiss: @escaping () -> Void) {
+    // Dismiss previous if different
+    if activeID != id {
+      activeDismiss?()
+    }
+    activeID = id
+    activeDismiss = dismiss
+  }
+
+  static func clear(id: String) {
+    guard activeID == id else { return }
+    activeID = nil
+    activeDismiss = nil
+  }
+}
+
+/// Popover content for validation messages — styled for macOS popover chrome.
+private struct ShortcutValidationPopoverContent: View {
   let issue: ShortcutValidationIssue
-  var leadingInset: CGFloat = 0
 
   var body: some View {
     HStack(spacing: 6) {
-      Spacer()
-        .frame(width: leadingInset)
-
       Image(systemName: iconName)
         .font(.system(size: 11, weight: .semibold))
-        .foregroundColor(messageColor)
+        .foregroundColor(accentColor)
 
       Text(issue.message)
-        .font(.caption)
-        .foregroundColor(messageColor)
-
-      Spacer(minLength: 0)
+        .font(.system(size: 12, weight: .medium))
+        .foregroundColor(.primary)
+        .lineLimit(2)
+        .fixedSize(horizontal: false, vertical: true)
     }
+    .padding(.horizontal, 10)
+    .padding(.vertical, 6)
+    .frame(minWidth: 160, maxWidth: 260)
   }
 
-  private var messageColor: Color {
-    switch issue.severity {
-    case .warning:
-      return .orange
-    case .error:
-      return .red
-    }
+  private var accentColor: Color {
+    issue.severity == .error ? .red : .orange
   }
 
   private var iconName: String {
-    switch issue.severity {
-    case .warning:
-      return "exclamationmark.triangle.fill"
-    case .error:
-      return "xmark.octagon.fill"
-    }
+    issue.severity == .error ? "xmark.octagon.fill" : "exclamationmark.triangle.fill"
+  }
+}
+
+/// ViewModifier: red/orange pill highlight on keycap + macOS popover tooltip.
+struct ShortcutValidationHighlightModifier: ViewModifier {
+  let issue: ShortcutValidationIssue?
+
+  @State private var showPopover = false
+  @State private var dismissTask: DispatchWorkItem?
+  @State private var instanceID = UUID().uuidString
+
+  func body(content: Content) -> some View {
+    content
+      .background(
+        RoundedRectangle(cornerRadius: 7, style: .continuous)
+          .fill(pillFill)
+          .animation(.easeOut(duration: 0.2), value: issue)
+      )
+      .overlay(
+        RoundedRectangle(cornerRadius: 7, style: .continuous)
+          .strokeBorder(pillBorder, lineWidth: 1)
+          .animation(.easeOut(duration: 0.2), value: issue)
+      )
+      .popover(
+        isPresented: $showPopover,
+        attachmentAnchor: .rect(.bounds),
+        arrowEdge: .bottom
+      ) {
+        if let issue {
+          ShortcutValidationPopoverContent(issue: issue)
+        }
+      }
+      .onChange(of: issue) { newIssue in
+        dismissTask?.cancel()
+        if newIssue != nil {
+          // Dismiss any other active popover first
+          ShortcutValidationPopoverCoordinator.show(id: instanceID) { [self] in
+            dismissTask?.cancel()
+            showPopover = false
+          }
+          withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+            showPopover = true
+          }
+          let task = DispatchWorkItem { [self] in
+            showPopover = false
+            ShortcutValidationPopoverCoordinator.clear(id: instanceID)
+          }
+          dismissTask = task
+          DispatchQueue.main.asyncAfter(deadline: .now() + 4, execute: task)
+        } else {
+          showPopover = false
+          ShortcutValidationPopoverCoordinator.clear(id: instanceID)
+        }
+      }
+      .onChange(of: showPopover) { isShowing in
+        if !isShowing {
+          ShortcutValidationPopoverCoordinator.clear(id: instanceID)
+        }
+      }
+  }
+
+  private var pillFill: Color {
+    guard let issue else { return .clear }
+    return issue.severity == .error
+      ? Color.red.opacity(0.12)
+      : Color.orange.opacity(0.12)
+  }
+
+  private var pillBorder: Color {
+    guard let issue else { return .clear }
+    return issue.severity == .error
+      ? Color.red.opacity(0.35)
+      : Color.orange.opacity(0.35)
+  }
+}
+
+extension View {
+  func shortcutValidationHighlight(issue: ShortcutValidationIssue?) -> some View {
+    modifier(ShortcutValidationHighlightModifier(issue: issue))
   }
 }
 
