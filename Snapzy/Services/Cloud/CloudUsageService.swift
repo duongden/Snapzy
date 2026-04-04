@@ -26,20 +26,19 @@ private actor CloudUsageWorker {
     accessKey: String,
     secretKey: String
   ) async throws -> CloudUsageInfo {
-    let endpoint = buildEndpoint(config: config)
-    let region = config.region.isEmpty ? "us-east-1" : config.region
+    let context = makeRequestContext(config: config)
 
     let (totalBytes, objectCount) = try await listAllObjects(
       config: config,
-      endpoint: endpoint,
-      region: region,
+      endpoint: context.endpoint,
+      region: context.region,
       accessKey: accessKey,
       secretKey: secretKey
     )
     let lifecycleDays = try? await getLifecycleRuleDays(
       config: config,
-      endpoint: endpoint,
-      region: region,
+      endpoint: context.endpoint,
+      region: context.region,
       accessKey: accessKey,
       secretKey: secretKey
     )
@@ -91,9 +90,16 @@ private actor CloudUsageWorker {
       else {
         let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
         let body = String(data: data, encoding: .utf8) ?? ""
+        logger.error(
+          "ListObjectsV2 failed: status=\(statusCode), provider=\(config.providerType.rawValue), region=\(region), endpoint=\(endpoint), body=\(body)"
+        )
         throw CloudError.uploadFailed(
           statusCode: statusCode,
-          message: "ListObjectsV2 failed: \(body)"
+          message: usageErrorMessage(
+            statusCode: statusCode,
+            body: body,
+            providerType: config.providerType
+          )
         )
       }
 
@@ -134,12 +140,64 @@ private actor CloudUsageWorker {
     return LifecycleRuleParser.parseSnapzyExpireDays(from: data)
   }
 
-  private func buildEndpoint(config: CloudConfiguration) -> String {
-    if let ep = config.endpoint, !ep.isEmpty {
-      return ep
+  private struct RequestContext {
+    let endpoint: String
+    let region: String
+  }
+
+  private func makeRequestContext(config: CloudConfiguration) -> RequestContext {
+    let region: String
+    switch config.providerType {
+    case .cloudflareR2:
+      // R2 requires region=auto for Signature V4.
+      region = "auto"
+    case .awsS3:
+      let configuredRegion = config.region.trimmingCharacters(in: .whitespacesAndNewlines)
+      region = configuredRegion.isEmpty ? "us-east-1" : configuredRegion
     }
-    let region = config.region.isEmpty ? "us-east-1" : config.region
-    return "https://s3.\(region).amazonaws.com"
+
+    let endpoint: String
+    if let configuredEndpoint = config.endpoint?.trimmingCharacters(in: .whitespacesAndNewlines),
+      !configuredEndpoint.isEmpty
+    {
+      endpoint = normalizeEndpoint(configuredEndpoint)
+    } else {
+      endpoint = "https://s3.\(region).amazonaws.com"
+    }
+
+    return RequestContext(endpoint: endpoint, region: region)
+  }
+
+  private func normalizeEndpoint(_ endpoint: String) -> String {
+    var value = endpoint
+    if !value.lowercased().hasPrefix("http://") && !value.lowercased().hasPrefix("https://") {
+      value = "https://\(value)"
+    }
+    while value.hasSuffix("/") {
+      value.removeLast()
+    }
+    return value
+  }
+
+  private func usageErrorMessage(
+    statusCode: Int,
+    body: String,
+    providerType: CloudProviderType
+  ) -> String {
+    let lowercasedBody = body.lowercased()
+
+    if statusCode == 403 || lowercasedBody.contains("accessdenied") {
+      return "Cloud status check failed: missing bucket list permission (e.g. s3:ListBucket)."
+    }
+
+    if statusCode == 401 || lowercasedBody.contains("signature") || lowercasedBody.contains("unauthorized") {
+      if providerType == .cloudflareR2 {
+        return "Cloud status check failed: unauthorized. Verify R2 endpoint and API credentials."
+      }
+      return "Cloud status check failed: unauthorized. Verify endpoint, region, and credentials."
+    }
+
+    return "ListObjectsV2 failed: \(body)"
   }
 }
 
@@ -262,7 +320,7 @@ final class CloudUsageService: ObservableObject {
       } catch {
         await MainActor.run {
           if self.usageInfo == nil {
-            self.error = error.localizedDescription
+            self.error = Self.userFacingErrorMessage(from: error)
           } else {
             self.error = "Couldn't refresh cloud stats. Showing cached data."
           }
@@ -355,10 +413,29 @@ final class CloudUsageService: ObservableObject {
 
   private static func makeConfigFingerprint(config: CloudConfiguration) -> String {
     let bucket = config.bucket.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-    let region = config.region.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    let region: String
+    switch config.providerType {
+    case .cloudflareR2:
+      region = "auto"
+    case .awsS3:
+      let configuredRegion = config.region.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+      region = configuredRegion.isEmpty ? "us-east-1" : configuredRegion
+    }
     let endpoint = (config.endpoint ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
       .lowercased()
     return "\(config.providerType.rawValue)|\(bucket)|\(region)|\(endpoint)"
+  }
+
+  private static func userFacingErrorMessage(from error: Error) -> String {
+    if let cloudError = error as? CloudError {
+      switch cloudError {
+      case .uploadFailed(_, let message):
+        return message
+      default:
+        break
+      }
+    }
+    return error.localizedDescription
   }
 }
 
