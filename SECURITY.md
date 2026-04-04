@@ -61,6 +61,7 @@ All permissions are requested through standard macOS prompts and can be revoked 
 
 - **Keychain storage** — Cloud access keys and secret keys are stored exclusively in the macOS Keychain, never in plaintext files or UserDefaults.
 - **Optional password protection** — Users can set a protection password for cloud credentials. The password is SHA-256 hashed before storage; no plaintext password is persisted.
+- **Manual encrypted transfer** — Users may export cloud credentials only through an explicit in-app action. Exported archives are encrypted with a user-supplied passphrase and are never uploaded or synced by Snapzy.
 - **No relay servers** — Uploads go directly from the app to the user's own S3/R2 endpoint using AWS Signature V4 authentication. Snapzy never proxies or stores files on its own infrastructure.
 
 ## Auto-Updates (Sparkle)

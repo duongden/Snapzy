@@ -33,6 +33,18 @@ final class CloudManager: ObservableObject {
     static let storedSecurely = "Stored securely in Keychain"
   }
 
+  private enum CredentialSnapshotState {
+    case value(String)
+    case missing
+    case unavailable
+  }
+
+  private enum CredentialAvailability {
+    case available
+    case missing
+    case unavailable
+  }
+
   // MARK: - Init
 
   private init() {
@@ -46,6 +58,7 @@ final class CloudManager: ObservableObject {
     {
       providerType = type
     }
+    repairStaleConfiguredStateIfNeeded()
     cachedConfiguration = loadConfiguration()
     cachedMaskedAccessKey = isConfigured ? DisplayStrings.storedSecurely : DisplayStrings.hidden
   }
@@ -59,8 +72,19 @@ final class CloudManager: ObservableObject {
     accessKey: String,
     secretKey: String
   ) throws {
-    try saveToKeychain(item: .accessKey, value: accessKey)
-    try saveToKeychain(item: .secretKey, value: secretKey)
+    let accessKeySnapshot = snapshotCredential(item: .accessKey, context: "saveConfiguration.snapshot.accessKey")
+    let secretKeySnapshot = snapshotCredential(item: .secretKey, context: "saveConfiguration.snapshot.secretKey")
+
+    do {
+      try saveToKeychain(item: .accessKey, value: accessKey)
+      try saveToKeychain(item: .secretKey, value: secretKey)
+    } catch {
+      rollbackCredentialWrite(
+        accessKeySnapshot: accessKeySnapshot,
+        secretKeySnapshot: secretKeySnapshot
+      )
+      throw error
+    }
 
     let defaults = UserDefaults.standard
     defaults.set(config.providerType.rawValue, forKey: PreferencesKeys.cloudProviderType)
@@ -182,6 +206,21 @@ final class CloudManager: ObservableObject {
     loadFromKeychain(item: .secretKey, context: "loadSecretKey") ?? ""
   }
 
+  /// Create an in-memory snapshot of the current cloud configuration for transfer export.
+  func exportTransferPayload() throws -> CloudCredentialTransferPayload {
+    guard let configuration = loadConfiguration(),
+      let credentials = loadCredentialPair(context: "exportTransferPayload")
+    else {
+      throw CloudError.notConfigured
+    }
+
+    return CloudCredentialTransferPayload(
+      configuration: configuration,
+      accessKey: credentials.accessKey,
+      secretKey: credentials.secretKey
+    )
+  }
+
   /// Clear all cloud configuration and credentials
   func clearConfiguration() {
     deleteFromKeychain(item: .accessKey)
@@ -248,6 +287,86 @@ final class CloudManager: ObservableObject {
     let prefix = String(accessKey.prefix(4))
     let suffix = String(accessKey.suffix(4))
     return "\(prefix)••••\(suffix)"
+  }
+
+  private func snapshotCredential(item: CloudKeychainItem, context: String) -> CredentialSnapshotState {
+    switch CloudKeychainStore.read(item: item, context: context) {
+    case .success(let value):
+      return .value(value)
+    case .itemNotFound:
+      return .missing
+    case .authRequired(let status):
+      logger.notice("Keychain auth required (\(status, privacy: .public)) [\(context, privacy: .public)]")
+      return .unavailable
+    case .interactionNotAllowed:
+      logger.notice("Keychain interaction not allowed [\(context, privacy: .public)]")
+      return .unavailable
+    case .error(let status):
+      logger.error("Keychain read failed (\(status, privacy: .public)) [\(context, privacy: .public)]")
+      return .unavailable
+    }
+  }
+
+  private func rollbackCredentialWrite(
+    accessKeySnapshot: CredentialSnapshotState,
+    secretKeySnapshot: CredentialSnapshotState
+  ) {
+    restoreCredential(item: .accessKey, snapshot: accessKeySnapshot, context: "saveConfiguration.rollback.accessKey")
+    restoreCredential(item: .secretKey, snapshot: secretKeySnapshot, context: "saveConfiguration.rollback.secretKey")
+  }
+
+  private func restoreCredential(
+    item: CloudKeychainItem,
+    snapshot: CredentialSnapshotState,
+    context: String
+  ) {
+    switch snapshot {
+    case .value(let value):
+      do {
+        try saveToKeychain(item: item, value: value)
+      } catch {
+        logger.error(
+          "Keychain rollback write failed [\(context, privacy: .public)]: \(error.localizedDescription)"
+        )
+      }
+    case .missing:
+      deleteFromKeychain(item: item, context: context)
+    case .unavailable:
+      logger.notice("Keychain rollback skipped due unavailable snapshot [\(context, privacy: .public)]")
+    }
+  }
+
+  private func repairStaleConfiguredStateIfNeeded() {
+    guard isConfigured else { return }
+
+    switch determineCredentialAvailabilityForRepair() {
+    case .available:
+      return
+    case .missing:
+      logger.error("Stale cloud configured state detected with missing credentials. Clearing cloud configuration.")
+      clearConfiguration()
+    case .unavailable:
+      logger.notice("Skipping cloud configured-state repair because keychain is temporarily unavailable.")
+    }
+  }
+
+  private func determineCredentialAvailabilityForRepair() -> CredentialAvailability {
+    let accessOutcome = CloudKeychainStore.read(
+      item: .accessKey,
+      context: "repairConfiguredState.accessKey"
+    )
+    let secretOutcome = CloudKeychainStore.read(
+      item: .secretKey,
+      context: "repairConfiguredState.secretKey"
+    )
+
+    if accessOutcome.isTemporarilyUnavailable || secretOutcome.isTemporarilyUnavailable {
+      return .unavailable
+    }
+    if accessOutcome.hasValue && secretOutcome.hasValue {
+      return .available
+    }
+    return .missing
   }
 
   /// Validate credentials using in-memory values before persistence.
@@ -461,7 +580,31 @@ final class CloudManager: ObservableObject {
     }
   }
 
-  private func deleteFromKeychain(item: CloudKeychainItem) {
-    CloudKeychainStore.delete(item: item)
+  private func deleteFromKeychain(item: CloudKeychainItem, context: String? = nil) {
+    let issues = CloudKeychainStore.delete(item: item)
+    guard !issues.isEmpty else { return }
+
+    let contextLabel = context ?? "clearConfiguration"
+    for issue in issues {
+      logger.error(
+        "Keychain delete failed (\(issue.status, privacy: .public)) [\(contextLabel, privacy: .public)] at \(issue.locationDescription, privacy: .public)"
+      )
+    }
+  }
+}
+
+private extension CloudKeychainReadOutcome {
+  var hasValue: Bool {
+    if case .success = self { return true }
+    return false
+  }
+
+  var isTemporarilyUnavailable: Bool {
+    switch self {
+    case .authRequired, .interactionNotAllowed, .error:
+      return true
+    case .success, .itemNotFound:
+      return false
+    }
   }
 }

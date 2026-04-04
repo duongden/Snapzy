@@ -7,7 +7,26 @@
 //  password initialization (existing users), password gate (edit verification).
 //
 
+import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
+
+private enum CloudProtectedAction {
+  case editCredentials
+  case importCredentials
+  case exportCredentials
+
+  var passwordPrompt: String {
+    switch self {
+    case .editCredentials:
+      return "Enter your protection password to edit cloud credentials."
+    case .importCredentials:
+      return "Enter your protection password to import credentials over the current cloud setup."
+    case .exportCredentials:
+      return "Enter your protection password to export the current cloud credentials."
+    }
+  }
+}
 
 /// Cloud settings tab in Preferences
 struct CloudSettingsView: View {
@@ -16,11 +35,17 @@ struct CloudSettingsView: View {
 
   @State private var isEditing = false
   @State private var showResetConfirmation = false
+  @State private var showImportReplaceConfirmation = false
 
-  // Password gate states
   @State private var showPasswordGate = false
-  @State private var passwordGateInput = ""
-  @State private var passwordGateError: String?
+  @State private var pendingProtectedAction: CloudProtectedAction?
+  @State private var showImportSheet = false
+  @State private var showExportSheet = false
+  @State private var selectedImportArchiveURL: URL?
+  @State private var exportPayload: CloudCredentialTransferPayload?
+  @State private var importedPayload: CloudCredentialTransferPayload?
+  @State private var importNotice: String?
+  @State private var transferAlertMessage: String?
 
   // Existing user password initialization
   @State private var showPasswordInit = false
@@ -40,8 +65,17 @@ struct CloudSettingsView: View {
       } else {
         CloudCredentialFormView(
           isEditing: isEditing,
-          onSave: { isEditing = false },
-          onCancel: { isEditing = false }
+          importedPayload: importedPayload,
+          importNotice: importNotice,
+          onImport: handleImportTapped,
+          onSave: {
+            clearImportedDraft()
+            isEditing = false
+          },
+          onCancel: {
+            clearImportedDraft()
+            isEditing = false
+          }
         )
       }
     }
@@ -55,24 +89,64 @@ struct CloudSettingsView: View {
     } message: {
       Text("This will remove all cloud credentials, protection password, and settings. This action cannot be undone.")
     }
+    .alert("Import Cloud Credentials?", isPresented: $showImportReplaceConfirmation) {
+      Button("Import", role: .destructive) {
+        beginImportFlow()
+      }
+      Button("Cancel", role: .cancel) {}
+    } message: {
+      Text("Snapzy will load the imported values into the editor. Your current saved configuration stays unchanged until you click Save & Test.")
+    }
+    .alert("Cloud Transfer", isPresented: transferAlertBinding) {
+      Button("OK", role: .cancel) {
+        transferAlertMessage = nil
+      }
+    } message: {
+      Text(transferAlertMessage ?? "")
+    }
     .sheet(isPresented: $showPasswordGate) {
       CloudPasswordGateView(
+        purposeDescription: pendingProtectedAction?.passwordPrompt
+          ?? CloudProtectedAction.editCredentials.passwordPrompt,
         onVerified: {
           showPasswordGate = false
-          passwordGateInput = ""
-          passwordGateError = nil
-          isEditing = true
+          performPendingProtectedAction()
         },
         onReset: {
           showPasswordGate = false
+          pendingProtectedAction = nil
           showResetConfirmation = true
         },
         onCancel: {
           showPasswordGate = false
-          passwordGateInput = ""
-          passwordGateError = nil
+          pendingProtectedAction = nil
         }
       )
+    }
+    .sheet(isPresented: $showImportSheet, onDismiss: {
+      selectedImportArchiveURL = nil
+    }) {
+      if let selectedImportArchiveURL {
+        CloudCredentialImportSheet(
+          fileURL: selectedImportArchiveURL,
+          onImported: handleImportedPayload,
+          onCancel: { showImportSheet = false }
+        )
+      }
+    }
+    .sheet(isPresented: $showExportSheet, onDismiss: {
+      exportPayload = nil
+    }) {
+      if let exportPayload {
+        CloudCredentialExportSheet(
+          payload: exportPayload,
+          onExported: { destinationURL in
+            showExportSheet = false
+            transferAlertMessage = "Encrypted archive saved to \(destinationURL.path)."
+          },
+          onCancel: { showExportSheet = false }
+        )
+      }
     }
     .onAppear {
       cloudManager.refreshCloudSummaryForDisplay()
@@ -155,6 +229,14 @@ struct CloudSettingsView: View {
             Label("Edit", systemImage: "pencil")
           }
 
+          Button(action: handleImportTapped) {
+            Label("Import", systemImage: "square.and.arrow.down")
+          }
+
+          Button(action: handleExportTapped) {
+            Label("Export", systemImage: "square.and.arrow.up")
+          }
+
           Button(role: .destructive, action: { showResetConfirmation = true }) {
             Label("Reset", systemImage: "arrow.counterclockwise")
           }
@@ -166,11 +248,95 @@ struct CloudSettingsView: View {
   }
 
   private func handleEditTapped() {
+    beginProtectedAction(.editCredentials)
+  }
+
+  private func handleImportTapped() {
+    if cloudManager.isConfigured {
+      beginProtectedAction(.importCredentials)
+    } else {
+      beginImportFlow()
+    }
+  }
+
+  private func handleExportTapped() {
+    beginProtectedAction(.exportCredentials)
+  }
+
+  private func beginProtectedAction(_ action: CloudProtectedAction) {
+    pendingProtectedAction = action
     if CloudPasswordService.shared.shouldRequirePasswordForEdit() {
       showPasswordGate = true
     } else {
+      performProtectedAction(action)
+    }
+  }
+
+  private func performPendingProtectedAction() {
+    guard let pendingProtectedAction else { return }
+    performProtectedAction(pendingProtectedAction)
+  }
+
+  private func performProtectedAction(_ action: CloudProtectedAction) {
+    pendingProtectedAction = nil
+
+    switch action {
+    case .editCredentials:
+      clearImportedDraft()
+      isEditing = true
+    case .importCredentials:
+      showImportReplaceConfirmation = true
+    case .exportCredentials:
+      do {
+        exportPayload = try cloudManager.exportTransferPayload()
+        showExportSheet = true
+      } catch {
+        transferAlertMessage = error.localizedDescription
+      }
+    }
+  }
+
+  private func beginImportFlow() {
+    guard let selectedURL = selectImportArchiveURL() else { return }
+    selectedImportArchiveURL = selectedURL
+    showImportSheet = true
+  }
+
+  private func handleImportedPayload(_ payload: CloudCredentialTransferPayload) {
+    showImportSheet = false
+    importedPayload = payload
+    importNotice = "Imported credentials loaded. Review the values, then click Save & Test to apply them."
+
+    if cloudManager.isConfigured {
       isEditing = true
     }
+  }
+
+  private func clearImportedDraft() {
+    importedPayload = nil
+    importNotice = nil
+  }
+
+  private func selectImportArchiveURL() -> URL? {
+    let panel = NSOpenPanel()
+    panel.canChooseDirectories = false
+    panel.canChooseFiles = true
+    panel.allowsMultipleSelection = false
+    panel.allowedContentTypes = [CloudCredentialTransferService.archiveContentType]
+    panel.title = "Import Cloud Credentials"
+    panel.message = "Choose a Snapzy encrypted credential archive."
+    return panel.runModal() == .OK ? panel.url : nil
+  }
+
+  private var transferAlertBinding: Binding<Bool> {
+    Binding(
+      get: { transferAlertMessage != nil },
+      set: { isPresented in
+        if !isPresented {
+          transferAlertMessage = nil
+        }
+      }
+    )
   }
 
   // MARK: - Cloud Stats Section
@@ -320,6 +486,7 @@ private struct CloudStatCard: View {
 
 /// Modal sheet requiring password verification before allowing edit access
 private struct CloudPasswordGateView: View {
+  let purposeDescription: String
   let onVerified: () -> Void
   let onReset: () -> Void
   let onCancel: () -> Void
@@ -337,7 +504,7 @@ private struct CloudPasswordGateView: View {
           .foregroundColor(.accentColor)
         Text("Password Required")
           .font(.headline)
-        Text("Enter your protection password to edit cloud credentials.")
+        Text(purposeDescription)
           .font(.system(size: 12))
           .foregroundColor(.secondary)
           .multilineTextAlignment(.center)
@@ -513,6 +680,9 @@ private struct CloudPasswordInitView: View {
 /// Reusable form for creating or editing cloud credentials
 private struct CloudCredentialFormView: View {
   let isEditing: Bool
+  let importedPayload: CloudCredentialTransferPayload?
+  let importNotice: String?
+  let onImport: (() -> Void)?
   let onSave: () -> Void
   let onCancel: () -> Void
 
@@ -540,6 +710,34 @@ private struct CloudCredentialFormView: View {
 
   var body: some View {
     Group {
+      if let importNotice {
+        Section {
+          HStack(alignment: .top, spacing: 6) {
+            Image(systemName: "info.circle.fill")
+              .foregroundColor(.accentColor)
+              .font(.system(size: 12))
+              .padding(.top, 1)
+            Text(importNotice)
+              .font(.system(size: 11))
+              .foregroundColor(.secondary)
+              .fixedSize(horizontal: false, vertical: true)
+          }
+          .padding(.vertical, 4)
+        }
+      }
+
+      if !isEditing, let onImport {
+        Section("Transfer") {
+          Button(action: onImport) {
+            Label("Import Encrypted Archive", systemImage: "square.and.arrow.down")
+          }
+
+          Text("Load a previously exported Snapzy cloud archive to prefill this form.")
+            .font(.system(size: 11))
+            .foregroundColor(.secondary)
+        }
+      }
+
       Section("Cloud Provider") {
         SettingRow(icon: "cloud", title: "Provider", description: nil, tooltip: "Select your cloud storage provider") {
           Picker("", selection: $providerType) {
@@ -749,9 +947,11 @@ private struct CloudCredentialFormView: View {
     }
     .onAppear {
       refreshPasswordState()
-      if isEditing {
-        loadExistingConfig()
-      }
+      applyInitialFormState()
+    }
+    .onChange(of: importedPayload) { newValue in
+      guard let newValue else { return }
+      applyImportedPayload(newValue)
     }
     .alert("Proceed Without Password?", isPresented: $showSkipPasswordWarning) {
       Button("Skip", role: .destructive) {
@@ -891,6 +1091,27 @@ private struct CloudCredentialFormView: View {
 
   private func refreshPasswordState() {
     hasExistingPassword = CloudPasswordService.shared.hasPasswordConfigured
+  }
+
+  private func applyInitialFormState() {
+    if let importedPayload {
+      applyImportedPayload(importedPayload)
+    } else if isEditing {
+      loadExistingConfig()
+    }
+  }
+
+  private func applyImportedPayload(_ payload: CloudCredentialTransferPayload) {
+    providerType = payload.configuration.providerType
+    bucket = payload.configuration.bucket
+    region = payload.configuration.region
+    endpoint = payload.configuration.endpoint ?? ""
+    customDomain = payload.configuration.customDomain ?? ""
+    expireTime = payload.configuration.expireTime
+    accessKey = payload.accessKey
+    secretKey = payload.secretKey
+    validationError = nil
+    validationSuccess = false
   }
 }
 

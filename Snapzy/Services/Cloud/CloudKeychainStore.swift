@@ -45,11 +45,20 @@ enum CloudKeychainReadOutcome {
   case error(OSStatus)
 }
 
+struct CloudKeychainDeleteIssue {
+  let locationDescription: String
+  let status: OSStatus
+}
+
 struct CloudKeychainStore {
   private struct Location {
     let service: String
     let account: String
     let usesDataProtection: Bool
+
+    var description: String {
+      "\(service):\(account):\(usesDataProtection ? "dp" : "legacy")"
+    }
   }
 
   private static let logger = Logger(subsystem: "Snapzy", category: "CloudKeychainStore")
@@ -60,7 +69,7 @@ struct CloudKeychainStore {
     let primaryLocation = Location(
       service: currentService,
       account: item.account,
-      usesDataProtection: true
+      usesDataProtection: false
     )
     let primaryOutcome = readValue(at: primaryLocation)
 
@@ -97,16 +106,16 @@ struct CloudKeychainStore {
     let location = Location(
       service: currentService,
       account: item.account,
-      usesDataProtection: true
+      usesDataProtection: false
     )
     let matchQuery = baseQuery(for: location)
     let updateAttributes: [String: Any] = [
       kSecValueData as String: data,
-      kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlocked,
     ]
 
     let updateStatus = SecItemUpdate(matchQuery as CFDictionary, updateAttributes as CFDictionary)
     if updateStatus == errSecSuccess {
+      cleanupLegacyLocations(for: item)
       return
     }
     guard updateStatus == errSecItemNotFound else {
@@ -115,25 +124,28 @@ struct CloudKeychainStore {
 
     var addQuery = matchQuery
     addQuery[kSecValueData as String] = data
-    addQuery[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlocked
 
     let addStatus = SecItemAdd(addQuery as CFDictionary, nil)
     guard addStatus == errSecSuccess else {
       throw CloudError.keychainError("SecItemAdd failed: \(addStatus)")
     }
+    cleanupLegacyLocations(for: item)
   }
 
-  static func delete(item: CloudKeychainItem) {
+  @discardableResult
+  static func delete(item: CloudKeychainItem) -> [CloudKeychainDeleteIssue] {
+    var issues: [CloudKeychainDeleteIssue] = []
     let primaryLocation = Location(
       service: currentService,
       account: item.account,
-      usesDataProtection: true
+      usesDataProtection: false
     )
-    deleteValue(at: primaryLocation)
+    collectDeleteIssue(at: primaryLocation, into: &issues)
 
     for legacyLocation in legacyLocations(for: item) {
-      deleteValue(at: legacyLocation)
+      collectDeleteIssue(at: legacyLocation, into: &issues)
     }
+    return issues
   }
 
   private static func migrateLegacyValue(
@@ -152,10 +164,14 @@ struct CloudKeychainStore {
   }
 
   private static func legacyLocations(for item: CloudKeychainItem) -> [Location] {
-    var locations = [
-      Location(service: currentService, account: item.account, usesDataProtection: false)
-    ]
+    var locations: [Location] = []
 
+    // Data Protection keychain items (from builds that used DP keychain)
+    locations.append(
+      Location(service: currentService, account: item.account, usesDataProtection: true)
+    )
+
+    // Legacy service + legacy account names
     for account in item.legacyAccounts {
       locations.append(Location(service: legacyService, account: account, usesDataProtection: false))
     }
@@ -191,6 +207,30 @@ struct CloudKeychainStore {
   private static func deleteValue(at location: Location) {
     let query = baseQuery(for: location)
     SecItemDelete(query as CFDictionary)
+  }
+
+  private static func cleanupLegacyLocations(for item: CloudKeychainItem) {
+    for location in legacyLocations(for: item) {
+      let status = SecItemDelete(baseQuery(for: location) as CFDictionary)
+      guard status != errSecSuccess, status != errSecItemNotFound else { continue }
+      logger.error(
+        "Legacy cleanup failed at \(location.description, privacy: .public): \(status, privacy: .public)"
+      )
+    }
+  }
+
+  private static func collectDeleteIssue(
+    at location: Location,
+    into issues: inout [CloudKeychainDeleteIssue]
+  ) {
+    let status = SecItemDelete(baseQuery(for: location) as CFDictionary)
+    guard status != errSecSuccess, status != errSecItemNotFound else { return }
+    issues.append(
+      CloudKeychainDeleteIssue(
+        locationDescription: location.description,
+        status: status
+      )
+    )
   }
 
   private static func baseQuery(for location: Location) -> [String: Any] {
