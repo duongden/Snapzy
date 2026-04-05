@@ -64,6 +64,7 @@ enum PreferencesKeys {
   static let recordingIncludeOwnApp = "recording.includeOwnApp"
   static let recordingHighlightClicks = "recording.highlightClicks"
   static let recordingShowKeystrokes = "recording.showKeystrokes"
+  static let videoEditorZoomTransitionDuration = "videoEditor.zoom.transitionDuration"
 
   // Mouse Highlight Customization
   static let mouseHighlightSize = "recording.mouseHighlight.size"

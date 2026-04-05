@@ -294,6 +294,7 @@ enum VideoEditorExporter {
       autoFocusPaths: adjustedAutoFocusPaths,
       renderSize: baseRenderSize,
       frameDuration: sourceFrameDuration,
+      transitionDuration: state.zoomTransitionDuration,
       backgroundStyle: state.backgroundStyle,
       backgroundPadding: state.backgroundPadding,
       cornerRadius: state.backgroundCornerRadius

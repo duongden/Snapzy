@@ -73,6 +73,7 @@ struct ZoomSettingsContent: View {
   @State private var localCenter: CGPoint = CGPoint(x: 0.5, y: 0.5)
   @State private var localFollowSpeed: Double = AutoFocusSettings.defaultFollowSpeed
   @State private var localFocusMargin: CGFloat = AutoFocusSettings.defaultFocusMargin
+  @State private var localTransitionDuration: TimeInterval = ZoomCalculator.defaultTransitionDuration
 
   private var selectedSegment: ZoomSegment? {
     state.selectedZoomSegment
@@ -91,6 +92,7 @@ struct ZoomSettingsContent: View {
           Divider()
 
           zoomLevelSection
+          transitionSmoothnessSection
 
           if segment.isAutoMode {
             followSpeedSection
@@ -118,6 +120,9 @@ struct ZoomSettingsContent: View {
       syncLocalState()
     }
     .onChange(of: state.zoomSegments) { _ in
+      syncLocalState()
+    }
+    .onChange(of: state.zoomTransitionDuration) { _ in
       syncLocalState()
     }
   }
@@ -333,6 +338,81 @@ struct ZoomSettingsContent: View {
     }
   }
 
+  private struct TransitionPreset {
+    let title: String
+    let value: TimeInterval
+  }
+
+  private var transitionPresets: [TransitionPreset] {
+    [
+      TransitionPreset(title: "Fast", value: ZoomCalculator.fastTransitionDuration),
+      TransitionPreset(title: "Balanced", value: ZoomCalculator.balancedTransitionDuration),
+      TransitionPreset(title: "Smooth", value: ZoomCalculator.smoothTransitionDuration),
+    ]
+  }
+
+  private var transitionSmoothnessSection: some View {
+    VStack(alignment: .leading, spacing: 6) {
+      HStack {
+        Text("Transition Smoothness")
+          .font(.system(size: 11, weight: .medium))
+          .foregroundColor(.secondary)
+
+        Spacer()
+
+        Text(transitionDisplayValue(for: localTransitionDuration))
+          .font(.system(size: 11, weight: .semibold))
+          .monospacedDigit()
+      }
+
+      HStack(spacing: 8) {
+        Text("Fast")
+          .font(.system(size: 9))
+          .foregroundColor(.secondary)
+
+        Slider(
+          value: $localTransitionDuration,
+          in: ZoomCalculator.transitionDurationRange,
+          step: 0.05
+        ) { isEditing in
+          if !isEditing {
+            applyTransitionDuration()
+          }
+        }
+
+        Text("Smooth")
+          .font(.system(size: 9))
+          .foregroundColor(.secondary)
+      }
+
+      HStack(spacing: 4) {
+        ForEach(transitionPresets, id: \.title) { preset in
+          Button {
+            localTransitionDuration = preset.value
+            applyTransitionDuration()
+          } label: {
+            Text(preset.title)
+              .font(.system(size: 9, weight: .medium))
+              .padding(.horizontal, 6)
+              .padding(.vertical, 3)
+              .background(
+                abs(localTransitionDuration - preset.value) < 0.02
+                  ? ZoomColors.primary.opacity(0.3)
+                  : Color.white.opacity(0.1)
+              )
+              .cornerRadius(4)
+          }
+          .buttonStyle(.plain)
+        }
+      }
+
+      Text("Applies to all zoom items in this editor. Higher values feel calmer when entering or leaving zoom.")
+        .font(.system(size: 10))
+        .foregroundColor(.secondary.opacity(0.8))
+        .fixedSize(horizontal: false, vertical: true)
+    }
+  }
+
   private var focusMarginSection: some View {
     VStack(alignment: .leading, spacing: 6) {
       HStack {
@@ -459,6 +539,8 @@ struct ZoomSettingsContent: View {
   }
 
   private func syncLocalState() {
+    localTransitionDuration = state.zoomTransitionDuration
+
     guard let segment = selectedSegment else { return }
     localZoomLevel = segment.zoomLevel
     localCenter = segment.zoomCenter
@@ -491,10 +573,18 @@ struct ZoomSettingsContent: View {
     state.updateZoom(id: id, zoomCenter: center)
   }
 
+  private func applyTransitionDuration() {
+    state.zoomTransitionDuration = localTransitionDuration
+  }
+
   private func zoomDisplayValue(for level: CGFloat) -> String {
     if level == floor(level) {
       return String(format: "%.0fx", level)
     }
     return String(format: "%.1fx", level)
+  }
+
+  private func transitionDisplayValue(for duration: TimeInterval) -> String {
+    "\(Int((duration * 1000).rounded())) ms"
   }
 }

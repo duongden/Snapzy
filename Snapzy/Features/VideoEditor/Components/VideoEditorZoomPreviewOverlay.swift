@@ -15,8 +15,6 @@ struct ZoomableVideoPlayerSection: View {
   @State private var currentZoomLevel: CGFloat = 1.0
   @State private var currentZoomCenter: CGPoint = CGPoint(x: 0.5, y: 0.5)
 
-  private let cameraTransitionDuration: Double = 0.3
-
   var body: some View {
     GeometryReader { geometry in
       let scaleFactor = previewScaleFactor(for: geometry.size)
@@ -62,6 +60,9 @@ struct ZoomableVideoPlayerSection: View {
       updateZoomState(at: CMTimeGetSeconds(state.currentTime))
     }
     .onChange(of: state.autoFocusPaths) { _ in
+      updateZoomState(at: CMTimeGetSeconds(state.currentTime))
+    }
+    .onChange(of: state.zoomTransitionDuration) { _ in
       updateZoomState(at: CMTimeGetSeconds(state.currentTime))
     }
   }
@@ -258,13 +259,17 @@ struct ZoomableVideoPlayerSection: View {
   // MARK: - State Updates
 
   private func updateZoomState(at time: TimeInterval) {
-    let cameraState = state.cameraState(
-      at: time,
-      transitionDuration: cameraTransitionDuration
-    )
-
-    currentZoomLevel = cameraState.zoomLevel
-    currentZoomCenter = cameraState.center
+    let cameraState = state.cameraState(at: time)
+    let shouldAnimate = !state.isScrubbing
+    if shouldAnimate {
+      withAnimation(.linear(duration: 1.0 / 60.0)) {
+        currentZoomLevel = cameraState.zoomLevel
+        currentZoomCenter = cameraState.center
+      }
+    } else {
+      currentZoomLevel = cameraState.zoomLevel
+      currentZoomCenter = cameraState.center
+    }
   }
 }
 

@@ -99,6 +99,17 @@ final class VideoEditorState: ObservableObject {
   @Published var isZoomTrackVisible: Bool = true
   @Published var isVideoInfoSidebarVisible: Bool = false
   @Published var isRightSidebarVisible: Bool = false
+  @Published var zoomTransitionDuration: TimeInterval = ZoomCalculator.defaultTransitionDuration {
+    didSet {
+      let clamped = ZoomCalculator.clampTransitionDuration(zoomTransitionDuration)
+      if abs(clamped - zoomTransitionDuration) > 0.0001 {
+        zoomTransitionDuration = clamped
+        return
+      }
+
+      UserDefaults.standard.set(clamped, forKey: PreferencesKeys.videoEditorZoomTransitionDuration)
+    }
+  }
 
   // MARK: - Auto Focus
 
@@ -278,6 +289,7 @@ final class VideoEditorState: ObservableObject {
     self.originalURL = originalURL ?? url
     self.asset = AVAsset(url: url)
     self.player = AVPlayer(playerItem: AVPlayerItem(asset: asset))
+    self.zoomTransitionDuration = Self.loadZoomTransitionDuration()
 
     setupTimeObserver()
     setupEndObserver()
@@ -802,13 +814,16 @@ final class VideoEditorState: ObservableObject {
 
   func cameraState(
     at time: TimeInterval,
-    transitionDuration: TimeInterval = 0.3
+    transitionDuration: TimeInterval? = nil
   ) -> VideoEditorCameraState {
-    VideoEditorAutoFocusEngine.resolvedCameraState(
+    let effectiveDuration = ZoomCalculator.clampTransitionDuration(
+      transitionDuration ?? zoomTransitionDuration
+    )
+    return VideoEditorAutoFocusEngine.resolvedCameraState(
       at: time,
       segments: zoomSegments,
       autoFocusPaths: autoFocusPaths,
-      transitionDuration: transitionDuration
+      transitionDuration: effectiveDuration
     )
   }
 
@@ -959,6 +974,16 @@ final class VideoEditorState: ObservableObject {
         }
       }
     }
+  }
+
+  private static func loadZoomTransitionDuration() -> TimeInterval {
+    guard let stored = UserDefaults.standard.object(
+      forKey: PreferencesKeys.videoEditorZoomTransitionDuration
+    ) as? Double else {
+      return ZoomCalculator.defaultTransitionDuration
+    }
+
+    return ZoomCalculator.clampTransitionDuration(stored)
   }
 
   private func setupEndObserver() {

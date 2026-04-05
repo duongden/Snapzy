@@ -179,8 +179,13 @@ enum VideoEditorAutoFocusEngine {
       return .identity
     }
 
-    let center = path.isEmpty ? segment.zoomCenter : center(at: time, in: path)
-    return VideoEditorCameraState(zoomLevel: interpolated.level, center: center)
+    let targetCenter = path.isEmpty ? segment.zoomCenter : center(at: time, in: path)
+    let blendedCenter = ZoomCalculator.interpolateCenter(
+      from: ZoomCalculator.neutralCenter,
+      to: targetCenter,
+      progress: interpolated.progress
+    )
+    return VideoEditorCameraState(zoomLevel: interpolated.level, center: blendedCenter)
   }
 
   static func resolvedCameraState(
@@ -200,9 +205,14 @@ enum VideoEditorAutoFocusEngine {
         currentTime: time,
         transitionDuration: transitionDuration
       )
+      let blendedCenter = ZoomCalculator.interpolateCenter(
+        from: ZoomCalculator.neutralCenter,
+        to: interpolated.center,
+        progress: interpolated.progress
+      )
       return VideoEditorCameraState(
         zoomLevel: interpolated.level,
-        center: interpolated.center
+        center: blendedCenter
       )
     case .auto:
       return cameraState(

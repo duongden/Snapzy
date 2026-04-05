@@ -11,6 +11,15 @@ import CoreGraphics
 /// Utility enum for zoom-related calculations
 enum ZoomCalculator {
 
+  // MARK: - Transition Configuration
+
+  static let transitionDurationRange: ClosedRange<TimeInterval> = 0.15...0.75
+  static let defaultTransitionDuration: TimeInterval = 0.4
+  static let fastTransitionDuration: TimeInterval = 0.25
+  static let balancedTransitionDuration: TimeInterval = 0.4
+  static let smoothTransitionDuration: TimeInterval = 0.6
+  static let neutralCenter: CGPoint = CGPoint(x: 0.5, y: 0.5)
+
   // MARK: - Crop Rect Calculation
 
   /// Calculate the crop rectangle for a given zoom level and center point
@@ -63,6 +72,22 @@ enum ZoomCalculator {
     t
   }
 
+  static func clampTransitionDuration(_ value: TimeInterval) -> TimeInterval {
+    min(max(value, transitionDurationRange.lowerBound), transitionDurationRange.upperBound)
+  }
+
+  static func interpolateCenter(
+    from start: CGPoint,
+    to end: CGPoint,
+    progress: Double
+  ) -> CGPoint {
+    let t = CGFloat(min(max(progress, 0), 1))
+    return CGPoint(
+      x: start.x + (end.x - start.x) * t,
+      y: start.y + (end.y - start.y) * t
+    )
+  }
+
   // MARK: - Zoom Interpolation
 
   /// Calculate current zoom state for a given time within a segment
@@ -74,7 +99,7 @@ enum ZoomCalculator {
   static func interpolateZoom(
     segment: ZoomSegment,
     currentTime: TimeInterval,
-    transitionDuration: TimeInterval = 0.3
+    transitionDuration: TimeInterval = defaultTransitionDuration
   ) -> (level: CGFloat, center: CGPoint, progress: Double) {
     guard segment.isEnabled else {
       return (level: 1.0, center: CGPoint(x: 0.5, y: 0.5), progress: 0)
@@ -92,9 +117,12 @@ enum ZoomCalculator {
       return (level: 1.0, center: segment.zoomCenter, progress: 0)
     }
 
-    // Calculate transition phases
-    let zoomInEnd = min(transitionDuration, segment.duration / 3)
-    let zoomOutStart = max(segment.duration - transitionDuration, segment.duration * 2 / 3)
+    // Keep transition smooth but avoid overlap on short segments.
+    let clampedTransition = clampTransitionDuration(transitionDuration)
+    let maxTransitionPerEdge = segment.duration * 0.45
+    let effectiveTransition = min(clampedTransition, maxTransitionPerEdge)
+    let zoomInEnd = max(effectiveTransition, 0.0001)
+    let zoomOutStart = min(max(segment.duration - effectiveTransition, 0), segment.duration)
 
     var progress: Double
 

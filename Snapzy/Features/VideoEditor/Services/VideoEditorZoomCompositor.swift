@@ -34,7 +34,7 @@ class ZoomCompositor {
     autoFocusPaths: [UUID: [AutoFocusCameraSample]] = [:],
     renderSize: CGSize,
     frameDuration: CMTime = CMTime(value: 1, timescale: 30),
-    transitionDuration: TimeInterval = 0.3,
+    transitionDuration: TimeInterval = ZoomCalculator.defaultTransitionDuration,
     backgroundStyle: BackgroundStyle = .none,
     backgroundPadding: CGFloat = 0,
     cornerRadius: CGFloat = 0
@@ -43,7 +43,7 @@ class ZoomCompositor {
     self.autoFocusPaths = autoFocusPaths
     self.renderSize = renderSize
     self.frameDuration = frameDuration
-    self.transitionDuration = transitionDuration
+    self.transitionDuration = ZoomCalculator.clampTransitionDuration(transitionDuration)
     self.backgroundStyle = backgroundStyle
     self.backgroundPadding = backgroundPadding
     self.cornerRadius = cornerRadius
@@ -183,6 +183,7 @@ class ZoomVideoCompositionInstruction: NSObject, AVVideoCompositionInstructionPr
 // MARK: - Custom Video Compositor
 
 class ZoomVideoCompositorClass: NSObject, AVVideoCompositing {
+  private let minimumRenderableZoomLevel: CGFloat = 1.0001
 
   // Required properties
   var sourcePixelBufferAttributes: [String: any Sendable]? {
@@ -289,7 +290,7 @@ class ZoomVideoCompositorClass: NSObject, AVVideoCompositing {
     let zoomCenter = cameraState.center
 
     // If no zoom and no background, pass through original frame
-    if zoomLevel < 1.01 && !instruction.hasBackground {
+    if zoomLevel <= minimumRenderableZoomLevel && !instruction.hasBackground {
       request.finish(withComposedVideoFrame: sourceBuffer)
       return
     }
@@ -320,7 +321,7 @@ class ZoomVideoCompositorClass: NSObject, AVVideoCompositing {
     let sourceExtent = processedImage.extent
 
     // Apply zoom if needed
-    if zoomLevel > 1.01 {
+    if zoomLevel > minimumRenderableZoomLevel {
       let cropRect = ZoomCalculator.calculateCropRect(
         center: center,
         zoomLevel: zoomLevel,
