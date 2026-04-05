@@ -35,6 +35,7 @@ final class AnnotateWindowController: NSWindowController, NSWindowDelegate {
         ?? item.thumbnail
       self.originalImageData = sessionData.originalImageData
       self.state = AnnotateState(image: image, url: item.url, quickAccessItemId: item.id, cloudURL: item.cloudURL, cloudKey: item.cloudKey, isCloudStale: item.isCloudStale)
+      self.state.restoreEmbeddedImageAssets(from: sessionData.embeddedImageAssetsData)
       self.state.annotations = sessionData.annotations
       self.state.applyCanvasEffects(sessionData.canvasEffects)
       self.state.cropRect = sessionData.cropRect
@@ -356,6 +357,16 @@ final class AnnotateWindowController: NSWindowController, NSWindowDelegate {
       }
     }
 
+    NotificationCenter.default.addObserver(
+      forName: .annotatePasteImage,
+      object: window,
+      queue: .main
+    ) { [weak self] _ in
+      MainActor.assumeIsolated {
+        self?.performPasteImage()
+      }
+    }
+
     // Drag-to-app: hide window when drag starts
     NotificationCenter.default.addObserver(
       forName: .annotateDragStarted,
@@ -420,6 +431,40 @@ final class AnnotateWindowController: NSWindowController, NSWindowDelegate {
     let newPinned = !state.isPinned
     window.level = newPinned ? .floating : .normal
     state.isPinned = newPinned
+  }
+
+  private func performPasteImage() {
+    let pasteboard = NSPasteboard.general
+
+    let pastedURLs = pasteboard.readObjects(
+      forClasses: [NSURL.self],
+      options: [.urlReadingFileURLsOnly: true]
+    )
+
+    if let imageURLs = (pastedURLs as? [URL]) ?? (pastedURLs as? [NSURL])?.map({ $0 as URL }) {
+      for imageURL in imageURLs where AnnotateCanvasView.isValidImageFile(url: imageURL) {
+        if state.importImage(from: imageURL) {
+          return
+        }
+      }
+    }
+
+    let rawTypes: [NSPasteboard.PasteboardType] = [.png, .tiff]
+    for rawType in rawTypes {
+      guard let data = pasteboard.data(forType: rawType),
+            let image = NSImage(data: data) else { continue }
+      if state.importImage(image, sourceURL: nil, sourceData: data) {
+        return
+      }
+    }
+
+    if let images = pasteboard.readObjects(forClasses: [NSImage.self], options: nil) as? [NSImage],
+       let image = images.first,
+       state.importImage(image, sourceURL: nil) {
+      return
+    }
+
+    NSSound.beep()
   }
 
   /// Silent save — renders once, updates thumbnail instantly, closes window, saves in background
@@ -734,6 +779,11 @@ final class AnnotateWindowController: NSWindowController, NSWindowDelegate {
   private func saveSessionCache() {
     guard let itemId = quickAccessItemId,
           let imageData = originalImageData else { return }
+    let startedAt = CFAbsoluteTimeGetCurrent()
+    let embeddedImageAssetsData = state.embeddedImageAssetsSnapshotData()
+    let snapshotDurationMs = Int((CFAbsoluteTimeGetCurrent() - startedAt) * 1_000)
+    let embeddedBytes = embeddedImageAssetsData.values.reduce(0) { $0 + $1.count }
+
     let cutoutSnapshot = state.cutoutSnapshot()
     AnnotateManager.shared.saveSessionData(
       for: itemId,
@@ -744,7 +794,18 @@ final class AnnotateWindowController: NSWindowController, NSWindowDelegate {
       isCutoutApplied: cutoutSnapshot.isApplied,
       cutoutImageData: cutoutSnapshot.cutoutImageData,
       didCutoutAutoApplyCrop: cutoutSnapshot.didAutoApplyCrop,
-      cutoutAutoAppliedCropRect: cutoutSnapshot.autoAppliedCropRect
+      cutoutAutoAppliedCropRect: cutoutSnapshot.autoAppliedCropRect,
+      embeddedImageAssetsData: embeddedImageAssetsData
     )
+
+    let totalDurationMs = Int((CFAbsoluteTimeGetCurrent() - startedAt) * 1_000)
+    DiagnosticLogger.shared.log(.debug, .annotate, "Session cache updated", context: [
+      "itemId": itemId.uuidString,
+      "annotations": "\(state.annotations.count)",
+      "embeddedAssets": "\(embeddedImageAssetsData.count)",
+      "embeddedBytes": "\(embeddedBytes)",
+      "snapshotMs": "\(snapshotDurationMs)",
+      "totalMs": "\(totalDurationMs)"
+    ])
   }
 }

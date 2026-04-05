@@ -12,6 +12,15 @@ import SwiftUI
 /// Central state for annotation window
 @MainActor
 final class AnnotateState: ObservableObject {
+  private struct AnnotationSnapshot {
+    var annotations: [AnnotationItem]
+    var embeddedImageAssets: [UUID: NSImage]
+  }
+
+  private static let importedImageMaxCoverage: CGFloat = 0.7
+  private static let importedImageCascadeStep: CGFloat = 24
+  private static let importedImageCountWarningThreshold: Int = 8
+  private static let importedImagePixelBudgetWarningThreshold: Int64 = 40_000_000
 
   // MARK: - Source Image
 
@@ -349,6 +358,18 @@ final class AnnotateState: ObservableObject {
   // MARK: - Annotations
 
   @Published var annotations: [AnnotationItem] = []
+  /// Imported image assets referenced by `.embeddedImage(assetId)` annotations.
+  @Published private(set) var embeddedImageAssets: [UUID: NSImage] = [:]
+  /// Non-blocking warning for large multi-image imports.
+  @Published private(set) var importWarningMessage: String?
+  /// Original bytes for imported assets when available (file drop/paste raw data).
+  /// Reused for session snapshot to avoid expensive re-encode on save/copy path.
+  private var embeddedImageSourceData: [UUID: Data] = [:]
+  /// Cached serialized bytes for imported assets that did not have direct source data.
+  private var embeddedImageSnapshotCacheData: [UUID: Data] = [:]
+  /// Cached decoded CGImage for faster repeated canvas/export draws.
+  private var embeddedImageCGImageCache: [UUID: CGImage] = [:]
+  private var lastImportWarningSignature: String?
   @Published var selectedAnnotationId: UUID?
   @Published var editingTextAnnotationId: UUID?
 
@@ -428,8 +449,8 @@ final class AnnotateState: ObservableObject {
   @Published var canUndo: Bool = false
   @Published var canRedo: Bool = false
 
-  private var undoStack: [[AnnotationItem]] = []
-  private var redoStack: [[AnnotationItem]] = []
+  private var undoStack: [AnnotationSnapshot] = []
+  private var redoStack: [AnnotationSnapshot] = []
 
   init(image: NSImage, url: URL, quickAccessItemId: UUID? = nil, cloudURL: URL? = nil, cloudKey: String? = nil, isCloudStale: Bool = false) {
     self.sourceImage = image
@@ -458,21 +479,7 @@ final class AnnotateState: ObservableObject {
       DiagnosticLogger.shared.log(.error, .annotate, "Failed to load image", context: ["file": url.lastPathComponent])
       return
     }
-    resetBackgroundCutoutState(markUnsaved: false)
-    self.sourceImage = image
-    self.sourceURL = url
-    // Reset annotations for new image
-    annotations.removeAll()
-    undoStack.removeAll()
-    redoStack.removeAll()
-    canUndo = false
-    canRedo = false
-
-    // Reset crop for new image
-    cropRect = nil
-    isCropActive = false
-    editorMode = .annotate  // Reset to annotate mode
-    hasUnsavedChanges = false
+    resetCanvasForNewBaseImage(image: image, url: url)
   }
 
   /// Load image directly
@@ -481,11 +488,159 @@ final class AnnotateState: ObservableObject {
       "size": "\(Int(image.size.width))x\(Int(image.size.height))",
       "url": url?.lastPathComponent ?? "nil"
     ])
+    resetCanvasForNewBaseImage(image: image, url: url)
+  }
+
+  /// Import an image from a file URL.
+  /// - Returns: true if import succeeded.
+  @discardableResult
+  func importImage(from url: URL) -> Bool {
+    guard let image = Self.loadImageWithCorrectScale(from: url) else { return false }
+    if !hasImage {
+      loadImage(image, url: url)
+      return true
+    }
+
+    addImportedImage(image, sourceData: Self.readImageData(from: url))
+    return true
+  }
+
+  /// Import an image object. If the editor has no base image, this becomes the base image.
+  /// Otherwise it is appended as a movable embedded-image layer.
+  /// - Returns: true if import succeeded.
+  @discardableResult
+  func importImage(_ image: NSImage, sourceURL: URL? = nil, sourceData: Data? = nil) -> Bool {
+    if !hasImage {
+      loadImage(image, url: sourceURL)
+      return true
+    }
+
+    addImportedImage(image, sourceData: sourceData)
+    return true
+  }
+
+  /// Append an additional image layer into the current annotation canvas.
+  func addImportedImage(_ image: NSImage, sourceData: Data? = nil) {
+    guard hasImage else {
+      loadImage(image, url: nil)
+      return
+    }
+
+    let imageSize = normalizedCanvasImageSize(for: image)
+    guard imageSize.width > 0, imageSize.height > 0 else { return }
+
+    let placementBounds = importedImagePlacementBounds(for: imageSize)
+    let assetId = UUID()
+
+    saveState()
+    embeddedImageAssets[assetId] = image
+    if let sourceData {
+      embeddedImageSourceData[assetId] = sourceData
+      embeddedImageSnapshotCacheData[assetId] = sourceData
+    }
+    embeddedImageCGImageCache.removeValue(forKey: assetId)
+    let item = AnnotationItem(
+      type: .embeddedImage(assetId),
+      bounds: placementBounds,
+      properties: AnnotationProperties(strokeColor: .clear, fillColor: .clear, strokeWidth: 1)
+    )
+    annotations.append(item)
+    selectedAnnotationId = item.id
+    editingTextAnnotationId = nil
+    selectedTool = .selection
+    hasUnsavedChanges = true
+    updateImportWarningIfNeeded()
+  }
+
+  func embeddedImage(for assetId: UUID) -> NSImage? {
+    embeddedImageAssets[assetId]
+  }
+
+  func embeddedCGImage(for assetId: UUID) -> CGImage? {
+    if let cached = embeddedImageCGImageCache[assetId] {
+      return cached
+    }
+    guard let image = embeddedImageAssets[assetId],
+          let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
+      return nil
+    }
+    embeddedImageCGImageCache[assetId] = cgImage
+    return cgImage
+  }
+
+  func restoreEmbeddedImageAssets(from snapshot: [UUID: Data]) {
+    var restored: [UUID: NSImage] = [:]
+    for (assetId, data) in snapshot {
+      guard let image = NSImage(data: data) else { continue }
+      restored[assetId] = image
+    }
+    embeddedImageAssets = restored
+    embeddedImageSourceData = snapshot
+    embeddedImageSnapshotCacheData = snapshot
+    embeddedImageCGImageCache.removeAll()
+    pruneUnusedEmbeddedAssets()
+    updateImportWarningIfNeeded()
+  }
+
+  func embeddedImageAssetsSnapshotData() -> [UUID: Data] {
+    let startedAt = CFAbsoluteTimeGetCurrent()
+    pruneUnusedEmbeddedAssets()
+    var result: [UUID: Data] = [:]
+    let usedAssetIds = usedEmbeddedImageAssetIDs()
+    for assetId in usedAssetIds {
+      if let sourceData = embeddedImageSourceData[assetId] {
+        result[assetId] = sourceData
+        continue
+      }
+      if let cachedData = embeddedImageSnapshotCacheData[assetId] {
+        result[assetId] = cachedData
+        continue
+      }
+      guard let image = embeddedImageAssets[assetId] else { continue }
+      if let tiffData = image.tiffRepresentation {
+        embeddedImageSnapshotCacheData[assetId] = tiffData
+        result[assetId] = tiffData
+        continue
+      }
+      guard let pngData = Self.pngData(from: image) else { continue }
+      embeddedImageSnapshotCacheData[assetId] = pngData
+      result[assetId] = pngData
+    }
+
+    let durationMs = Int((CFAbsoluteTimeGetCurrent() - startedAt) * 1_000)
+    let totalBytes = result.values.reduce(0) { $0 + $1.count }
+    DiagnosticLogger.shared.log(.debug, .annotate, "Embedded image snapshot serialized", context: [
+      "assets": "\(result.count)",
+      "bytes": "\(totalBytes)",
+      "durationMs": "\(durationMs)"
+    ])
+    return result
+  }
+
+  func pruneUnusedEmbeddedAssets() {
+    let usedAssetIds = usedEmbeddedImageAssetIDs()
+    embeddedImageAssets = embeddedImageAssets.filter { usedAssetIds.contains($0.key) }
+    embeddedImageSourceData = embeddedImageSourceData.filter { usedAssetIds.contains($0.key) }
+    embeddedImageSnapshotCacheData = embeddedImageSnapshotCacheData.filter { usedAssetIds.contains($0.key) }
+    embeddedImageCGImageCache = embeddedImageCGImageCache.filter { usedAssetIds.contains($0.key) }
+  }
+
+  func consumeImportWarningMessage() {
+    importWarningMessage = nil
+  }
+
+  private func resetCanvasForNewBaseImage(image: NSImage, url: URL?) {
     resetBackgroundCutoutState(markUnsaved: false)
-    self.sourceImage = image
-    self.sourceURL = url
+    sourceImage = image
+    sourceURL = url
     // Reset annotations for new image
     annotations.removeAll()
+    embeddedImageAssets.removeAll()
+    embeddedImageSourceData.removeAll()
+    embeddedImageSnapshotCacheData.removeAll()
+    embeddedImageCGImageCache.removeAll()
+    selectedAnnotationId = nil
+    editingTextAnnotationId = nil
     undoStack.removeAll()
     redoStack.removeAll()
     canUndo = false
@@ -494,8 +649,10 @@ final class AnnotateState: ObservableObject {
     // Reset crop for new image
     cropRect = nil
     isCropActive = false
-    editorMode = .annotate  // Reset to annotate mode
+    editorMode = .annotate
     hasUnsavedChanges = false
+    importWarningMessage = nil
+    lastImportWarningSignature = nil
   }
 
   // MARK: - Background Cutout
@@ -734,11 +891,111 @@ final class AnnotateState: ObservableObject {
     return image
   }
 
+  private static func readImageData(from url: URL) -> Data? {
+    SandboxFileAccessManager.shared.withScopedAccess(to: url) {
+      try? Data(contentsOf: url, options: .mappedIfSafe)
+    }
+  }
+
+  private func usedEmbeddedImageAssetIDs() -> Set<UUID> {
+    Set(annotations.compactMap { annotation -> UUID? in
+      guard case .embeddedImage(let assetId) = annotation.type else { return nil }
+      return assetId
+    })
+  }
+
+  private func totalEmbeddedImagePixelCount(for assetIds: Set<UUID>) -> Int64 {
+    assetIds.reduce(into: Int64(0)) { total, assetId in
+      guard let image = embeddedImageAssets[assetId] else { return }
+      if let rep = image.representations.first {
+        total += Int64(rep.pixelsWide) * Int64(rep.pixelsHigh)
+        return
+      }
+      if let cgImage = embeddedCGImage(for: assetId) {
+        total += Int64(cgImage.width) * Int64(cgImage.height)
+        return
+      }
+      total += Int64(max(image.size.width, 0) * max(image.size.height, 0))
+    }
+  }
+
+  private func updateImportWarningIfNeeded() {
+    let usedAssetIds = usedEmbeddedImageAssetIDs()
+    let layerCount = usedAssetIds.count
+    let totalPixelCount = totalEmbeddedImagePixelCount(for: usedAssetIds)
+
+    let shouldWarnByCount = layerCount > Self.importedImageCountWarningThreshold
+    let shouldWarnByPixels = totalPixelCount > Self.importedImagePixelBudgetWarningThreshold
+    guard shouldWarnByCount || shouldWarnByPixels else {
+      lastImportWarningSignature = nil
+      importWarningMessage = nil
+      return
+    }
+
+    let totalMegaPixels = Double(totalPixelCount) / 1_000_000
+    let warning = "Performance warning: imported layers \(layerCount), total ~\(String(format: "%.1f", totalMegaPixels))MP. Canvas may be less smooth."
+    let signature = "\(layerCount)-\(totalPixelCount)"
+
+    guard signature != lastImportWarningSignature else { return }
+    lastImportWarningSignature = signature
+    importWarningMessage = warning
+    DiagnosticLogger.shared.log(.warning, .annotate, "Imported image budget warning", context: [
+      "layers": "\(layerCount)",
+      "pixels": "\(totalPixelCount)",
+      "thresholdPixels": "\(Self.importedImagePixelBudgetWarningThreshold)"
+    ])
+  }
+
+  private func normalizedCanvasImageSize(for image: NSImage) -> CGSize {
+    if image.size.width > 0, image.size.height > 0 {
+      return image.size
+    }
+
+    guard let rep = image.representations.first else { return .zero }
+    return CGSize(width: rep.pixelsWide, height: rep.pixelsHigh)
+  }
+
+  private func importedImagePlacementBounds(for imageSize: CGSize) -> CGRect {
+    let drawingBounds: CGRect
+    if let cropRect = cropRect, !isCropActive {
+      drawingBounds = cropRect
+    } else {
+      drawingBounds = CGRect(origin: .zero, size: CGSize(width: imageWidth, height: imageHeight))
+    }
+
+    let maxWidth = max(1, drawingBounds.width * Self.importedImageMaxCoverage)
+    let maxHeight = max(1, drawingBounds.height * Self.importedImageMaxCoverage)
+    let scale = min(maxWidth / imageSize.width, maxHeight / imageSize.height, 1)
+    let targetSize = CGSize(
+      width: max(1, imageSize.width * scale),
+      height: max(1, imageSize.height * scale)
+    )
+
+    let existingEmbeddedCount = annotations.reduce(into: 0) { count, annotation in
+      if case .embeddedImage = annotation.type {
+        count += 1
+      }
+    }
+    let cascade = CGFloat(existingEmbeddedCount) * Self.importedImageCascadeStep
+    let baseX = drawingBounds.midX - targetSize.width / 2 + cascade
+    let baseY = drawingBounds.midY - targetSize.height / 2 - cascade
+
+    let minX = drawingBounds.minX
+    let maxX = drawingBounds.maxX - targetSize.width
+    let minY = drawingBounds.minY
+    let maxY = drawingBounds.maxY - targetSize.height
+
+    let clampedX = min(max(baseX, minX), maxX)
+    let clampedY = min(max(baseY, minY), maxY)
+
+    return CGRect(origin: CGPoint(x: clampedX, y: clampedY), size: targetSize)
+  }
+
   // MARK: - Undo/Redo Methods
 
   func saveState() {
     DiagnosticLogger.shared.log(.debug, .annotate, "Undo checkpoint", context: ["annotations": "\(annotations.count)"])
-    undoStack.append(annotations)
+    undoStack.append(currentSnapshot())
     redoStack.removeAll()
     canUndo = true
     canRedo = false
@@ -748,8 +1005,8 @@ final class AnnotateState: ObservableObject {
   func undo() {
     DiagnosticLogger.shared.log(.debug, .annotate, "Undo", context: ["stackDepth": "\(undoStack.count)"])
     guard let previous = undoStack.popLast() else { return }
-    redoStack.append(annotations)
-    annotations = previous
+    redoStack.append(currentSnapshot())
+    applySnapshot(previous)
     canUndo = !undoStack.isEmpty
     canRedo = true
   }
@@ -757,10 +1014,34 @@ final class AnnotateState: ObservableObject {
   func redo() {
     DiagnosticLogger.shared.log(.debug, .annotate, "Redo", context: ["stackDepth": "\(redoStack.count)"])
     guard let next = redoStack.popLast() else { return }
-    undoStack.append(annotations)
-    annotations = next
+    undoStack.append(currentSnapshot())
+    applySnapshot(next)
     canUndo = true
     canRedo = !redoStack.isEmpty
+  }
+
+  private func currentSnapshot() -> AnnotationSnapshot {
+    AnnotationSnapshot(
+      annotations: annotations,
+      embeddedImageAssets: embeddedImageAssets
+    )
+  }
+
+  private func applySnapshot(_ snapshot: AnnotationSnapshot) {
+    annotations = snapshot.annotations
+    embeddedImageAssets = snapshot.embeddedImageAssets
+    pruneUnusedEmbeddedAssets()
+    updateImportWarningIfNeeded()
+
+    if let selectedAnnotationId,
+       !annotations.contains(where: { $0.id == selectedAnnotationId }) {
+      self.selectedAnnotationId = nil
+    }
+
+    if let editingTextAnnotationId,
+       !annotations.contains(where: { $0.id == editingTextAnnotationId }) {
+      self.editingTextAnnotationId = nil
+    }
   }
 
   // MARK: - Counter
@@ -1077,6 +1358,8 @@ final class AnnotateState: ObservableObject {
     ])
     saveState()
     annotations.removeAll { $0.id == selectedId }
+    pruneUnusedEmbeddedAssets()
+    updateImportWarningIfNeeded()
     selectedAnnotationId = nil
   }
 

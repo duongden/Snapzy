@@ -19,19 +19,28 @@ struct AnnotationRenderer {
   var sourceImage: NSImage?
   var blurCacheManager: BlurCacheManager?
   var interactiveBlurAnnotationId: UUID?
+  var interactiveEmbeddedImageAnnotationId: UUID?
+  var embeddedImageProvider: ((UUID) -> NSImage?)?
+  var embeddedCGImageProvider: ((UUID) -> CGImage?)?
 
   init(
     context: CGContext,
     editingTextId: UUID? = nil,
     sourceImage: NSImage? = nil,
     blurCacheManager: BlurCacheManager? = nil,
-    interactiveBlurAnnotationId: UUID? = nil
+    interactiveBlurAnnotationId: UUID? = nil,
+    interactiveEmbeddedImageAnnotationId: UUID? = nil,
+    embeddedImageProvider: ((UUID) -> NSImage?)? = nil,
+    embeddedCGImageProvider: ((UUID) -> CGImage?)? = nil
   ) {
     self.context = context
     self.editingTextId = editingTextId
     self.sourceImage = sourceImage
     self.blurCacheManager = blurCacheManager
     self.interactiveBlurAnnotationId = interactiveBlurAnnotationId
+    self.interactiveEmbeddedImageAnnotationId = interactiveEmbeddedImageAnnotationId
+    self.embeddedImageProvider = embeddedImageProvider
+    self.embeddedCGImageProvider = embeddedCGImageProvider
   }
 
   func draw(_ annotation: AnnotationItem) {
@@ -79,6 +88,9 @@ struct AnnotationRenderer {
 
     case .text(let content):
       drawText(content, in: annotation.bounds, properties: annotation.properties)
+
+    case .embeddedImage(let assetId):
+      drawEmbeddedImage(assetId: assetId, annotationId: annotation.id, in: annotation.bounds)
     }
   }
 
@@ -230,6 +242,31 @@ struct AnnotationRenderer {
     let textRect = AnnotateTextLayout.textRect(for: content, font: font, in: bounds)
     let text = displayText as NSString
     text.draw(in: textRect, withAttributes: attributes)
+  }
+
+  private func drawEmbeddedImage(assetId: UUID, annotationId: UUID, in bounds: CGRect) {
+    let isInteractive = interactiveEmbeddedImageAnnotationId == annotationId
+    let interpolationQuality: CGInterpolationQuality = isInteractive ? .low : .high
+
+    if let cgImage = embeddedCGImageProvider?(assetId) {
+      context.saveGState()
+      context.interpolationQuality = interpolationQuality
+      context.draw(cgImage, in: bounds)
+      context.restoreGState()
+      return
+    }
+
+    guard let image = embeddedImageProvider?(assetId) else { return }
+    let sourceRect = CGRect(origin: .zero, size: image.size)
+    context.saveGState()
+    context.interpolationQuality = interpolationQuality
+    image.draw(
+      in: bounds,
+      from: sourceRect,
+      operation: .sourceOver,
+      fraction: 1.0
+    )
+    context.restoreGState()
   }
 
   private func makeRect(from start: CGPoint, to end: CGPoint) -> CGRect {

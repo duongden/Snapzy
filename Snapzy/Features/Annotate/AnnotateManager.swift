@@ -37,6 +37,8 @@ struct AnnotationSessionData {
   var didCutoutAutoApplyCrop: Bool = false
   /// Stored auto-applied crop rect to preserve deterministic toggle-off behavior.
   var cutoutAutoAppliedCropRect: CGRect? = nil
+  /// Imported image assets referenced by `.embeddedImage(assetId)` annotations.
+  var embeddedImageAssetsData: [UUID: Data] = [:]
 }
 
 /// Manages annotation window instances
@@ -229,7 +231,8 @@ final class AnnotateManager {
     isCutoutApplied: Bool = false,
     cutoutImageData: Data? = nil,
     didCutoutAutoApplyCrop: Bool = false,
-    cutoutAutoAppliedCropRect: CGRect? = nil
+    cutoutAutoAppliedCropRect: CGRect? = nil,
+    embeddedImageAssetsData: [UUID: Data] = [:]
   ) {
     sessionCache[itemId] = AnnotationSessionData(
       originalImageData: originalImageData,
@@ -239,7 +242,8 @@ final class AnnotateManager {
       isCutoutApplied: isCutoutApplied,
       cutoutImageData: cutoutImageData,
       didCutoutAutoApplyCrop: didCutoutAutoApplyCrop,
-      cutoutAutoAppliedCropRect: cutoutAutoAppliedCropRect
+      cutoutAutoAppliedCropRect: cutoutAutoAppliedCropRect,
+      embeddedImageAssetsData: embeddedImageAssetsData
     )
   }
 

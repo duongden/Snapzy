@@ -200,6 +200,24 @@ final class AnnotateExporter {
   }
 
   static func renderFinalImage(state: AnnotateState) -> NSImage? {
+    let startedAt = CFAbsoluteTimeGetCurrent()
+    let embeddedLayerCount = state.annotations.reduce(into: 0) { count, annotation in
+      if case .embeddedImage = annotation.type {
+        count += 1
+      }
+    }
+    var outputSizeDescription = "nil"
+    defer {
+      let durationMs = Int((CFAbsoluteTimeGetCurrent() - startedAt) * 1_000)
+      DiagnosticLogger.shared.log(.debug, .annotate, "Render final image completed", context: [
+        "mode": state.editorMode.rawValue,
+        "annotations": "\(state.annotations.count)",
+        "embeddedLayers": "\(embeddedLayerCount)",
+        "outputSize": outputSizeDescription,
+        "durationMs": "\(durationMs)"
+      ])
+    }
+
     guard let sourceImage = state.effectiveSourceImage else { return nil }
 
     // If mockup mode is active, use mockup rendering path with 3D transforms
@@ -231,6 +249,7 @@ final class AnnotateExporter {
       width: effectiveBounds.width + padding * 2 + alignmentSpace,
       height: effectiveBounds.height + padding * 2 + alignmentSpace
     )
+    outputSizeDescription = "\(Int(totalSize.width))x\(Int(totalSize.height))"
 
     // Render at pixel resolution using NSBitmapImageRep for Retina quality
     let scale = sourceImageScale(sourceImage)
@@ -328,7 +347,16 @@ final class AnnotateExporter {
     context.resetClip()
 
     // Draw annotations (offset by crop origin and image position based on alignment)
-    let renderer = AnnotationRenderer(context: context, sourceImage: sourceImage)
+    let renderer = AnnotationRenderer(
+      context: context,
+      sourceImage: sourceImage,
+      embeddedImageProvider: { assetId in
+        state.embeddedImage(for: assetId)
+      },
+      embeddedCGImageProvider: { assetId in
+        state.embeddedCGImage(for: assetId)
+      }
+    )
     for annotation in state.annotations {
       // Only include annotations that intersect with crop bounds
       if let cropRect = state.cropRect {
@@ -603,7 +631,16 @@ final class AnnotateExporter {
     sourceImage.draw(in: destRect, from: sourceRect, operation: .sourceOver, fraction: 1.0)
 
     // Draw annotations offset by crop origin
-    let renderer = AnnotationRenderer(context: context, sourceImage: sourceImage)
+    let renderer = AnnotationRenderer(
+      context: context,
+      sourceImage: sourceImage,
+      embeddedImageProvider: { assetId in
+        state.embeddedImage(for: assetId)
+      },
+      embeddedCGImageProvider: { assetId in
+        state.embeddedCGImage(for: assetId)
+      }
+    )
     for annotation in state.annotations {
       if let cropRect = state.cropRect {
         guard annotation.bounds.intersects(cropRect) else { continue }

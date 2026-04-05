@@ -650,7 +650,14 @@ final class DrawingCanvasNSView: NSView {
       editingTextId: state.editingTextAnnotationId,
       sourceImage: effectiveSourceImage,
       blurCacheManager: blurCacheManager,
-      interactiveBlurAnnotationId: activeInteractiveBlurAnnotationId()
+      interactiveBlurAnnotationId: activeInteractiveBlurAnnotationId(),
+      interactiveEmbeddedImageAnnotationId: activeInteractiveEmbeddedImageAnnotationId(),
+      embeddedImageProvider: { [state] assetId in
+        state.embeddedImage(for: assetId)
+      },
+      embeddedCGImageProvider: { [state] assetId in
+        state.embeddedCGImage(for: assetId)
+      }
     )
     for annotation in state.annotations {
       renderer.draw(annotation)
@@ -698,6 +705,24 @@ final class DrawingCanvasNSView: NSView {
     guard let id = candidateId,
           let annotation = state.annotations.first(where: { $0.id == id }),
           case .blur = annotation.type else {
+      return nil
+    }
+    return id
+  }
+
+  private func activeInteractiveEmbeddedImageAnnotationId() -> UUID? {
+    let candidateId: UUID?
+    if isResizingAnnotation {
+      candidateId = resizingAnnotationId
+    } else if isDraggingAnnotation {
+      candidateId = draggingAnnotationId
+    } else {
+      candidateId = nil
+    }
+
+    guard let id = candidateId,
+          let annotation = state.annotations.first(where: { $0.id == id }),
+          case .embeddedImage = annotation.type else {
       return nil
     }
     return id

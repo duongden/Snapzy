@@ -125,6 +125,11 @@ struct AnnotateCanvasView: View {
     .onChange(of: state.zoomLevel) { _ in
       state.resetPanIfNeeded()
     }
+    .onChange(of: state.importWarningMessage) { message in
+      guard let message else { return }
+      showError(message)
+      state.consumeImportWarningMessage()
+    }
     .onDrop(of: [.fileURL, .image], isTargeted: $isDragOver) { providers in
       handleDrop(providers: providers)
     }
@@ -556,7 +561,9 @@ struct AnnotateCanvasView: View {
           }
 
           Task { @MainActor in
-            state.loadImage(from: url)
+            if !state.importImage(from: url) {
+              showError("Failed to import image")
+            }
           }
         }
         return true
@@ -575,7 +582,9 @@ struct AnnotateCanvasView: View {
             }
 
             Task { @MainActor in
-              state.loadImage(image, url: nil)
+              if !state.importImage(image, sourceURL: nil, sourceData: data) {
+                showError("Failed to import image")
+              }
             }
           }
           return true

@@ -62,6 +62,7 @@ enum AnnotationType: Equatable {
   case highlight([CGPoint])
   case blur(BlurType)
   case counter(Int)
+  case embeddedImage(UUID)
 
   /// Corresponding toolbar tool type for this annotation
   var toolType: AnnotationToolType {
@@ -76,6 +77,17 @@ enum AnnotationType: Equatable {
     case .highlight: return .highlighter
     case .blur: return .blur
     case .counter: return .counter
+    case .embeddedImage: return .selection
+    }
+  }
+
+  /// Whether this annotation type exposes the standard property sidebar controls.
+  var supportsPropertyEditing: Bool {
+    switch self {
+    case .embeddedImage:
+      return false
+    default:
+      return true
     }
   }
 }
@@ -111,7 +123,7 @@ extension AnnotationItem {
     let tolerance = baseTolerance + properties.strokeWidth / 2
 
     switch type {
-    case .rectangle, .filledRectangle, .blur(_):
+    case .rectangle, .filledRectangle, .blur(_), .embeddedImage:
       return bounds.contains(point)
 
     case .oval:

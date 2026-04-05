@@ -42,7 +42,8 @@ struct AnnotateSidebarView: View {
           TextStylingSection(state: state)
         }
         // General annotation properties (non-text selected)
-        else if state.selectedAnnotation != nil {
+        else if let selectedAnnotation = state.selectedAnnotation,
+                selectedAnnotation.type.supportsPropertyEditing {
           Divider().background(Color(nsColor: .separatorColor))
           AnnotationPropertiesSection(state: state)
         }

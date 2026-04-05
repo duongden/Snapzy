@@ -14,6 +14,7 @@ extension Notification.Name {
   static let annotateSaveAs = Notification.Name("annotateSaveAs")
   static let annotateCopyAndClose = Notification.Name("annotateCopyAndClose")
   static let annotateCloudUpload = Notification.Name("annotateCloudUpload")
+  static let annotatePasteImage = Notification.Name("annotatePasteImage")
   static let annotateTogglePin = Notification.Name("annotateTogglePin")
   static let annotateDragStarted = Notification.Name("annotateDragStarted")
   static let annotateDragEnded = Notification.Name("annotateDragEnded")
@@ -125,6 +126,16 @@ final class AnnotateWindow: NSWindow {
     // Cloud Upload — configurable (default: ⌘U)
     if AnnotateShortcutManager.shared.matchesCloudUpload(event) {
       NotificationCenter.default.post(name: .annotateCloudUpload, object: self)
+      return true
+    }
+
+    // Cmd+V - Paste image into current annotate canvas.
+    if event.keyCode == 9 && flags == .command {
+      // Allow normal text paste while editing text annotations.
+      if isTextInputActive {
+        return super.performKeyEquivalent(with: event)
+      }
+      NotificationCenter.default.post(name: .annotatePasteImage, object: self)
       return true
     }
 
