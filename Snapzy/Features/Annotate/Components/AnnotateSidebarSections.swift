@@ -157,8 +157,7 @@ struct SidebarWallpaperSection: View {
     customWallpapers.removeAll { $0 == url }
 
     if case .wallpaper(let selectedUrl) = state.backgroundStyle, selectedUrl == url {
-      state.backgroundStyle = .none
-      state.padding = 0
+      state.resetCanvasEffectsToNone()
     }
   }
 }

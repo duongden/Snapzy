@@ -37,7 +37,11 @@ final class AnnotateWindowController: NSWindowController, NSWindowDelegate {
       self.state = AnnotateState(image: image, url: item.url, quickAccessItemId: item.id, cloudURL: item.cloudURL, cloudKey: item.cloudKey, isCloudStale: item.isCloudStale)
       self.state.restoreEmbeddedImageAssets(from: sessionData.embeddedImageAssetsData)
       self.state.annotations = sessionData.annotations
-      self.state.applyCanvasEffects(sessionData.canvasEffects)
+      self.state.applyCanvasEffects(
+        sessionData.canvasEffects,
+        preferredSelectedCanvasPresetId: sessionData.selectedCanvasPresetId,
+        preferredPresetDirtyState: sessionData.isSelectedCanvasPresetDirty
+      )
       self.state.cropRect = sessionData.cropRect
       self.state.isCropActive = false
       self.state.restoreBackgroundCutout(
@@ -790,6 +794,8 @@ final class AnnotateWindowController: NSWindowController, NSWindowDelegate {
       originalImageData: imageData,
       annotations: state.annotations,
       canvasEffects: state.canvasEffectsSnapshot,
+      selectedCanvasPresetId: state.selectedCanvasPresetId,
+      isSelectedCanvasPresetDirty: state.isSelectedCanvasPresetDirty,
       cropRect: state.cropRect,
       isCutoutApplied: cutoutSnapshot.isApplied,
       cutoutImageData: cutoutSnapshot.cutoutImageData,

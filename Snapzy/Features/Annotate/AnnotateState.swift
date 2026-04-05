@@ -21,6 +21,9 @@ final class AnnotateState: ObservableObject {
   private static let importedImageCascadeStep: CGFloat = 24
   private static let importedImageCountWarningThreshold: Int = 8
   private static let importedImagePixelBudgetWarningThreshold: Int64 = 40_000_000
+  private static let canvasPresetLimit: Int = 20
+  private let canvasPresetStore = AnnotateCanvasPresetStore.shared
+  private var suppressCanvasEffectChangeTracking = false
 
   // MARK: - Source Image
 
@@ -159,6 +162,7 @@ final class AnnotateState: ObservableObject {
       default:
         cachedBackgroundImage = nil
       }
+      handleCanvasEffectDidChange()
     }
   }
 
@@ -227,13 +231,64 @@ final class AnnotateState: ObservableObject {
     return blurred
   }
 
-  @Published var padding: CGFloat = 0
+  @Published var padding: CGFloat = 0 {
+    didSet {
+      handleCanvasEffectDidChange()
+    }
+  }
   @Published var inset: CGFloat = 0
   @Published var autoBalance: Bool = true
-  @Published var shadowIntensity: CGFloat = 0.3
-  @Published var cornerRadius: CGFloat = 8
+  @Published var shadowIntensity: CGFloat = 0.3 {
+    didSet {
+      handleCanvasEffectDidChange()
+    }
+  }
+  @Published var cornerRadius: CGFloat = 8 {
+    didSet {
+      handleCanvasEffectDidChange()
+    }
+  }
   @Published var imageAlignment: ImageAlignment = .center
   @Published var aspectRatio: AspectRatioOption = .auto
+  @Published private(set) var canvasPresets: [AnnotateCanvasPreset] = []
+  @Published var selectedCanvasPresetId: UUID?
+  @Published private(set) var isSelectedCanvasPresetDirty: Bool = false
+
+  enum CanvasPresetMutationResult {
+    case success
+    case invalidName
+    case limitReached
+    case unavailablePayload
+    case missingSelection
+  }
+
+  var selectedCanvasPreset: AnnotateCanvasPreset? {
+    guard let selectedCanvasPresetId else { return nil }
+    return canvasPresets.first(where: { $0.id == selectedCanvasPresetId })
+  }
+
+  var canUpdateSelectedCanvasPreset: Bool {
+    selectedCanvasPresetId != nil && isSelectedCanvasPresetDirty
+  }
+
+  var canDeleteSelectedCanvasPreset: Bool {
+    selectedCanvasPresetId != nil
+  }
+
+  var isCanvasPresetLimitReached: Bool {
+    canvasPresets.count >= Self.canvasPresetLimit
+  }
+
+  var nextSuggestedCanvasPresetName: String {
+    "Preset \(canvasPresets.count + 1)"
+  }
+
+  var isNoneCanvasEffectsActive: Bool {
+    backgroundStyle == .none
+      && abs(padding) <= 0.0001
+      && abs(shadowIntensity) <= 0.0001
+      && abs(cornerRadius) <= 0.0001
+  }
 
   var canvasEffectsSnapshot: AnnotationCanvasEffects {
     AnnotationCanvasEffects(
@@ -248,20 +303,260 @@ final class AnnotateState: ObservableObject {
     )
   }
 
-  func applyCanvasEffects(_ effects: AnnotationCanvasEffects) {
-    backgroundStyle = effects.backgroundStyle
-    padding = effects.padding
-    inset = effects.inset
-    autoBalance = effects.autoBalance
-    shadowIntensity = effects.shadowIntensity
-    cornerRadius = effects.cornerRadius
-    imageAlignment = effects.imageAlignment
-    aspectRatio = effects.aspectRatio
+  func applyCanvasEffects(
+    _ effects: AnnotationCanvasEffects,
+    preferredSelectedCanvasPresetId: UUID? = nil,
+    preferredPresetDirtyState: Bool? = nil
+  ) {
+    withCanvasEffectChangeTrackingSuspended {
+      backgroundStyle = effects.backgroundStyle
+      padding = effects.padding
+      inset = effects.inset
+      autoBalance = effects.autoBalance
+      shadowIntensity = effects.shadowIntensity
+      cornerRadius = effects.cornerRadius
+      imageAlignment = effects.imageAlignment
+      aspectRatio = effects.aspectRatio
+    }
+
+    restoreCanvasPresetSelection(
+      preferredSelectedCanvasPresetId: preferredSelectedCanvasPresetId,
+      preferredPresetDirtyState: preferredPresetDirtyState
+    )
 
     previewPadding = nil
     previewInset = nil
     previewShadowIntensity = nil
     previewCornerRadius = nil
+  }
+
+  func loadCanvasPresets() {
+    canvasPresets = canvasPresetStore.loadPresets()
+    if let selectedCanvasPresetId,
+       canvasPresets.contains(where: { $0.id == selectedCanvasPresetId }) == false {
+      self.selectedCanvasPresetId = nil
+    }
+    recomputeCanvasPresetDirtyState()
+  }
+
+  func resetCanvasEffectsToNone() {
+    let beforePayload = currentCanvasPresetPayload()
+    withCanvasEffectChangeTrackingSuspended {
+      backgroundStyle = .none
+      padding = 0
+      shadowIntensity = 0
+      cornerRadius = 0
+      previewPadding = nil
+      previewShadowIntensity = nil
+      previewCornerRadius = nil
+    }
+    selectedCanvasPresetId = nil
+    isSelectedCanvasPresetDirty = false
+
+    if let beforePayload,
+       let afterPayload = currentCanvasPresetPayload(),
+       beforePayload.approximatelyEquals(afterPayload) == false {
+      hasUnsavedChanges = true
+    }
+  }
+
+  func applyCanvasPreset(_ preset: AnnotateCanvasPreset) {
+    let beforePayload = currentCanvasPresetPayload()
+    withCanvasEffectChangeTrackingSuspended {
+      backgroundStyle = preset.payload.backgroundStyle.toBackgroundStyle()
+      padding = preset.payload.padding
+      shadowIntensity = preset.payload.shadowIntensity
+      cornerRadius = preset.payload.cornerRadius
+      previewPadding = nil
+      previewShadowIntensity = nil
+      previewCornerRadius = nil
+    }
+    selectedCanvasPresetId = preset.id
+    isSelectedCanvasPresetDirty = false
+
+    if let beforePayload,
+       let afterPayload = currentCanvasPresetPayload(),
+       beforePayload.approximatelyEquals(afterPayload) == false {
+      hasUnsavedChanges = true
+    }
+  }
+
+  @discardableResult
+  func saveCurrentCanvasAsPreset(name: String) -> CanvasPresetMutationResult {
+    let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard trimmedName.isEmpty == false else {
+      return .invalidName
+    }
+
+    guard canvasPresets.count < Self.canvasPresetLimit else {
+      return .limitReached
+    }
+
+    guard let payload = currentCanvasPresetPayload() else {
+      return .unavailablePayload
+    }
+
+    let uniqueName = uniqueCanvasPresetName(from: trimmedName)
+    let preset = AnnotateCanvasPreset(name: uniqueName, payload: payload)
+    canvasPresets.insert(preset, at: 0)
+    selectedCanvasPresetId = preset.id
+    isSelectedCanvasPresetDirty = false
+    persistCanvasPresets()
+    return .success
+  }
+
+  @discardableResult
+  func updateSelectedCanvasPreset() -> CanvasPresetMutationResult {
+    guard let selectedCanvasPresetId,
+          let index = canvasPresets.firstIndex(where: { $0.id == selectedCanvasPresetId }) else {
+      return .missingSelection
+    }
+
+    guard let payload = currentCanvasPresetPayload() else {
+      return .unavailablePayload
+    }
+
+    var updatedPreset = canvasPresets[index]
+    updatedPreset.payload = payload
+    updatedPreset.updatedAt = Date()
+    canvasPresets.remove(at: index)
+    canvasPresets.insert(updatedPreset, at: 0)
+    self.selectedCanvasPresetId = updatedPreset.id
+    isSelectedCanvasPresetDirty = false
+    persistCanvasPresets()
+    return .success
+  }
+
+  @discardableResult
+  func deleteSelectedCanvasPreset() -> Bool {
+    guard let selectedCanvasPresetId else {
+      return false
+    }
+    return deleteCanvasPreset(id: selectedCanvasPresetId)
+  }
+
+  @discardableResult
+  func deleteCanvasPreset(id: UUID) -> Bool {
+    let isDeletingSelectedPreset = selectedCanvasPresetId == id
+
+    let countBefore = canvasPresets.count
+    canvasPresets.removeAll(where: { $0.id == id })
+    guard canvasPresets.count != countBefore else {
+      return false
+    }
+
+    if isDeletingSelectedPreset {
+      selectedCanvasPresetId = nil
+      isSelectedCanvasPresetDirty = false
+    } else {
+      recomputeCanvasPresetDirtyState()
+    }
+    persistCanvasPresets()
+    return true
+  }
+
+  func recomputeCanvasPresetDirtyState() {
+    guard let selectedPreset = selectedCanvasPreset else {
+      isSelectedCanvasPresetDirty = false
+      return
+    }
+
+    guard let currentPayload = currentCanvasPresetPayload() else {
+      isSelectedCanvasPresetDirty = true
+      return
+    }
+
+    isSelectedCanvasPresetDirty = currentPayload.approximatelyEquals(selectedPreset.payload) == false
+  }
+
+  private func handleCanvasEffectDidChange() {
+    recomputeCanvasPresetDirtyState()
+    guard !suppressCanvasEffectChangeTracking else { return }
+    hasUnsavedChanges = true
+  }
+
+  private func withCanvasEffectChangeTrackingSuspended(_ operation: () -> Void) {
+    suppressCanvasEffectChangeTracking = true
+    operation()
+    suppressCanvasEffectChangeTracking = false
+    recomputeCanvasPresetDirtyState()
+  }
+
+  private func currentCanvasPresetPayload() -> AnnotateCanvasPresetPayload? {
+    guard let codableStyle = CodableBackgroundStyle(from: backgroundStyle) else {
+      return nil
+    }
+
+    return AnnotateCanvasPresetPayload(
+      backgroundStyle: codableStyle,
+      padding: padding,
+      shadowIntensity: shadowIntensity,
+      cornerRadius: cornerRadius
+    )
+  }
+
+  private func restoreCanvasPresetSelection(
+    preferredSelectedCanvasPresetId: UUID?,
+    preferredPresetDirtyState: Bool?
+  ) {
+    if let preferredSelectedCanvasPresetId,
+       canvasPresets.contains(where: { $0.id == preferredSelectedCanvasPresetId }) {
+      selectedCanvasPresetId = preferredSelectedCanvasPresetId
+      if let preferredPresetDirtyState {
+        isSelectedCanvasPresetDirty = preferredPresetDirtyState
+      } else {
+        recomputeCanvasPresetDirtyState()
+      }
+      return
+    }
+
+    guard let currentPayload = currentCanvasPresetPayload(),
+          let matchingPreset = canvasPresets.first(where: { $0.payload.approximatelyEquals(currentPayload) }) else {
+      selectedCanvasPresetId = nil
+      isSelectedCanvasPresetDirty = false
+      return
+    }
+
+    selectedCanvasPresetId = matchingPreset.id
+    isSelectedCanvasPresetDirty = false
+  }
+
+  private func uniqueCanvasPresetName(
+    from baseName: String,
+    excludingId: UUID? = nil
+  ) -> String {
+    let normalizedBaseName = baseName.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard normalizedBaseName.isEmpty == false else {
+      return nextSuggestedCanvasPresetName
+    }
+
+    let existingNames = Set(
+      canvasPresets
+        .filter({ preset in
+          guard let excludingId else { return true }
+          return preset.id != excludingId
+        })
+        .map { $0.name.lowercased() }
+    )
+
+    if existingNames.contains(normalizedBaseName.lowercased()) == false {
+      return normalizedBaseName
+    }
+
+    var suffix = 2
+    while suffix < 1_000 {
+      let candidate = "\(normalizedBaseName) \(suffix)"
+      if existingNames.contains(candidate.lowercased()) == false {
+        return candidate
+      }
+      suffix += 1
+    }
+
+    return "\(normalizedBaseName) \(UUID().uuidString.prefix(4))"
+  }
+
+  private func persistCanvasPresets() {
+    canvasPresetStore.savePresets(canvasPresets)
   }
 
   // MARK: - Preview Values (for smooth slider dragging)
@@ -459,6 +754,7 @@ final class AnnotateState: ObservableObject {
     self.cloudURL = cloudURL
     self.cloudKey = cloudKey
     self.isCloudStale = isCloudStale
+    loadCanvasPresets()
   }
 
   /// Empty initializer for drag-drop workflow
@@ -468,6 +764,7 @@ final class AnnotateState: ObservableObject {
     self.quickAccessItemId = nil
     self.cloudURL = nil
     self.cloudKey = nil
+    loadCanvasPresets()
   }
 
   // MARK: - Image Loading

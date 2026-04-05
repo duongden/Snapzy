@@ -5,16 +5,18 @@
 //  Left sidebar for background and styling settings
 //
 
+import AppKit
 import SwiftUI
 
 /// Left sidebar with background customization options
 struct AnnotateSidebarView: View {
   @ObservedObject var state: AnnotateState
+  @State private var isPresetDropdownPresented = false
   
   var body: some View {
     ScrollView(.vertical, showsIndicators: true) {
       VStack(alignment: .leading, spacing: Spacing.md) {
-        noneButton
+        presetControlsSection
 
         // Compact gradient section
         gradientSection
@@ -68,29 +70,303 @@ struct AnnotateSidebarView: View {
 //    .background(Color(nsColor: .scrubberTexturedBackground))
   }
   
-  // MARK: - None Button
+  // MARK: - Preset Controls
+
+  private var presetControlsSection: some View {
+    VStack(alignment: .leading, spacing: Spacing.sm) {
+      SidebarSectionHeader(title: "Presets")
+
+      HStack(spacing: Spacing.xs) {
+        noneButton
+        presetDropdownButton
+      }
+
+      if state.canUpdateSelectedCanvasPreset {
+        updatePresetButton
+      }
+    }
+  }
 
   private var noneButton: some View {
     Button {
-      state.backgroundStyle = .none
-      state.padding = 0
-
+      state.resetCanvasEffectsToNone()
     } label: {
       Text("None")
         .font(Typography.labelMedium)
         .foregroundColor(SidebarColors.labelPrimary)
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, Spacing.sm)
+        .frame(minWidth: 50)
+        .padding(.horizontal, Spacing.sm)
+        .padding(.vertical, 7)
         .background(
           RoundedRectangle(cornerRadius: Size.radiusSm)
-            .fill(state.backgroundStyle == .none ? Color.accentColor.opacity(0.3) : SidebarColors.itemDefault)
+            .fill(state.isNoneCanvasEffectsActive ? Color.accentColor.opacity(0.25) : SidebarColors.itemDefault)
         )
         .overlay(
           RoundedRectangle(cornerRadius: Size.radiusSm)
-            .stroke(state.backgroundStyle == .none ? Color.accentColor : Color.clear, lineWidth: Size.strokeSelected)
+            .stroke(
+              state.isNoneCanvasEffectsActive ? Color.accentColor : Color.clear,
+              lineWidth: Size.strokeSelected
+            )
         )
     }
     .buttonStyle(.plain)
+    .help("Reset background, padding, shadow, and corners")
+  }
+
+  private var presetDropdownButton: some View {
+    Button {
+      isPresetDropdownPresented.toggle()
+    } label: {
+      HStack(spacing: Spacing.xs) {
+        Text(state.selectedCanvasPreset?.name ?? "Select preset")
+          .font(Typography.labelSmall)
+          .foregroundColor(SidebarColors.labelPrimary)
+          .lineLimit(1)
+          .truncationMode(.tail)
+
+        Spacer(minLength: Spacing.xs)
+
+        Image(systemName: "chevron.down")
+          .font(.system(size: 10, weight: .semibold))
+          .foregroundColor(SidebarColors.labelSecondary)
+          .rotationEffect(.degrees(isPresetDropdownPresented ? 180 : 0))
+      }
+      .padding(.horizontal, Spacing.sm)
+      .padding(.vertical, 7)
+      .background(
+        RoundedRectangle(cornerRadius: Size.radiusSm)
+          .fill(SidebarColors.itemDefault)
+      )
+      .overlay(
+        RoundedRectangle(cornerRadius: Size.radiusSm)
+          .stroke(
+            state.selectedCanvasPresetId != nil ? Color.accentColor.opacity(0.7) : Color.clear,
+            lineWidth: Size.strokeDefault
+          )
+      )
+    }
+    .buttonStyle(.plain)
+    .frame(maxWidth: .infinity)
+    .help("Apply a saved style preset")
+    .popover(isPresented: $isPresetDropdownPresented, arrowEdge: .bottom) {
+      presetDropdownContent
+    }
+  }
+
+  private var presetDropdownContent: some View {
+    VStack(alignment: .leading, spacing: 0) {
+      Button {
+        isPresetDropdownPresented = false
+        handleCreatePreset()
+      } label: {
+        HStack(spacing: Spacing.xs) {
+          Image(systemName: "plus")
+            .font(.system(size: 11, weight: .semibold))
+          Text("Add new preset")
+            .lineLimit(1)
+          Spacer(minLength: Spacing.xs)
+        }
+        .font(Typography.labelSmall)
+        .foregroundColor(state.isCanvasPresetLimitReached ? SidebarColors.labelSecondary : SidebarColors.labelPrimary)
+        .padding(.horizontal, Spacing.sm)
+        .padding(.vertical, 7)
+        .contentShape(Rectangle())
+      }
+      .buttonStyle(.plain)
+      .disabled(state.isCanvasPresetLimitReached)
+
+      Divider()
+        .padding(.vertical, 4)
+
+      if state.canvasPresets.isEmpty {
+        Text("No presets yet")
+          .font(Typography.labelSmall)
+          .foregroundColor(SidebarColors.labelSecondary)
+          .padding(.horizontal, Spacing.sm)
+          .padding(.vertical, 7)
+      } else {
+        ForEach(state.canvasPresets) { preset in
+          presetDropdownRow(preset)
+        }
+      }
+    }
+    .padding(.vertical, 4)
+    .frame(width: 240)
+  }
+
+  private func presetDropdownRow(_ preset: AnnotateCanvasPreset) -> some View {
+    HStack(spacing: Spacing.xs) {
+      Button {
+        state.applyCanvasPreset(preset)
+        isPresetDropdownPresented = false
+      } label: {
+        HStack(spacing: Spacing.xs) {
+          Image(systemName: state.selectedCanvasPresetId == preset.id ? "checkmark" : "circle")
+            .font(.system(size: 10, weight: .semibold))
+            .foregroundColor(state.selectedCanvasPresetId == preset.id ? .accentColor : SidebarColors.labelSecondary.opacity(0.7))
+
+          Text(preset.name)
+            .font(Typography.labelSmall)
+            .foregroundColor(SidebarColors.labelPrimary)
+            .lineLimit(1)
+            .truncationMode(.tail)
+
+          Spacer(minLength: Spacing.xs)
+        }
+        .contentShape(Rectangle())
+      }
+      .buttonStyle(.plain)
+
+      Button {
+        handleDeletePreset(preset)
+      } label: {
+        Image(systemName: "trash")
+          .font(.system(size: 11, weight: .semibold))
+          .foregroundColor(SidebarColors.labelSecondary)
+          .frame(width: 18, height: 18)
+      }
+      .buttonStyle(.plain)
+      .help("Delete preset")
+    }
+    .padding(.horizontal, Spacing.sm)
+    .padding(.vertical, 6)
+  }
+
+  private var updatePresetButton: some View {
+    Button {
+      handleUpdatePreset()
+    } label: {
+      HStack(spacing: Spacing.xs) {
+        Image(systemName: "arrow.triangle.2.circlepath")
+          .font(.system(size: 11, weight: .semibold))
+        Text("Update preset")
+          .font(Typography.labelSmall)
+          .lineLimit(1)
+        Spacer(minLength: Spacing.xs)
+      }
+      .foregroundColor(SidebarColors.labelPrimary)
+      .padding(.horizontal, Spacing.sm)
+      .padding(.vertical, 7)
+      .background(
+        RoundedRectangle(cornerRadius: Size.radiusSm)
+          .fill(SidebarColors.itemDefault)
+      )
+      .overlay(
+        RoundedRectangle(cornerRadius: Size.radiusSm)
+          .stroke(Color.orange.opacity(0.5), lineWidth: Size.strokeDefault)
+      )
+    }
+    .buttonStyle(.plain)
+    .help("Update selected preset with current values")
+  }
+
+  private func handleCreatePreset() {
+    if state.isCanvasPresetLimitReached {
+      showPresetLimitAlert()
+      return
+    }
+
+    guard let name = promptForPresetName(
+      title: "Save Preset",
+      message: "Enter a name for this canvas preset.",
+      defaultValue: state.nextSuggestedCanvasPresetName
+    ) else {
+      return
+    }
+
+    switch state.saveCurrentCanvasAsPreset(name: name) {
+    case .success:
+      return
+    case .limitReached:
+      showPresetLimitAlert()
+    case .invalidName:
+      return
+    case .unavailablePayload:
+      showPresetUnavailableAlert()
+    case .missingSelection:
+      return
+    }
+  }
+
+  private func handleUpdatePreset() {
+    guard let preset = state.selectedCanvasPreset else { return }
+
+    let alert = NSAlert()
+    alert.messageText = "Update Preset"
+    alert.informativeText = "Replace \"\(preset.name)\" with current settings?"
+    alert.alertStyle = .warning
+    alert.addButton(withTitle: "Update")
+    alert.addButton(withTitle: "Cancel")
+
+    guard alert.runModal() == .alertFirstButtonReturn else {
+      return
+    }
+
+    switch state.updateSelectedCanvasPreset() {
+    case .success:
+      return
+    case .unavailablePayload:
+      showPresetUnavailableAlert()
+    case .missingSelection, .invalidName, .limitReached:
+      return
+    }
+  }
+
+  private func handleDeletePreset(_ preset: AnnotateCanvasPreset) {
+    let alert = NSAlert()
+    alert.messageText = "Delete Preset"
+    alert.informativeText = "Delete \"\(preset.name)\"?"
+    alert.alertStyle = .warning
+    alert.addButton(withTitle: "Delete")
+    alert.addButton(withTitle: "Cancel")
+
+    if alert.runModal() == .alertFirstButtonReturn {
+      _ = state.deleteCanvasPreset(id: preset.id)
+    }
+  }
+
+  private func promptForPresetName(
+    title: String,
+    message: String,
+    defaultValue: String
+  ) -> String? {
+    let alert = NSAlert()
+    alert.messageText = title
+    alert.informativeText = message
+    alert.alertStyle = .informational
+    alert.addButton(withTitle: "Save")
+    alert.addButton(withTitle: "Cancel")
+
+    let textField = NSTextField(frame: NSRect(x: 0, y: 0, width: 240, height: 24))
+    textField.stringValue = defaultValue
+    textField.placeholderString = "Preset name"
+    alert.accessoryView = textField
+
+    let response = alert.runModal()
+    guard response == .alertFirstButtonReturn else {
+      return nil
+    }
+
+    let value = textField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+    return value.isEmpty ? nil : value
+  }
+
+  private func showPresetLimitAlert() {
+    let alert = NSAlert()
+    alert.messageText = "Preset Limit Reached"
+    alert.informativeText = "You can save up to 20 presets. Delete one to add a new preset."
+    alert.alertStyle = .warning
+    alert.addButton(withTitle: "OK")
+    alert.runModal()
+  }
+
+  private func showPresetUnavailableAlert() {
+    let alert = NSAlert()
+    alert.messageText = "Unable to Save Preset"
+    alert.informativeText = "Current canvas style cannot be stored as a preset right now."
+    alert.alertStyle = .warning
+    alert.addButton(withTitle: "OK")
+    alert.runModal()
   }
   
   // MARK: - Sections

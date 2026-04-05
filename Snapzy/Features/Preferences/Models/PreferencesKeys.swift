@@ -41,6 +41,7 @@ enum PreferencesKeys {
   static let screenshotIncludeOwnApp = "screenshot.includeOwnApp"
   static let screenshotShowCursor = "screenshot.showCursor"
   static let backgroundCutoutAutoCropEnabled = "backgroundCutout.autoCropEnabled"
+  static let annotateCanvasPresets = "annotate.canvasPresets.v1"
 
   // Floating Screenshot (Quick Access)
   static let floatingEnabled = "floatingScreenshot.enabled"

@@ -27,6 +27,10 @@ struct AnnotationSessionData {
   let originalImageData: Data
   var annotations: [AnnotationItem]
   var canvasEffects: AnnotationCanvasEffects
+  /// Selected canvas preset id at the moment session was cached.
+  var selectedCanvasPresetId: UUID?
+  /// True when current canvas values diverged from selected preset at cache time.
+  var isSelectedCanvasPresetDirty: Bool = false
   /// Applied crop rectangle in image coordinates (if any)
   var cropRect: CGRect?
   /// Whether background cutout was active in this editing session.
@@ -227,6 +231,8 @@ final class AnnotateManager {
     originalImageData: Data,
     annotations: [AnnotationItem],
     canvasEffects: AnnotationCanvasEffects,
+    selectedCanvasPresetId: UUID? = nil,
+    isSelectedCanvasPresetDirty: Bool = false,
     cropRect: CGRect?,
     isCutoutApplied: Bool = false,
     cutoutImageData: Data? = nil,
@@ -238,6 +244,8 @@ final class AnnotateManager {
       originalImageData: originalImageData,
       annotations: annotations,
       canvasEffects: canvasEffects,
+      selectedCanvasPresetId: selectedCanvasPresetId,
+      isSelectedCanvasPresetDirty: isSelectedCanvasPresetDirty,
       cropRect: cropRect,
       isCutoutApplied: isCutoutApplied,
       cutoutImageData: cutoutImageData,
