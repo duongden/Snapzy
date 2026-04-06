@@ -135,6 +135,8 @@ private extension GlobalShortcutKind {
       return "Open Video Editor"
     case .cloudUploads:
       return "Cloud Uploads"
+    case .shortcutList:
+      return "Show Shortcut List"
     case .ocr:
       return "Capture Text (OCR)"
     case .objectCutout:

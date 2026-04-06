@@ -300,6 +300,17 @@ final class AppStatusBarController: ObservableObject {
     cloudUploadsItem.isEnabled = CloudManager.shared.isConfigured
     menu?.addItem(cloudUploadsItem)
 
+    let shortcutListItem = NSMenuItem(
+      title: "Keyboard Shortcuts",
+      action: #selector(showShortcutListAction),
+      keyEquivalent: "k"
+    )
+    shortcutListItem.keyEquivalentModifierMask = [.command, .shift]
+    shortcutListItem.target = self
+    shortcutListItem.image = NSImage(systemSymbolName: "list.bullet.rectangle", accessibilityDescription: nil)
+    shortcutListItem.isEnabled = true
+    menu?.addItem(shortcutListItem)
+
     menu?.addItem(NSMenuItem.separator())
 
     // Permission (if not granted)
@@ -393,6 +404,10 @@ final class AppStatusBarController: ObservableObject {
     NSApp.activate(ignoringOtherApps: true)
   }
 
+  @objc private func showShortcutListAction() {
+    ShortcutOverlayManager.shared.toggle()
+  }
+
   @objc private func grantPermissionAction() {
     viewModel?.requestPermission()
   }
@@ -407,6 +422,17 @@ final class AppStatusBarController: ObservableObject {
   }
 
   @objc private func openPreferencesAction() {
+    openPreferencesWindow()
+  }
+
+  func openPreferencesWindow(tab: PreferencesTab? = nil) {
+    if let tab {
+      PreferencesNavigationState.shared.selectedTab = tab
+    }
+    presentPreferencesWindow()
+  }
+
+  private func presentPreferencesWindow() {
     // Elevate to regular app so Snapzy appears in top-left menu bar
     if !didElevateForSettings {
       NSApp.setActivationPolicy(.regular)

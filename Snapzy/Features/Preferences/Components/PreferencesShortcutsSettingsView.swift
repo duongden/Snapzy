@@ -16,6 +16,7 @@ struct ShortcutsSettingsView: View {
   @State private var annotateShortcut: ShortcutConfig
   @State private var videoEditorShortcut: ShortcutConfig
   @State private var cloudUploadsShortcut: ShortcutConfig
+  @State private var shortcutListShortcut: ShortcutConfig
   @State private var copyAndCloseShortcut: ShortcutConfig
   @State private var togglePinShortcut: ShortcutConfig
   @State private var cloudUploadShortcut: ShortcutConfig
@@ -43,6 +44,7 @@ struct ShortcutsSettingsView: View {
     _annotateShortcut = State(initialValue: KeyboardShortcutManager.shared.annotateShortcut)
     _videoEditorShortcut = State(initialValue: KeyboardShortcutManager.shared.videoEditorShortcut)
     _cloudUploadsShortcut = State(initialValue: KeyboardShortcutManager.shared.cloudUploadsShortcut)
+    _shortcutListShortcut = State(initialValue: KeyboardShortcutManager.shared.shortcutListShortcut)
     _copyAndCloseShortcut = State(initialValue: AnnotateShortcutManager.shared.copyAndCloseShortcut)
     _togglePinShortcut = State(initialValue: AnnotateShortcutManager.shared.togglePinShortcut)
     _cloudUploadShortcut = State(initialValue: AnnotateShortcutManager.shared.cloudUploadShortcut)
@@ -326,6 +328,16 @@ struct ShortcutsSettingsView: View {
             onShortcutChanged: { handleGlobalShortcutChange($0, for: .cloudUploads) }
           )
 
+          ShortcutRecorderView(
+            label: "Show Shortcut List",
+            icon: "list.bullet.rectangle",
+            description: "Open keyboard shortcuts overlay",
+            shortcut: $shortcutListShortcut,
+            isEnabled: globalEnabledBinding(for: .shortcutList),
+            validationIssue: globalValidationIssues[.shortcutList],
+            onShortcutChanged: { handleGlobalShortcutChange($0, for: .shortcutList) }
+          )
+
           Text("Click a shortcut button to record new keys. Use the row toggle to turn a shortcut off. Press Esc to cancel.")
             .font(.caption)
             .foregroundColor(.secondary)
@@ -433,6 +445,7 @@ struct ShortcutsSettingsView: View {
     annotateShortcut = .defaultAnnotate
     videoEditorShortcut = .defaultVideoEditor
     cloudUploadsShortcut = .defaultCloudUploads
+    shortcutListShortcut = .defaultShortcutList
     copyAndCloseShortcut = AnnotateShortcutManager.defaultCopyAndClose
     togglePinShortcut = AnnotateShortcutManager.defaultTogglePin
     cloudUploadShortcut = AnnotateShortcutManager.defaultCloudUpload
@@ -454,6 +467,7 @@ struct ShortcutsSettingsView: View {
     manager.setAnnotateShortcut(.defaultAnnotate)
     manager.setVideoEditorShortcut(.defaultVideoEditor)
     manager.setCloudUploadsShortcut(.defaultCloudUploads)
+    manager.setShortcutListShortcut(.defaultShortcutList)
     for kind in GlobalShortcutKind.allCases {
       manager.setShortcutEnabled(true, for: kind)
     }
@@ -583,6 +597,9 @@ struct ShortcutsSettingsView: View {
       case .cloudUploads:
         cloudUploadsShortcut = config
         manager.setCloudUploadsShortcut(config)
+      case .shortcutList:
+        shortcutListShortcut = config
+        manager.setShortcutListShortcut(config)
       case .ocr:
         ocrShortcut = config
         manager.setOCRShortcut(config)

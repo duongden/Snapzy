@@ -67,6 +67,12 @@ struct ShortcutConfig: Equatable, Codable {
     modifiers: UInt32(cmdKey | shiftKey)
   )
 
+  /// Cmd + Shift + K
+  static let defaultShortcutList = ShortcutConfig(
+    keyCode: UInt32(kVK_ANSI_K),
+    modifiers: UInt32(cmdKey | shiftKey)
+  )
+
   var displayString: String {
     var parts: [String] = []
 
@@ -218,6 +224,7 @@ enum GlobalShortcutKind: String, CaseIterable, Codable {
   case annotate
   case videoEditor
   case cloudUploads
+  case shortcutList
   case ocr
   case objectCutout
 
@@ -241,6 +248,7 @@ enum ShortcutAction {
   case openAnnotate
   case openVideoEditor
   case openCloudUploads
+  case openShortcutList
 }
 
 /// Protocol for handling shortcut events
@@ -262,6 +270,7 @@ final class KeyboardShortcutManager {
   private(set) var annotateShortcut: ShortcutConfig
   private(set) var videoEditorShortcut: ShortcutConfig
   private(set) var cloudUploadsShortcut: ShortcutConfig
+  private(set) var shortcutListShortcut: ShortcutConfig
   private(set) var ocrShortcut: ShortcutConfig
   private(set) var objectCutoutShortcut: ShortcutConfig
   private(set) var isEnabled: Bool = false
@@ -274,6 +283,7 @@ final class KeyboardShortcutManager {
   private var annotateHotkeyRef: EventHotKeyRef?
   private var videoEditorHotkeyRef: EventHotKeyRef?
   private var cloudUploadsHotkeyRef: EventHotKeyRef?
+  private var shortcutListHotkeyRef: EventHotKeyRef?
   private var ocrHotkeyRef: EventHotKeyRef?
   private var objectCutoutHotkeyRef: EventHotKeyRef?
 
@@ -286,6 +296,7 @@ final class KeyboardShortcutManager {
   private let ocrHotkeyID = EventHotKeyID(signature: OSType(0x5A53_4636), id: 6)  // "ZSF6"
   private let cloudUploadsHotkeyID = EventHotKeyID(signature: OSType(0x5A53_4637), id: 7)  // "ZSF7"
   private let objectCutoutHotkeyID = EventHotKeyID(signature: OSType(0x5A53_4638), id: 8)  // "ZSF8"
+  private let shortcutListHotkeyID = EventHotKeyID(signature: OSType(0x5A53_4639), id: 9)  // "ZSF9"
 
   private var eventHandler: EventHandlerRef?
 
@@ -296,6 +307,7 @@ final class KeyboardShortcutManager {
   private let annotateShortcutKey = "annotateShortcut"
   private let videoEditorShortcutKey = "videoEditorShortcut"
   private let cloudUploadsShortcutKey = "cloudUploadsShortcut"
+  private let shortcutListShortcutKey = PreferencesKeys.shortcutListShortcut
   private let ocrShortcutKey = "ocrShortcut"
   private let objectCutoutShortcutKey = "objectCutoutShortcut"
   private let shortcutsEnabledKey = "shortcutsEnabled"
@@ -308,6 +320,7 @@ final class KeyboardShortcutManager {
     annotateShortcut = .defaultAnnotate
     videoEditorShortcut = .defaultVideoEditor
     cloudUploadsShortcut = .defaultCloudUploads
+    shortcutListShortcut = .defaultShortcutList
     ocrShortcut = .defaultOCR
     objectCutoutShortcut = .defaultObjectCutout
     loadShortcuts()
@@ -375,6 +388,7 @@ final class KeyboardShortcutManager {
     case .annotate: return annotateShortcut
     case .videoEditor: return videoEditorShortcut
     case .cloudUploads: return cloudUploadsShortcut
+    case .shortcutList: return shortcutListShortcut
     case .ocr: return ocrShortcut
     case .objectCutout: return objectCutoutShortcut
     }
@@ -460,6 +474,14 @@ final class KeyboardShortcutManager {
     }
   }
 
+  /// Update shortcut list overlay shortcut
+  func setShortcutListShortcut(_ config: ShortcutConfig) {
+    mutateShortcutRegistration {
+      shortcutListShortcut = config
+      saveShortcuts()
+    }
+  }
+
   // MARK: - Persistence
 
   private func saveShortcuts() {
@@ -481,6 +503,9 @@ final class KeyboardShortcutManager {
     }
     if let cloudUploadsData = try? encoder.encode(cloudUploadsShortcut) {
       UserDefaults.standard.set(cloudUploadsData, forKey: cloudUploadsShortcutKey)
+    }
+    if let shortcutListData = try? encoder.encode(shortcutListShortcut) {
+      UserDefaults.standard.set(shortcutListData, forKey: shortcutListShortcutKey)
     }
     if let ocrData = try? encoder.encode(ocrShortcut) {
       UserDefaults.standard.set(ocrData, forKey: ocrShortcutKey)
@@ -521,6 +546,11 @@ final class KeyboardShortcutManager {
       let config = try? decoder.decode(ShortcutConfig.self, from: cloudUploadsData)
     {
       cloudUploadsShortcut = config
+    }
+    if let shortcutListData = UserDefaults.standard.data(forKey: shortcutListShortcutKey),
+      let config = try? decoder.decode(ShortcutConfig.self, from: shortcutListData)
+    {
+      shortcutListShortcut = config
     }
     if let ocrData = UserDefaults.standard.data(forKey: ocrShortcutKey),
       let config = try? decoder.decode(ShortcutConfig.self, from: ocrData)
@@ -614,6 +644,9 @@ final class KeyboardShortcutManager {
     case cloudUploadsHotkeyID.id:
       actionName = "cloud-uploads"
       action = .openCloudUploads
+    case shortcutListHotkeyID.id:
+      actionName = "shortcut-list"
+      action = .openShortcutList
     case ocrHotkeyID.id:
       actionName = "ocr"
       action = .captureOCR
@@ -680,6 +713,12 @@ final class KeyboardShortcutManager {
       ref: &cloudUploadsHotkeyRef
     )
     registerShortcutIfNeeded(
+      kind: .shortcutList,
+      config: shortcutListShortcut,
+      hotkeyID: shortcutListHotkeyID,
+      ref: &shortcutListHotkeyRef
+    )
+    registerShortcutIfNeeded(
       kind: .objectCutout,
       config: objectCutoutShortcut,
       hotkeyID: objectCutoutHotkeyID,
@@ -744,6 +783,10 @@ final class KeyboardShortcutManager {
     if let ref = cloudUploadsHotkeyRef {
       UnregisterEventHotKey(ref)
       cloudUploadsHotkeyRef = nil
+    }
+    if let ref = shortcutListHotkeyRef {
+      UnregisterEventHotKey(ref)
+      shortcutListHotkeyRef = nil
     }
     if let ref = objectCutoutHotkeyRef {
       UnregisterEventHotKey(ref)

@@ -218,6 +218,8 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
     case .openCloudUploads:
       CloudUploadHistoryWindowController.shared.showWindow()
       NSApp.activate(ignoringOtherApps: true)
+    case .openShortcutList:
+      ShortcutOverlayManager.shared.toggle()
     }
   }
 
