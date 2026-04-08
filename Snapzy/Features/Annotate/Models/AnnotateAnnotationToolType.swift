@@ -80,4 +80,30 @@ enum AnnotationToolType: String, CaseIterable, Identifiable {
     case .mockup: return "Mockup"
     }
   }
+
+  var supportsQuickPropertiesBar: Bool {
+    switch self {
+    case .rectangle, .filledRectangle, .oval, .arrow, .line, .text, .highlighter, .counter, .pencil:
+      return true
+    case .selection, .crop, .blur, .mockup:
+      return false
+    }
+  }
+
+  var supportsQuickStrokeColor: Bool {
+    supportsQuickPropertiesBar
+  }
+
+  var supportsQuickFillColor: Bool {
+    self == .filledRectangle
+  }
+
+  var supportsQuickStrokeWidth: Bool {
+    switch self {
+    case .rectangle, .filledRectangle, .oval, .arrow, .line, .highlighter, .pencil:
+      return true
+    case .selection, .crop, .text, .blur, .counter, .mockup:
+      return false
+    }
+  }
 }

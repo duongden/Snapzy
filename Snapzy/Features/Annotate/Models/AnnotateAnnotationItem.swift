@@ -90,6 +90,22 @@ enum AnnotationType: Equatable {
       return true
     }
   }
+
+  var supportsQuickPropertiesBar: Bool {
+    supportsPropertyEditing && toolType.supportsQuickPropertiesBar
+  }
+
+  var supportsQuickStrokeColor: Bool {
+    supportsQuickPropertiesBar && toolType.supportsQuickStrokeColor
+  }
+
+  var supportsQuickFillColor: Bool {
+    supportsQuickPropertiesBar && toolType.supportsQuickFillColor
+  }
+
+  var supportsQuickStrokeWidth: Bool {
+    supportsQuickPropertiesBar && toolType.supportsQuickStrokeWidth
+  }
 }
 
 /// Visual properties for an annotation

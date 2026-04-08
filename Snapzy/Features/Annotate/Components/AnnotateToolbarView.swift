@@ -34,11 +34,6 @@ struct AnnotateToolbarView: View {
 
       Spacer()
 
-      // Right group: Stroke size and actions
-      strokeSizeSlider
-
-      Spacer().frame(width: 16)
-
       actionButtons
     }
     .windowTrafficLightsInset()
@@ -107,7 +102,7 @@ struct AnnotateToolbarView: View {
           icon: tool.icon,
           isSelected: state.selectedTool == tool
         ) {
-          state.selectedTool = tool
+          state.activateTool(tool)
         }
         .help(tool.displayName)
         .disabled(state.editorMode == .mockup && tool != .selection)
@@ -135,21 +130,6 @@ struct AnnotateToolbarView: View {
       .help("Redo")
       .disabled(!state.canRedo)
       .opacity(state.canRedo ? 1 : 0.4)
-    }
-  }
-
-  private var strokeSizeSlider: some View {
-    HStack(spacing: 8) {
-      Image(systemName: "line.diagonal")
-        .font(.system(size: 10))
-        .foregroundColor(.gray)
-
-      Slider(value: $state.strokeWidth, in: 1...20, step: 1)
-        .frame(width: 80)
-
-      Image(systemName: "line.diagonal")
-        .font(.system(size: 16))
-        .foregroundColor(.gray)
     }
   }
 

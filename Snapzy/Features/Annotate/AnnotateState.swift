@@ -91,6 +91,12 @@ final class AnnotateState: ObservableObject {
     case preview   // Preview combined result (hides all editing UI)
   }
 
+  enum QuickPropertiesMode: Equatable {
+    case hidden
+    case toolDefaults
+    case selectedItem
+  }
+
   @Published var editorMode: EditorMode = .annotate
 
   // MARK: - UI State
@@ -1644,6 +1650,137 @@ final class AnnotateState: ObservableObject {
   var selectedAnnotation: AnnotationItem? {
     guard let id = selectedAnnotationId else { return nil }
     return annotations.first { $0.id == id }
+  }
+
+  var quickPropertiesAnnotation: AnnotationItem? {
+    guard editorMode == .annotate,
+          selectedTool != .crop,
+          let annotation = selectedAnnotation,
+          annotation.type.supportsQuickPropertiesBar else {
+      return nil
+    }
+    return annotation
+  }
+
+  var quickPropertiesMode: QuickPropertiesMode {
+    if quickPropertiesAnnotation != nil {
+      return .selectedItem
+    }
+    if quickPropertiesTool != nil {
+      return .toolDefaults
+    }
+    return .hidden
+  }
+
+  var quickPropertiesTool: AnnotationToolType? {
+    if let annotation = quickPropertiesAnnotation {
+      return annotation.type.toolType
+    }
+
+    guard editorMode == .annotate,
+          selectedTool != .crop,
+          selectedTool.supportsQuickPropertiesBar else {
+      return nil
+    }
+    return selectedTool
+  }
+
+  var showsQuickPropertiesBar: Bool {
+    quickPropertiesMode != .hidden
+  }
+
+  var quickPropertiesContextTitle: String {
+    guard let tool = quickPropertiesTool else { return "" }
+    switch quickPropertiesMode {
+    case .selectedItem:
+      return "Selected \(tool.displayName)"
+    case .toolDefaults:
+      return "\(tool.displayName) Defaults"
+    case .hidden:
+      return ""
+    }
+  }
+
+  var quickPropertiesSupportsStrokeColor: Bool {
+    if let annotation = quickPropertiesAnnotation {
+      return annotation.type.supportsQuickStrokeColor
+    }
+    return quickPropertiesTool?.supportsQuickStrokeColor ?? false
+  }
+
+  var quickPropertiesSupportsFill: Bool {
+    if let annotation = quickPropertiesAnnotation {
+      return annotation.type.supportsQuickFillColor
+    }
+    return quickPropertiesTool?.supportsQuickFillColor ?? false
+  }
+
+  var quickPropertiesSupportsStrokeWidth: Bool {
+    if let annotation = quickPropertiesAnnotation {
+      return annotation.type.supportsQuickStrokeWidth
+    }
+    return quickPropertiesTool?.supportsQuickStrokeWidth ?? false
+  }
+
+  var quickStrokeColorBinding: Binding<Color> {
+    Binding(
+      get: { [weak self] in
+        guard let self else { return .red }
+        return self.quickPropertiesAnnotation?.properties.strokeColor ?? self.strokeColor
+      },
+      set: { [weak self] newColor in
+        guard let self else { return }
+        if let selectedId = self.quickPropertiesAnnotation?.id {
+          self.updateAnnotationProperties(id: selectedId, strokeColor: newColor)
+        } else {
+          self.strokeColor = newColor
+        }
+      }
+    )
+  }
+
+  var quickFillColorBinding: Binding<Color> {
+    Binding(
+      get: { [weak self] in
+        guard let self else { return .clear }
+        return self.quickPropertiesAnnotation?.properties.fillColor ?? self.fillColor
+      },
+      set: { [weak self] newColor in
+        guard let self else { return }
+        if let selectedId = self.quickPropertiesAnnotation?.id {
+          self.updateAnnotationProperties(id: selectedId, fillColor: newColor)
+        } else {
+          self.fillColor = newColor
+        }
+      }
+    )
+  }
+
+  var quickStrokeWidthBinding: Binding<CGFloat> {
+    Binding(
+      get: { [weak self] in
+        guard let self else { return 3 }
+        return self.quickPropertiesAnnotation?.properties.strokeWidth ?? self.strokeWidth
+      },
+      set: { [weak self] newWidth in
+        guard let self else { return }
+        if let selectedId = self.quickPropertiesAnnotation?.id {
+          self.updateAnnotationProperties(id: selectedId, strokeWidth: newWidth)
+        } else {
+          self.strokeWidth = newWidth
+        }
+      }
+    )
+  }
+
+  func activateTool(_ tool: AnnotationToolType) {
+    if editingTextAnnotationId != nil {
+      commitTextEditing()
+    }
+    if tool != .selection {
+      selectedAnnotationId = nil
+    }
+    selectedTool = tool
   }
 
   func deleteSelectedAnnotation() {
