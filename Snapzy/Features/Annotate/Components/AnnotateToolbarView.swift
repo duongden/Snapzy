@@ -64,25 +64,6 @@ struct AnnotateToolbarView: View {
       .help("Crop")
 
       ToolbarButton(
-        icon: state.isCutoutProcessing ? "hourglass" : "person.crop.rectangle",
-        selectedIcon: "person.crop.rectangle.fill",
-        isSelected: state.isCutoutApplied
-      ) {
-        state.toggleBackgroundCutout()
-      }
-      .disabled(!state.canUseBackgroundCutout || !state.hasImage || state.isCutoutProcessing)
-      .opacity((!state.canUseBackgroundCutout || !state.hasImage) ? 0.4 : 1)
-      .help(
-        state.canUseBackgroundCutout
-          ? (state.isCutoutApplied
-            ? "Background Removed (Click to restore)"
-            : (backgroundCutoutAutoCropEnabled
-              ? "Remove Background (Auto-crops when safe)"
-              : "Remove Background (Auto-crop disabled in Settings)"))
-          : "Requires macOS 14+"
-      )
-
-      ToolbarButton(
         icon: "rectangle.on.rectangle",
         isSelected: state.showSidebar,
         highlightColor: .blue
@@ -97,22 +78,53 @@ struct AnnotateToolbarView: View {
 
   private var annotationToolsGroup: some View {
     HStack(spacing: 4) {
+      annotationToolButton(for: .selection)
+
       ForEach(drawingTools, id: \.self) { tool in
-        ToolbarButton(
-          icon: tool.icon,
-          isSelected: state.selectedTool == tool
-        ) {
-          state.activateTool(tool)
-        }
-        .help(tool.displayName)
-        .disabled(state.editorMode == .mockup && tool != .selection)
-        .opacity(state.editorMode == .mockup && tool != .selection ? 0.4 : 1)
+        annotationToolButton(for: tool)
       }
+
+      backgroundCutoutButton
+        .padding(.leading, 2)
     }
   }
 
   private var drawingTools: [AnnotationToolType] {
-    [.selection, .rectangle, .filledRectangle, .oval, .arrow, .line, .text, .highlighter, .blur, .counter, .pencil]
+    [.rectangle, .filledRectangle, .oval, .arrow, .line, .text, .highlighter, .blur, .counter, .pencil]
+  }
+
+  private var backgroundCutoutButton: some View {
+    ToolbarButton(
+      icon: state.isCutoutProcessing ? "hourglass" : "wand.and.stars",
+      isSelected: state.isCutoutApplied,
+      highlightColor: .blue
+    ) {
+      state.toggleBackgroundCutout()
+    }
+    .disabled(!state.canUseBackgroundCutout || !state.hasImage || state.isCutoutProcessing)
+    .opacity((!state.canUseBackgroundCutout || !state.hasImage) ? 0.4 : 1)
+    .help(
+      state.canUseBackgroundCutout
+        ? (state.isCutoutApplied
+          ? "Background Removed (Click to restore)"
+          : (backgroundCutoutAutoCropEnabled
+            ? "Remove Background (Auto-crops when safe)"
+            : "Remove Background (Auto-crop disabled in Settings)"))
+        : "Requires macOS 14+"
+    )
+  }
+
+  @ViewBuilder
+  private func annotationToolButton(for tool: AnnotationToolType) -> some View {
+    ToolbarButton(
+      icon: tool.icon,
+      isSelected: state.selectedTool == tool
+    ) {
+      state.activateTool(tool)
+    }
+    .help(tool.displayName)
+    .disabled(state.editorMode == .mockup && tool != .selection)
+    .opacity(state.editorMode == .mockup && tool != .selection ? 0.4 : 1)
   }
 
   private var undoRedoGroup: some View {
