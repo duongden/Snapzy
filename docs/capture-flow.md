@@ -129,6 +129,65 @@ flowchart TD
     F1 --> F3
 ```
 
+## Scrolling Capture
+
+```mermaid
+flowchart TD
+    subgraph Trigger["Trigger (Scrolling Capture)"]
+        A1["CaptureViewModel.captureScrolling()"]
+        A2["AreaSelectionController.startSelection(mode: .scrollingCapture)"]
+        A3["User selects only the moving content"]
+    end
+
+    subgraph Session["ScrollingCaptureCoordinator"]
+        B1["beginSession(rect, saveDirectory, format, prefetchedContentTask)"]
+        B2["Prewarm prepared area capture context"]
+        B3["Prepare AX auto-scroll engine if enabled"]
+        B4["Show HUD + live preview"]
+    end
+
+    subgraph FirstFrame["Start Capture"]
+        C1["startCapture()"]
+        C2["Capture first visible frame"]
+        C3["ScrollingCaptureStitcher initializes stitched canvas"]
+        C4{"AX auto-scroll ready?"}
+    end
+
+    subgraph Auto["AX Auto-scroll Loop"]
+        D1["Resolve best AX scroll target from selected rect"]
+        D2["Post pixel wheel event to target pid"]
+        D3["Wait short settle delay"]
+        D4["Capture next frame"]
+        D5["Vision + consensus alignment"]
+        D6["Adapt next step size from accepted delta"]
+        D7{"Boundary / no movement / misses?"}
+    end
+
+    subgraph Manual["Manual Scroll Loop"]
+        E1["Global scroll monitor accumulates wheel deltas"]
+        E2["Throttle refresh until gesture settles"]
+        E3["Capture next frame"]
+        E4["Guided + recovery alignment"]
+        E5{"Append / ignore / pause"}
+    end
+
+    subgraph Finish["Finish"]
+        F1["finish() flushes final frame if needed"]
+        F2["saveProcessedImage(latestImage, directory, format)"]
+        F3["PostCaptureActionHandler"]
+    end
+
+    A1 --> A2 --> A3 --> B1 --> B2 --> B3 --> B4
+    B4 --> C1 --> C2 --> C3 --> C4
+    C4 -->|Yes| D1 --> D2 --> D3 --> D4 --> D5 --> D6 --> D7
+    C4 -->|No| E1 --> E2 --> E3 --> E4 --> E5
+    D7 -->|Continue| D2
+    D7 -->|Fallback to manual| E1
+    D7 -->|Reached boundary| F1
+    E5 -->|Continue| E1
+    E5 -->|Done / limit| F1 --> F2 --> F3
+```
+
 ## Key Files
 
 | File | Responsibility |
@@ -147,6 +206,10 @@ flowchart TD
 | `Services/Capture/RecordingMetadata.swift` | Metadata schema + storage in App Support (`Captures/RecordingMetadata`), legacy migration/backward compatibility. |
 | `Features/Recording/RecordingSession.swift` | Thread-safe frame append and first-video-frame callback used to align cursor timeline with media timeline. |
 | `Features/VideoEditor/Services/VideoEditorAutoFocusEngine.swift` | Rebuilds auto-follow path from metadata and computes quality metrics (lock accuracy/visibility/error). |
+| `Services/Capture/ScrollingCapture/ScrollingCaptureCoordinator.swift` | Runs the scrolling-capture session, manages preview cadence, coordinates auto-scroll, and saves the stitched result. |
+| `Services/Capture/ScrollingCapture/ScrollingCaptureAutoScrollEngine.swift` | Finds the best AX scroll target inside the selected rect and drives synthetic scroll-wheel events with fallback handling. |
+| `Services/Capture/ScrollingCapture/ScrollingCaptureStitcher.swift` | Builds the long image with band trimming, Vision registration, consensus scoring, and guided/recovery alignment. |
+| `Services/Capture/ScrollingCapture/ScrollingCaptureHUDView.swift` | Presents capture controls, auto-scroll state, and live guidance during the session. |
 
 ## Capture Modes
 
@@ -176,6 +239,17 @@ flowchart TD
 
 Same as Area Select but returns `CGImage` directly for text recognition instead of saving to disk.
 
+### Scrolling Capture (`captureScrolling`)
+
+1. `CaptureViewModel` switches the area-selection overlay into `.scrollingCapture` mode.
+2. `ScrollingCaptureCoordinator.beginSession()` keeps a persistent highlighted region overlay on screen, creates the HUD + preview windows, prewarms a prepared area-capture context, and probes AX auto-scroll when the preference is enabled.
+3. `startCapture()` grabs the first visible frame and initializes `ScrollingCaptureStitcher`.
+4. The session then follows one of two loops:
+   - AX auto-scroll loop: `ScrollingCaptureAutoScrollEngine` resolves the best overlapping AX scroll container, posts pixel wheel events to the target app, falls back to direct AX scrollbar value nudges when wheel delivery stalls, waits a short settle delay, and asks the coordinator to capture the next frame.
+   - Manual loop: the coordinator listens for global wheel events, blends raw wheel deltas with the last accepted stitched delta, waits for the gesture to settle, and captures the next frame.
+5. `ScrollingCaptureStitcher` trims static top/bottom/side bands, estimates translation with Vision, scores multi-band agreement, and either appends, ignores, or pauses when confidence is unsafe.
+6. `finish()` flushes any final visible frame, saves the stitched image, and hands the result to the normal post-capture action pipeline.
+
 ## Image Quality Pipeline
 
 | Stage | Units | Key Detail |
@@ -187,6 +261,17 @@ Same as Area Select but returns `CGImage` directly for text recognition instead 
 | `loadImageWithCorrectScale()` | Points | Sets `NSImage.size = pixelSize / scaleFactor` (preserves bitmap rep) |
 | `AnnotateCanvasView` display | Points | Scale-to-fit within window using `.clipShape()` (no rasterization) |
 | `renderFinalImage()` export | Pixels | Uses `NSBitmapImageRep` at `pointSize × sourceImageScale` for Retina output |
+
+## Scrolling Capture Stability Notes
+
+Scrolling capture is intentionally closed-loop rather than trusting raw wheel deltas.
+
+1. Selection hygiene matters: best results come from selecting only the moving content, not sticky headers, sidebars, or oversized scrollbars.
+2. AX auto-scroll is opportunistic: Snapzy first looks for a supported scrollable AX element that materially overlaps the selected rect. If that probe fails, the session stays in manual mode.
+3. Stitch acceptance is image-driven: wheel deltas only guide the search window. Final acceptance depends on visual alignment, not on the gesture delta alone.
+4. Recovery is multi-stage: the stitcher uses trimmed content regions, Vision-based translation estimates, and a wider recovery search before pausing.
+5. Auto-scroll is multi-strategy: Snapzy tries wheel-event scrolling first and can fall back to direct AX scrollbar adjustments on native scroll surfaces before giving up.
+6. Auto-scroll remains bounded: repeated no-movement or alignment failures fall back to manual mode instead of appending low-confidence frames.
 
 ## Post-Capture Actions
 

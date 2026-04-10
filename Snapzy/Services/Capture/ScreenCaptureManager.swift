@@ -60,6 +60,13 @@ enum ScreenRecordingPermissionStatus: Equatable {
 @MainActor
 final class ScreenCaptureManager: ObservableObject {
 
+  struct PreparedAreaCaptureContext {
+    let contentFilter: SCContentFilter
+    let configuration: SCStreamConfiguration
+    let pixelCropRect: CGRect
+    let scaleFactor: CGFloat
+  }
+
   static let shared = ScreenCaptureManager()
 
   @Published private(set) var permissionStatus: ScreenRecordingPermissionStatus = .notGranted
@@ -257,113 +264,16 @@ final class ScreenCaptureManager: ObservableObject {
     DiagnosticLogger.shared.log(.info, .capture, "Area capture started \(Int(rect.width))x\(Int(rect.height))")
 
     do {
-      let includeDesktopWindows = excludeDesktopIcons || excludeDesktopWidgets
-      let content = try await loadShareableContent(
-        prefetchedContentTask: prefetchedContentTask,
-        includeDesktopWindows: includeDesktopWindows
-      )
-
-      // Find the display containing the rect using NSScreen frames (same coordinate system as input)
-      // Then get the matching SCDisplay
-      var targetScreen: NSScreen?
-      for screen in NSScreen.screens {
-        if screen.frame.intersects(rect) {
-          targetScreen = screen
-          break
-        }
-      }
-
-      // Get the display ID from NSScreen
-      let targetDisplayID: CGDirectDisplayID
-      if let screen = targetScreen,
-         let displayID = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID {
-        targetDisplayID = displayID
-      } else {
-        targetDisplayID = CGMainDisplayID()
-      }
-
-      // Find matching SCDisplay
-      guard let display = content.displays.first(where: { $0.displayID == Int(targetDisplayID) })
-              ?? content.displays.first
-      else {
-        return .failure(.noDisplayFound)
-      }
-
-      // Configure capture — exclude desktop icons/widgets if requested
-      let filter = buildFilter(
-        display: display,
-        content: content,
+      let context = try await makePreparedAreaCaptureContext(
+        rect: rect,
+        showCursor: showCursor,
         excludeDesktopIcons: excludeDesktopIcons,
         excludeDesktopWidgets: excludeDesktopWidgets,
-        excludeOwnApplication: excludeOwnApplication
-      )
-      let config = SCStreamConfiguration()
-      if #available(macOS 14.0, *) { config.ignoreShadowsSingleWindow = false }
-      if #available(macOS 14.2, *) { config.captureResolution = .best }
-      config.pixelFormat = kCVPixelFormatType_32BGRA
-      config.showsCursor = showCursor
-
-      // Get the display's backing scale factor (2.0 for Retina displays)
-      let scaleFactor: CGFloat
-      if let screen = targetScreen {
-        scaleFactor = screen.backingScaleFactor
-      } else if let screen = NSScreen.screens.first(where: {
-        Int($0.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID ?? 0)
-          == display.displayID
-      }) {
-        scaleFactor = screen.backingScaleFactor
-      } else {
-        scaleFactor = display.frame.width > 0 ? CGFloat(display.width) / display.frame.width : 2.0
-      }
-
-      // Get the NSScreen frame for coordinate conversion (Cocoa coordinates)
-      guard let matchingScreen = targetScreen ?? NSScreen.screens.first(where: {
-        Int($0.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID ?? 0)
-          == display.displayID
-      }) else {
-        return .failure(.noDisplayFound)
-      }
-
-      let screenFrame = matchingScreen.frame
-
-      // Calculate relative rect within the screen (in Cocoa coordinates)
-      let relativeRect = CGRect(
-        x: rect.origin.x - screenFrame.origin.x,
-        y: rect.origin.y - screenFrame.origin.y,
-        width: rect.width,
-        height: rect.height
+        excludeOwnApplication: excludeOwnApplication,
+        prefetchedContentTask: prefetchedContentTask
       )
 
-      // Clamp to screen bounds
-      let screenBounds = CGRect(x: 0, y: 0, width: screenFrame.width, height: screenFrame.height)
-      let clampedRect = relativeRect.intersection(screenBounds)
-
-      // Guard against empty intersection
-      guard !clampedRect.isEmpty else {
-        return .failure(.captureFailed("Selection area is outside display bounds"))
-      }
-
-      // Capture full display at native pixel resolution (avoid sourceRect interpolation blur)
-      config.width = Int(CGFloat(display.width) * scaleFactor)
-      config.height = Int(CGFloat(display.height) * scaleFactor)
-
-      // Capture the full display image
-      let fullImage = try await captureImageCompat(
-        contentFilter: filter,
-        configuration: config
-      )
-
-      // Post-capture crop: convert clamped rect to pixel coordinates (top-left origin)
-      // and crop the CGImage directly — no resampling, pixel-perfect quality
-      let flippedY = screenFrame.height - clampedRect.origin.y - clampedRect.height
-      let pixelCropRect = CGRect(
-        x: ceil(clampedRect.origin.x * scaleFactor),
-        y: ceil(flippedY * scaleFactor),
-        width: ceil(clampedRect.width * scaleFactor),
-        height: ceil(clampedRect.height * scaleFactor)
-      )
-
-      guard let croppedImage = fullImage.cropping(to: pixelCropRect) else {
+      guard let croppedImage = try await capturePreparedArea(context) else {
         return .failure(.captureFailed("Failed to crop captured image"))
       }
 
@@ -520,13 +430,63 @@ final class ScreenCaptureManager: ObservableObject {
       throw unavailableError
     }
 
+    let context = try await makePreparedAreaCaptureContext(
+      rect: rect,
+      showCursor: false,
+      excludeDesktopIcons: excludeDesktopIcons,
+      excludeDesktopWidgets: excludeDesktopWidgets,
+      excludeOwnApplication: excludeOwnApplication,
+      prefetchedContentTask: prefetchedContentTask
+    )
+
+    return try await capturePreparedArea(context)
+  }
+
+  func prepareAreaCapture(
+    rect: CGRect,
+    showCursor: Bool = false,
+    excludeDesktopIcons: Bool = false,
+    excludeDesktopWidgets: Bool = false,
+    excludeOwnApplication: Bool = false,
+    prefetchedContentTask: ShareableContentPrefetchTask? = nil
+  ) async throws -> PreparedAreaCaptureContext {
+    if let unavailableError = await ensureCaptureAvailability() {
+      throw unavailableError
+    }
+
+    return try await makePreparedAreaCaptureContext(
+      rect: rect,
+      showCursor: showCursor,
+      excludeDesktopIcons: excludeDesktopIcons,
+      excludeDesktopWidgets: excludeDesktopWidgets,
+      excludeOwnApplication: excludeOwnApplication,
+      prefetchedContentTask: prefetchedContentTask
+    )
+  }
+
+  func capturePreparedArea(_ context: PreparedAreaCaptureContext) async throws -> CGImage? {
+    let fullImage = try await captureImageCompat(
+      contentFilter: context.contentFilter,
+      configuration: context.configuration
+    )
+
+    return fullImage.cropping(to: context.pixelCropRect)
+  }
+
+  private func makePreparedAreaCaptureContext(
+    rect: CGRect,
+    showCursor: Bool,
+    excludeDesktopIcons: Bool,
+    excludeDesktopWidgets: Bool,
+    excludeOwnApplication: Bool,
+    prefetchedContentTask: ShareableContentPrefetchTask?
+  ) async throws -> PreparedAreaCaptureContext {
     let includeDesktopWindows = excludeDesktopIcons || excludeDesktopWidgets
     let content = try await loadShareableContent(
       prefetchedContentTask: prefetchedContentTask,
       includeDesktopWindows: includeDesktopWindows
     )
 
-    // Find the display containing the rect
     var targetScreen: NSScreen?
     for screen in NSScreen.screens {
       if screen.frame.intersects(rect) {
@@ -549,7 +509,7 @@ final class ScreenCaptureManager: ObservableObject {
       throw CaptureError.noDisplayFound
     }
 
-    let filter = buildFilter(
+    let contentFilter = buildFilter(
       display: display,
       content: content,
       excludeDesktopIcons: excludeDesktopIcons,
@@ -560,13 +520,18 @@ final class ScreenCaptureManager: ObservableObject {
     if #available(macOS 14.0, *) { config.ignoreShadowsSingleWindow = false }
     if #available(macOS 14.2, *) { config.captureResolution = .best }
     config.pixelFormat = kCVPixelFormatType_32BGRA
-    config.showsCursor = false
+    config.showsCursor = showCursor
 
     let scaleFactor: CGFloat
     if let screen = targetScreen {
       scaleFactor = screen.backingScaleFactor
+    } else if let screen = NSScreen.screens.first(where: {
+      Int($0.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID ?? 0)
+        == display.displayID
+    }) {
+      scaleFactor = screen.backingScaleFactor
     } else {
-      scaleFactor = 2.0
+      scaleFactor = display.frame.width > 0 ? CGFloat(display.width) / display.frame.width : 2.0
     }
 
     guard let matchingScreen = targetScreen ?? NSScreen.screens.first(where: {
@@ -592,16 +557,9 @@ final class ScreenCaptureManager: ObservableObject {
       throw CaptureError.captureFailed("Selection area is outside display bounds")
     }
 
-    // Capture full display at native pixel resolution (avoid sourceRect interpolation blur)
     config.width = Int(CGFloat(display.width) * scaleFactor)
     config.height = Int(CGFloat(display.height) * scaleFactor)
 
-    let fullImage = try await captureImageCompat(
-      contentFilter: filter,
-      configuration: config
-    )
-
-    // Post-capture crop: pixel-perfect, no resampling
     let flippedY = screenFrame.height - clampedRect.origin.y - clampedRect.height
     let pixelCropRect = CGRect(
       x: ceil(clampedRect.origin.x * scaleFactor),
@@ -610,7 +568,12 @@ final class ScreenCaptureManager: ObservableObject {
       height: ceil(clampedRect.height * scaleFactor)
     )
 
-    return fullImage.cropping(to: pixelCropRect)
+    return PreparedAreaCaptureContext(
+      contentFilter: contentFilter,
+      configuration: config,
+      pixelCropRect: pixelCropRect,
+      scaleFactor: scaleFactor
+    )
   }
 
   // MARK: - Filter Builder

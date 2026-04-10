@@ -10,6 +10,7 @@ import SwiftUI
 struct ShortcutsSettingsView: View {
   @State private var fullscreenShortcut: ShortcutConfig
   @State private var areaShortcut: ShortcutConfig
+  @State private var scrollingCaptureShortcut: ShortcutConfig
   @State private var objectCutoutShortcut: ShortcutConfig
   @State private var ocrShortcut: ShortcutConfig
   @State private var recordingShortcut: ShortcutConfig
@@ -38,6 +39,7 @@ struct ShortcutsSettingsView: View {
   init() {
     _fullscreenShortcut = State(initialValue: KeyboardShortcutManager.shared.fullscreenShortcut)
     _areaShortcut = State(initialValue: KeyboardShortcutManager.shared.areaShortcut)
+    _scrollingCaptureShortcut = State(initialValue: KeyboardShortcutManager.shared.scrollingCaptureShortcut)
     _objectCutoutShortcut = State(initialValue: KeyboardShortcutManager.shared.objectCutoutShortcut)
     _ocrShortcut = State(initialValue: KeyboardShortcutManager.shared.ocrShortcut)
     _recordingShortcut = State(initialValue: KeyboardShortcutManager.shared.recordingShortcut)
@@ -264,6 +266,18 @@ struct ShortcutsSettingsView: View {
             onShortcutChanged: { handleGlobalShortcutChange($0, for: .area) }
           )
 
+          if ScrollingCaptureFeature.isEnabled {
+            ShortcutRecorderView(
+              label: GlobalShortcutKind.scrollingCapture.displayName,
+              icon: "arrow.up.and.down",
+              description: "Experimental guided session for long screenshots",
+              shortcut: $scrollingCaptureShortcut,
+              isEnabled: globalEnabledBinding(for: .scrollingCapture),
+              validationIssue: globalValidationIssues[.scrollingCapture],
+              onShortcutChanged: { handleGlobalShortcutChange($0, for: .scrollingCapture) }
+            )
+          }
+
           ShortcutRecorderView(
             label: GlobalShortcutKind.objectCutout.displayName,
             icon: "person.crop.rectangle",
@@ -439,6 +453,7 @@ struct ShortcutsSettingsView: View {
   private func resetToDefaults() {
     fullscreenShortcut = .defaultFullscreen
     areaShortcut = .defaultArea
+    scrollingCaptureShortcut = .defaultScrollingCapture
     objectCutoutShortcut = .defaultObjectCutout
     ocrShortcut = .defaultOCR
     recordingShortcut = .defaultRecording
@@ -461,6 +476,7 @@ struct ShortcutsSettingsView: View {
 
     manager.setFullscreenShortcut(.defaultFullscreen)
     manager.setAreaShortcut(.defaultArea)
+    manager.setScrollingCaptureShortcut(.defaultScrollingCapture)
     manager.setObjectCutoutShortcut(.defaultObjectCutout)
     manager.setOCRShortcut(.defaultOCR)
     manager.setRecordingShortcut(.defaultRecording)
@@ -585,6 +601,9 @@ struct ShortcutsSettingsView: View {
       case .area:
         areaShortcut = config
         manager.setAreaShortcut(config)
+      case .scrollingCapture:
+        scrollingCaptureShortcut = config
+        manager.setScrollingCaptureShortcut(config)
       case .recording:
         recordingShortcut = config
         manager.setRecordingShortcut(config)

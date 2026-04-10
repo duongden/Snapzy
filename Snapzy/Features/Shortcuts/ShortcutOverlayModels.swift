@@ -36,12 +36,7 @@ enum ShortcutOverlayContentBuilder {
       ShortcutOverlaySection(
         id: "capture",
         title: "Capture",
-        items: [
-          globalItem(kind: .fullscreen, icon: "rectangle.dashed.and.paperclip", manager: keyboard),
-          globalItem(kind: .area, icon: "rectangle.dashed", manager: keyboard),
-          globalItem(kind: .objectCutout, icon: "person.crop.rectangle", manager: keyboard),
-          globalItem(kind: .ocr, icon: "text.viewfinder", manager: keyboard),
-        ]
+        items: captureItems(manager: keyboard)
       ),
       ShortcutOverlaySection(
         id: "recording",
@@ -123,6 +118,21 @@ enum ShortcutOverlayContentBuilder {
       isEnabled: manager.isShortcutEnabled(for: kind),
       display: .keycaps(config.displayParts)
     )
+  }
+
+  private static func captureItems(manager: KeyboardShortcutManager) -> [ShortcutOverlayItem] {
+    var items: [ShortcutOverlayItem] = [
+      globalItem(kind: .fullscreen, icon: "rectangle.dashed.and.paperclip", manager: manager),
+      globalItem(kind: .area, icon: "rectangle.dashed", manager: manager),
+    ]
+
+    if ScrollingCaptureFeature.isEnabled {
+      items.append(globalItem(kind: .scrollingCapture, icon: "arrow.up.and.down", manager: manager))
+    }
+
+    items.append(globalItem(kind: .objectCutout, icon: "person.crop.rectangle", manager: manager))
+    items.append(globalItem(kind: .ocr, icon: "text.viewfinder", manager: manager))
+    return items
   }
 
   private static func annotateActionMetadata(_ kind: AnnotateActionShortcutKind) -> (title: String, icon: String) {

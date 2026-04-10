@@ -17,6 +17,7 @@ typealias AreaSelectionCompletion = (CGRect?) -> Void
 enum SelectionMode {
   case screenshot
   case recording
+  case scrollingCapture
 }
 
 /// Callback type with mode
@@ -141,12 +142,14 @@ final class AreaSelectionController: NSObject {
           print("[Snapzy:AreaSelection] activatePooledWindows() — resynced stale frame for display \(displayID)")
         }
         // Reset and show existing pooled window without stealing focus
+        window.updateSelectionMode(selectionMode)
         window.overlayView.resetSelection()
         window.selectionDelegate = self
         window.orderFrontRegardless()
       } else {
         // Fallback: create window if not pooled
         let window = AreaSelectionWindow(screen: screen, pooled: false)
+        window.updateSelectionMode(selectionMode)
         window.selectionDelegate = self
         windowPool[displayID] = window
         window.orderFrontRegardless()
@@ -333,6 +336,10 @@ final class AreaSelectionWindow: NSPanel {
     fatalError("init(coder:) has not been implemented")
   }
 
+  func updateSelectionMode(_ mode: SelectionMode) {
+    overlayView.selectionMode = mode
+  }
+
   // Non-activating: prevent stealing focus from other apps
   override var canBecomeKey: Bool { false }
   override var canBecomeMain: Bool { false }
@@ -379,6 +386,11 @@ protocol AreaSelectionOverlayViewDelegate: AnyObject {
 final class AreaSelectionOverlayView: NSView {
 
   weak var delegate: AreaSelectionOverlayViewDelegate?
+  var selectionMode: SelectionMode = .screenshot {
+    didSet {
+      needsDisplay = true
+    }
+  }
 
   // MARK: - Selection State
 
@@ -611,10 +623,63 @@ final class AreaSelectionOverlayView: NSView {
   // MARK: - Drawing (Only for size indicator text)
 
   override func draw(_ dirtyRect: NSRect) {
+    drawModeGuidance()
+
     // Only draw size indicator - layers handle dim, crosshair, selection
     if isSelecting, let rect = calculateSelectionRect() {
       drawSizeIndicator(for: rect)
     }
+  }
+
+  private func drawModeGuidance() {
+    guard selectionMode == .scrollingCapture else { return }
+
+    let title = "Scrolling Capture"
+    let subtitle = "Drag only around the content that will scroll."
+
+    let titleAttributes: [NSAttributedString.Key: Any] = [
+      .font: NSFont.systemFont(ofSize: 13, weight: .semibold),
+      .foregroundColor: NSColor.white,
+    ]
+    let subtitleAttributes: [NSAttributedString.Key: Any] = [
+      .font: NSFont.systemFont(ofSize: 11, weight: .regular),
+      .foregroundColor: NSColor.white.withAlphaComponent(0.78),
+    ]
+
+    let titleSize = title.size(withAttributes: titleAttributes)
+    let subtitleSize = subtitle.size(withAttributes: subtitleAttributes)
+    let pillWidth = max(titleSize.width, subtitleSize.width) + 28
+    let pillHeight = titleSize.height + subtitleSize.height + 18
+    let pillRect = CGRect(
+      x: (bounds.width - pillWidth) / 2,
+      y: bounds.maxY - pillHeight - 26,
+      width: pillWidth,
+      height: pillHeight
+    )
+
+    let pillPath = NSBezierPath(roundedRect: pillRect, xRadius: 11, yRadius: 11)
+    NSColor.black.withAlphaComponent(0.68).setFill()
+    pillPath.fill()
+
+    NSColor.white.withAlphaComponent(0.12).setStroke()
+    pillPath.lineWidth = 1
+    pillPath.stroke()
+
+    let titleRect = CGRect(
+      x: pillRect.minX + 14,
+      y: pillRect.maxY - titleSize.height - 8,
+      width: pillRect.width - 28,
+      height: titleSize.height
+    )
+    let subtitleRect = CGRect(
+      x: pillRect.minX + 14,
+      y: pillRect.minY + 7,
+      width: pillRect.width - 28,
+      height: subtitleSize.height
+    )
+
+    (title as NSString).draw(in: titleRect, withAttributes: titleAttributes)
+    (subtitle as NSString).draw(in: subtitleRect, withAttributes: subtitleAttributes)
   }
 
   private func drawSizeIndicator(for rect: CGRect) {

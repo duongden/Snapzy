@@ -69,6 +69,7 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
   // Shortcut bindings for UI
   @Published var fullscreenShortcut: ShortcutConfig
   @Published var areaShortcut: ShortcutConfig
+  @Published var scrollingCaptureShortcut: ShortcutConfig
   @Published var recordingShortcut: ShortcutConfig
   @Published var objectCutoutShortcut: ShortcutConfig
 
@@ -87,6 +88,7 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
     // Initialize shortcuts from manager
     fullscreenShortcut = KeyboardShortcutManager.shared.fullscreenShortcut
     areaShortcut = KeyboardShortcutManager.shared.areaShortcut
+    scrollingCaptureShortcut = KeyboardShortcutManager.shared.scrollingCaptureShortcut
     recordingShortcut = KeyboardShortcutManager.shared.recordingShortcut
     objectCutoutShortcut = KeyboardShortcutManager.shared.objectCutoutShortcut
 
@@ -192,6 +194,11 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
     recordingShortcut = config
   }
 
+  func updateScrollingCaptureShortcut(_ config: ShortcutConfig) {
+    shortcutManager.setScrollingCaptureShortcut(config)
+    scrollingCaptureShortcut = config
+  }
+
   func updateObjectCutoutShortcut(_ config: ShortcutConfig) {
     shortcutManager.setObjectCutoutShortcut(config)
     objectCutoutShortcut = config
@@ -205,6 +212,8 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
       captureFullscreen()
     case .captureArea:
       captureArea()
+    case .captureScrolling:
+      captureScrolling()
     case .captureOCR:
       captureOCR()
     case .captureObjectCutout:
@@ -359,6 +368,83 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
             SoundManager.playScreenshotCapture()
           }
         }
+      }
+    }
+  }
+
+  func captureScrolling() {
+    guard ScrollingCaptureFeature.isEnabled else {
+      AppToastManager.shared.show(
+        message: "Enable Scrolling Capture in Preferences > Capture to try the experimental build.",
+        style: .info,
+        position: .bottomCenter
+      )
+      return
+    }
+
+    guard !ScrollingCaptureCoordinator.shared.isActive else {
+      AppToastManager.shared.show(
+        message: "A scrolling capture session is already active.",
+        style: .warning,
+        position: .bottomCenter
+      )
+      return
+    }
+
+    if isAreaSelectionActive {
+      DiagnosticLogger.shared.log(.debug, .capture, "captureScrolling blocked: area selection active")
+      return
+    }
+
+    guard
+      let resolvedSaveDirectory = fileAccessManager.ensureExportDirectoryForOperation(
+        promptMessage: "Choose where Snapzy should save screenshots and recordings")
+    else {
+      lastCaptureResult = .failure(.saveFailed("Save location permission is required"))
+      return
+    }
+    saveDirectory = resolvedSaveDirectory
+
+    isAreaSelectionActive = true
+    DiagnosticLogger.shared.log(.info, .capture, "Scrolling capture flow started", context: ["format": resolvedFormat.fileExtension])
+    let prefetchedContentTask = captureManager.prefetchShareableContent()
+
+    hideVisibleNormalWindowsIfNeeded(true)
+
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+      guard let self = self else {
+        DiagnosticLogger.shared.log(.warning, .capture, "captureScrolling: self deallocated")
+        AreaSelectionController.shared.cancelSelection()
+        return
+      }
+
+      AreaSelectionController.shared.startSelection(mode: .scrollingCapture) { [weak self] rect, _ in
+        guard let self = self else {
+          DiagnosticLogger.shared.log(.warning, .capture, "captureScrolling completion: self deallocated")
+          return
+        }
+
+        defer {
+          self.isAreaSelectionActive = false
+        }
+
+        guard let selectedRect = rect else {
+          DiagnosticLogger.shared.log(.info, .capture, "Scrolling capture cancelled by user")
+          self.lastCaptureResult = .failure(.cancelled)
+          return
+        }
+
+        let actualSaveDirectory = self.tempCaptureManager.resolveSaveDirectory(
+          for: .screenshot,
+          exportDirectory: resolvedSaveDirectory
+        )
+
+        ScrollingCaptureCoordinator.shared.beginSession(
+          rect: selectedRect,
+          saveDirectory: actualSaveDirectory,
+          format: self.resolvedFormat,
+          prefetchedContentTask: prefetchedContentTask
+        )
       }
     }
   }

@@ -15,6 +15,9 @@ struct CaptureSettingsView: View {
   @AppStorage(PreferencesKeys.screenshotIncludeOwnApp) private var includeOwnAppInScreenshots = false
   @AppStorage(PreferencesKeys.screenshotShowCursor) private var screenshotShowCursor = false
   @AppStorage(PreferencesKeys.screenshotFormat) private var screenshotFormat = "png"
+  @AppStorage(PreferencesKeys.scrollingCaptureEnabled) private var scrollingCaptureEnabled = false
+  @AppStorage(PreferencesKeys.scrollingCaptureAutoScrollEnabled) private var scrollingCaptureAutoScrollEnabled = false
+  @AppStorage(PreferencesKeys.scrollingCaptureShowHints) private var scrollingCaptureShowHints = true
   @AppStorage(PreferencesKeys.backgroundCutoutAutoCropEnabled) private var backgroundCutoutAutoCropEnabled = true
   @AppStorage(PreferencesKeys.screenshotFileNameTemplate)
   private var screenshotFileNameTemplate = CaptureOutputKind.screenshot.defaultTemplate
@@ -155,6 +158,49 @@ struct CaptureSettingsView: View {
           }
           .padding(.vertical, 4)
         }
+      }
+
+      Section("Scrolling Capture") {
+        SettingRow(
+          icon: "arrow.up.and.down",
+          title: "Enable Experimental Mode",
+          description: "Show the new scrolling capture session in menus and shortcuts"
+        ) {
+          Toggle("", isOn: $scrollingCaptureEnabled)
+            .labelsHidden()
+        }
+
+        SettingRow(
+          icon: "figure.walk.motion",
+          title: "Prefer Auto-scroll",
+          description: "Use Accessibility-guided auto-scroll when Snapzy detects a supported scroll surface"
+        ) {
+          Toggle("", isOn: $scrollingCaptureAutoScrollEnabled)
+            .labelsHidden()
+            .disabled(!scrollingCaptureEnabled)
+        }
+
+        SettingRow(
+          icon: "lightbulb",
+          title: "Show Session Hints",
+          description: "Keep guidance visible when starting a scrolling capture session"
+        ) {
+          Toggle("", isOn: $scrollingCaptureShowHints)
+            .labelsHidden()
+            .disabled(!scrollingCaptureEnabled)
+        }
+
+        HStack(alignment: .top, spacing: 6) {
+          Image(systemName: "info.circle.fill")
+            .foregroundColor(.blue)
+            .font(.system(size: 12))
+            .padding(.top, 1)
+          Text("Auto-scroll works best when the selection contains only the moving content. Snapzy falls back to manual scrolling if Accessibility permission or a stable scroll target is unavailable.")
+            .font(.system(size: 11))
+            .foregroundColor(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.vertical, 4)
       }
 
       Section("Output Naming") {

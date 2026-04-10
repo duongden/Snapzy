@@ -37,6 +37,12 @@ struct ShortcutConfig: Equatable, Codable {
     modifiers: UInt32(cmdKey | shiftKey)
   )
 
+  /// Cmd + Shift + 6
+  static let defaultScrollingCapture = ShortcutConfig(
+    keyCode: UInt32(kVK_ANSI_6),
+    modifiers: UInt32(cmdKey | shiftKey)
+  )
+
   /// Cmd + Shift + 2
   static let defaultOCR = ShortcutConfig(
     keyCode: UInt32(kVK_ANSI_2),
@@ -220,6 +226,7 @@ struct ShortcutConfig: Equatable, Codable {
 enum GlobalShortcutKind: String, CaseIterable, Codable {
   case fullscreen
   case area
+  case scrollingCapture
   case recording
   case annotate
   case videoEditor
@@ -245,6 +252,8 @@ extension GlobalShortcutKind {
       return "Capture Fullscreen"
     case .area:
       return "Capture Area"
+    case .scrollingCapture:
+      return "Scrolling Capture"
     case .recording:
       return "Record Video"
     case .annotate:
@@ -267,6 +276,7 @@ extension GlobalShortcutKind {
 enum ShortcutAction {
   case captureFullscreen
   case captureArea
+  case captureScrolling
   case captureOCR
   case captureObjectCutout
   case recordVideo
@@ -291,6 +301,7 @@ final class KeyboardShortcutManager {
 
   private(set) var fullscreenShortcut: ShortcutConfig
   private(set) var areaShortcut: ShortcutConfig
+  private(set) var scrollingCaptureShortcut: ShortcutConfig
   private(set) var recordingShortcut: ShortcutConfig
   private(set) var annotateShortcut: ShortcutConfig
   private(set) var videoEditorShortcut: ShortcutConfig
@@ -304,6 +315,7 @@ final class KeyboardShortcutManager {
 
   private var fullscreenHotkeyRef: EventHotKeyRef?
   private var areaHotkeyRef: EventHotKeyRef?
+  private var scrollingCaptureHotkeyRef: EventHotKeyRef?
   private var recordingHotkeyRef: EventHotKeyRef?
   private var annotateHotkeyRef: EventHotKeyRef?
   private var videoEditorHotkeyRef: EventHotKeyRef?
@@ -315,19 +327,21 @@ final class KeyboardShortcutManager {
   // Hotkey IDs
   private let fullscreenHotkeyID = EventHotKeyID(signature: OSType(0x5A53_4631), id: 1)  // "ZSF1"
   private let areaHotkeyID = EventHotKeyID(signature: OSType(0x5A53_4632), id: 2)  // "ZSF2"
-  private let recordingHotkeyID = EventHotKeyID(signature: OSType(0x5A53_4633), id: 3)  // "ZSF3"
-  private let annotateHotkeyID = EventHotKeyID(signature: OSType(0x5A53_4634), id: 4)  // "ZSF4"
-  private let videoEditorHotkeyID = EventHotKeyID(signature: OSType(0x5A53_4635), id: 5)  // "ZSF5"
-  private let ocrHotkeyID = EventHotKeyID(signature: OSType(0x5A53_4636), id: 6)  // "ZSF6"
-  private let cloudUploadsHotkeyID = EventHotKeyID(signature: OSType(0x5A53_4637), id: 7)  // "ZSF7"
-  private let objectCutoutHotkeyID = EventHotKeyID(signature: OSType(0x5A53_4638), id: 8)  // "ZSF8"
-  private let shortcutListHotkeyID = EventHotKeyID(signature: OSType(0x5A53_4639), id: 9)  // "ZSF9"
+  private let scrollingCaptureHotkeyID = EventHotKeyID(signature: OSType(0x5A53_4633), id: 3)  // "ZSF3"
+  private let recordingHotkeyID = EventHotKeyID(signature: OSType(0x5A53_4634), id: 4)  // "ZSF4"
+  private let annotateHotkeyID = EventHotKeyID(signature: OSType(0x5A53_4635), id: 5)  // "ZSF5"
+  private let videoEditorHotkeyID = EventHotKeyID(signature: OSType(0x5A53_4636), id: 6)  // "ZSF6"
+  private let ocrHotkeyID = EventHotKeyID(signature: OSType(0x5A53_4637), id: 7)  // "ZSF7"
+  private let cloudUploadsHotkeyID = EventHotKeyID(signature: OSType(0x5A53_4638), id: 8)  // "ZSF8"
+  private let objectCutoutHotkeyID = EventHotKeyID(signature: OSType(0x5A53_4639), id: 9)  // "ZSF9"
+  private let shortcutListHotkeyID = EventHotKeyID(signature: OSType(0x5A53_4641), id: 10)  // "ZSFA"
 
   private var eventHandler: EventHandlerRef?
 
   // UserDefaults keys
   private let fullscreenShortcutKey = "fullscreenShortcut"
   private let areaShortcutKey = "areaShortcut"
+  private let scrollingCaptureShortcutKey = "scrollingCaptureShortcut"
   private let recordingShortcutKey = "recordingShortcut"
   private let annotateShortcutKey = "annotateShortcut"
   private let videoEditorShortcutKey = "videoEditorShortcut"
@@ -341,6 +355,7 @@ final class KeyboardShortcutManager {
   private init() {
     fullscreenShortcut = .defaultFullscreen
     areaShortcut = .defaultArea
+    scrollingCaptureShortcut = .defaultScrollingCapture
     recordingShortcut = .defaultRecording
     annotateShortcut = .defaultAnnotate
     videoEditorShortcut = .defaultVideoEditor
@@ -409,6 +424,7 @@ final class KeyboardShortcutManager {
     switch kind {
     case .fullscreen: return fullscreenShortcut
     case .area: return areaShortcut
+    case .scrollingCapture: return scrollingCaptureShortcut
     case .recording: return recordingShortcut
     case .annotate: return annotateShortcut
     case .videoEditor: return videoEditorShortcut
@@ -455,6 +471,14 @@ final class KeyboardShortcutManager {
   func setRecordingShortcut(_ config: ShortcutConfig) {
     mutateShortcutRegistration {
       recordingShortcut = config
+      saveShortcuts()
+    }
+  }
+
+  /// Update scrolling capture shortcut
+  func setScrollingCaptureShortcut(_ config: ShortcutConfig) {
+    mutateShortcutRegistration {
+      scrollingCaptureShortcut = config
       saveShortcuts()
     }
   }
@@ -517,6 +541,9 @@ final class KeyboardShortcutManager {
     if let areaData = try? encoder.encode(areaShortcut) {
       UserDefaults.standard.set(areaData, forKey: areaShortcutKey)
     }
+    if let scrollingCaptureData = try? encoder.encode(scrollingCaptureShortcut) {
+      UserDefaults.standard.set(scrollingCaptureData, forKey: scrollingCaptureShortcutKey)
+    }
     if let recordingData = try? encoder.encode(recordingShortcut) {
       UserDefaults.standard.set(recordingData, forKey: recordingShortcutKey)
     }
@@ -551,6 +578,11 @@ final class KeyboardShortcutManager {
       let config = try? decoder.decode(ShortcutConfig.self, from: areaData)
     {
       areaShortcut = config
+    }
+    if let scrollingCaptureData = UserDefaults.standard.data(forKey: scrollingCaptureShortcutKey),
+      let config = try? decoder.decode(ShortcutConfig.self, from: scrollingCaptureData)
+    {
+      scrollingCaptureShortcut = config
     }
     if let recordingData = UserDefaults.standard.data(forKey: recordingShortcutKey),
       let config = try? decoder.decode(ShortcutConfig.self, from: recordingData)
@@ -657,6 +689,9 @@ final class KeyboardShortcutManager {
     case areaHotkeyID.id:
       actionName = "area"
       action = .captureArea
+    case scrollingCaptureHotkeyID.id:
+      actionName = "scrolling-capture"
+      action = .captureScrolling
     case recordingHotkeyID.id:
       actionName = "recording"
       action = .recordVideo
@@ -708,6 +743,12 @@ final class KeyboardShortcutManager {
       ref: &areaHotkeyRef
     )
     registerShortcutIfNeeded(
+      kind: .scrollingCapture,
+      config: scrollingCaptureShortcut,
+      hotkeyID: scrollingCaptureHotkeyID,
+      ref: &scrollingCaptureHotkeyRef
+    )
+    registerShortcutIfNeeded(
       kind: .recording,
       config: recordingShortcut,
       hotkeyID: recordingHotkeyID,
@@ -757,6 +798,7 @@ final class KeyboardShortcutManager {
     hotkeyID: EventHotKeyID,
     ref: inout EventHotKeyRef?
   ) {
+    guard shortcutFeatureIsAvailable(for: kind) else { return }
     guard isShortcutEnabled(for: kind) else { return }
 
     let status = RegisterEventHotKey(
@@ -789,6 +831,10 @@ final class KeyboardShortcutManager {
       UnregisterEventHotKey(ref)
       areaHotkeyRef = nil
     }
+    if let ref = scrollingCaptureHotkeyRef {
+      UnregisterEventHotKey(ref)
+      scrollingCaptureHotkeyRef = nil
+    }
     if let ref = recordingHotkeyRef {
       UnregisterEventHotKey(ref)
       recordingHotkeyRef = nil
@@ -816,6 +862,15 @@ final class KeyboardShortcutManager {
     if let ref = objectCutoutHotkeyRef {
       UnregisterEventHotKey(ref)
       objectCutoutHotkeyRef = nil
+    }
+  }
+
+  private func shortcutFeatureIsAvailable(for kind: GlobalShortcutKind) -> Bool {
+    switch kind {
+    case .scrollingCapture:
+      return ScrollingCaptureFeature.isEnabled
+    default:
+      return true
     }
   }
 }
