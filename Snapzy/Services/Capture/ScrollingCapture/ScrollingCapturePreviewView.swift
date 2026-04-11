@@ -51,17 +51,18 @@ struct ScrollingCapturePreviewView: View {
         Text("Preview")
           .font(.system(size: 12, weight: .semibold))
 
-        if let badgeLabel = model.previewTruthState.badgeLabel {
-          Text(badgeLabel)
-            .font(.system(size: 10, weight: .semibold))
-            .foregroundStyle(.white)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
-            .background(
-              Capsule(style: .continuous)
-                .fill(badgeColor)
-            )
-        }
+        Text(model.previewTruthState.badgeLabel ?? "")
+          .contentTransition(.numericText())
+          .font(.system(size: 10, weight: .semibold))
+          .foregroundStyle(.white)
+          .padding(.horizontal, 6)
+          .padding(.vertical, 2)
+          .background(
+            Capsule(style: .continuous)
+              .fill(badgeColor)
+          )
+          .opacity(model.previewTruthState.badgeLabel != nil ? 1 : 0)
+          .animation(.easeInOut(duration: 0.2), value: model.previewTruthState)
       }
 
       Group {
@@ -92,24 +93,16 @@ struct ScrollingCapturePreviewView: View {
         }
       }
       .frame(width: ScrollingCapturePreviewLayout.previewWidth, height: previewHeight)
+      .animation(.easeInOut(duration: 0.25), value: previewHeight)
       .background(
         RoundedRectangle(cornerRadius: 12, style: .continuous)
           .fill(Color.black.opacity(0.08))
       )
 
-      VStack(alignment: .leading, spacing: 4) {
-        Text(model.previewCaption)
-          .font(.system(size: 11))
-          .foregroundStyle(.secondary)
-          .fixedSize(horizontal: false, vertical: true)
-
-        if model.phase != .ready {
-          Text(model.previewTruthDescription)
-            .font(.system(size: 11))
-            .foregroundStyle(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
-        }
-      }
+      Text(model.previewCaption)
+        .font(.system(size: 11))
+        .foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
     }
     .padding(12)
     .frame(width: ScrollingCapturePreviewLayout.panelWidth)

@@ -62,7 +62,11 @@ final class ScrollingCapturePreviewWindow: NSPanel {
       return
     }
 
-    setContentSize(size)
+    NSAnimationContext.runAnimationGroup { ctx in
+      ctx.duration = 0.25
+      ctx.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+      self.animator().setContentSize(size)
+    }
     position(near: anchorRect, size: size)
   }
 
