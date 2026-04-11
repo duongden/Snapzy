@@ -7,6 +7,32 @@
 
 import AppKit
 
+enum RecordingRegionOverlayGuidanceTone {
+  case neutral
+  case active
+  case warning
+  case progress
+
+  var accentColor: NSColor {
+    switch self {
+    case .neutral:
+      return NSColor.white.withAlphaComponent(0.85)
+    case .active:
+      return NSColor.systemBlue
+    case .warning:
+      return NSColor.systemOrange
+    case .progress:
+      return NSColor.systemTeal
+    }
+  }
+}
+
+struct RecordingRegionOverlayGuidance {
+  let title: String
+  let detail: String?
+  let tone: RecordingRegionOverlayGuidanceTone
+}
+
 // MARK: - RecordingResizeHandle
 
 /// Resize handle positions for edge and corner resizing
@@ -76,6 +102,10 @@ final class RecordingRegionOverlayWindow: NSPanel {
     overlayView.needsDisplay = true
   }
 
+  func updateGuidance(_ guidance: RecordingRegionOverlayGuidance?) {
+    overlayView.guidance = guidance
+  }
+
   /// Hide the border when recording starts (border would appear in video)
   func hideBorder() {
     overlayView.showBorder = false
@@ -110,6 +140,11 @@ final class RecordingRegionOverlayView: NSView {
   var highlightRect: CGRect
   var showBorder: Bool = true
   var isInteractionEnabled: Bool = false
+  var guidance: RecordingRegionOverlayGuidance? {
+    didSet {
+      needsDisplay = true
+    }
+  }
   weak var overlayWindow: RecordingRegionOverlayWindow?
 
   // Drag state
@@ -529,6 +564,119 @@ final class RecordingRegionOverlayView: NSView {
 
       // Draw resize handles
       drawRecordingResizeHandles(for: clampedRect)
+    }
+
+    if let guidance, bounds.contains(CGPoint(x: localRect.midX, y: localRect.midY)) {
+      drawGuidance(guidance, in: clampedRect)
+    }
+  }
+
+  private func drawGuidance(_ guidance: RecordingRegionOverlayGuidance, in rect: CGRect) {
+    let horizontalInset = min(max(16, rect.width * 0.08), 28)
+    let availableWidth = rect.width - horizontalInset * 2
+    guard availableWidth >= 120 else { return }
+
+    let prefersCompactLayout = rect.width < 230 || rect.height < 110
+    let showsDetail = !prefersCompactLayout && guidance.detail != nil
+    let titleFont = NSFont.systemFont(ofSize: prefersCompactLayout ? 15 : 17, weight: .semibold)
+    let detailFont = NSFont.systemFont(ofSize: prefersCompactLayout ? 11 : 12, weight: .medium)
+    let paragraphStyle = NSMutableParagraphStyle()
+    paragraphStyle.alignment = .center
+    paragraphStyle.lineBreakMode = .byWordWrapping
+
+    let shadow = NSShadow()
+    shadow.shadowColor = NSColor.black.withAlphaComponent(0.45)
+    shadow.shadowBlurRadius = 8
+    shadow.shadowOffset = .zero
+
+    let titleAttributes: [NSAttributedString.Key: Any] = [
+      .font: titleFont,
+      .foregroundColor: NSColor.white,
+      .paragraphStyle: paragraphStyle,
+      .shadow: shadow
+    ]
+    let detailAttributes: [NSAttributedString.Key: Any] = [
+      .font: detailFont,
+      .foregroundColor: NSColor.white.withAlphaComponent(0.84),
+      .paragraphStyle: paragraphStyle
+    ]
+
+    let textWidth = min(availableWidth - 24, 336)
+    let titleString = NSAttributedString(string: guidance.title, attributes: titleAttributes)
+    let titleBounds = titleString.boundingRect(
+      with: CGSize(width: textWidth, height: .greatestFiniteMagnitude),
+      options: [.usesLineFragmentOrigin, .usesFontLeading]
+    )
+
+    let detailString = showsDetail
+      ? NSAttributedString(string: guidance.detail ?? "", attributes: detailAttributes)
+      : nil
+    let detailBounds = detailString?.boundingRect(
+      with: CGSize(width: textWidth, height: .greatestFiniteMagnitude),
+      options: [.usesLineFragmentOrigin, .usesFontLeading]
+    ) ?? .zero
+
+    let cardWidth = min(max(160, textWidth + 24), availableWidth)
+    let cardHeight = max(
+      prefersCompactLayout ? 38 : 44,
+      ceil(titleBounds.height) + (showsDetail ? ceil(detailBounds.height) + 6 : 0) + 22
+    )
+    let defaultY = rect.maxY - cardHeight - 18
+    let cardY = max(rect.minY + 12, defaultY)
+    let cardRect = CGRect(
+      x: rect.midX - cardWidth / 2,
+      y: cardY,
+      width: cardWidth,
+      height: cardHeight
+    )
+
+    let fillPath = NSBezierPath(
+      roundedRect: cardRect,
+      xRadius: prefersCompactLayout ? 12 : 14,
+      yRadius: prefersCompactLayout ? 12 : 14
+    )
+    NSColor.black.withAlphaComponent(prefersCompactLayout ? 0.74 : 0.8).setFill()
+    fillPath.fill()
+
+    let strokePath = NSBezierPath(
+      roundedRect: cardRect,
+      xRadius: prefersCompactLayout ? 12 : 14,
+      yRadius: prefersCompactLayout ? 12 : 14
+    )
+    strokePath.lineWidth = 1
+    guidance.tone.accentColor.withAlphaComponent(0.5).setStroke()
+    strokePath.stroke()
+
+    let accentRect = CGRect(
+      x: cardRect.midX - min(cardRect.width * 0.22, 44) / 2,
+      y: cardRect.maxY - 6,
+      width: min(cardRect.width * 0.22, 44),
+      height: 3
+    )
+    let accentPath = NSBezierPath(
+      roundedRect: accentRect,
+      xRadius: 1.5,
+      yRadius: 1.5
+    )
+    guidance.tone.accentColor.withAlphaComponent(0.95).setFill()
+    accentPath.fill()
+
+    let titleRect = CGRect(
+      x: cardRect.minX + 12,
+      y: cardRect.maxY - ceil(titleBounds.height) - (showsDetail ? 12 : (cardHeight - ceil(titleBounds.height)) / 2),
+      width: cardRect.width - 24,
+      height: ceil(titleBounds.height)
+    )
+    titleString.draw(with: titleRect, options: [.usesLineFragmentOrigin, .usesFontLeading])
+
+    if let detailString, showsDetail {
+      let detailRect = CGRect(
+        x: cardRect.minX + 12,
+        y: cardRect.minY + 10,
+        width: cardRect.width - 24,
+        height: ceil(detailBounds.height)
+      )
+      detailString.draw(with: detailRect, options: [.usesLineFragmentOrigin, .usesFontLeading])
     }
   }
 

@@ -41,7 +41,7 @@ final class ScrollingCaptureHUDWindow: NSPanel {
       onCancel: onCancel
     ))
 
-    let size = contentView?.fittingSize ?? CGSize(width: 320, height: 110)
+    let size = contentView?.fittingSize ?? CGSize(width: 380, height: 44)
     setContentSize(size)
     position(near: anchorRect, size: size)
   }

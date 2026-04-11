@@ -6,6 +6,7 @@
 //
 
 import AppKit
+import Combine
 import Foundation
 
 @MainActor
@@ -38,6 +39,7 @@ final class ScrollingCaptureCoordinator {
   private var hudWindow: ScrollingCaptureHUDWindow?
   private var previewWindow: ScrollingCapturePreviewWindow?
   private var regionOverlayWindows: [RecordingRegionOverlayWindow] = []
+  private var sessionModelObservation: AnyCancellable?
   private var latestImage: CGImage?
   private var stitcher: ScrollingCaptureStitcher?
   private var autoScrollEngine: ScrollingCaptureAutoScrollEngine?
@@ -101,6 +103,8 @@ final class ScrollingCaptureCoordinator {
     self.format = format
     self.prefetchedContentTask = prefetchedContentTask
     self.captureScaleFactor = scaleFactor(for: rect)
+    self.sessionModelObservation?.cancel()
+    self.sessionModelObservation = nil
     self.pendingScrollDistancePoints = 0
     self.pendingScrollDirection = nil
     self.pendingMixedDirections = false
@@ -127,6 +131,7 @@ final class ScrollingCaptureCoordinator {
     self.didFlushSessionMetrics = false
 
     showRegionOverlay(for: rect)
+    bindRegionOverlayGuidance(to: model)
     hudWindow = ScrollingCaptureHUDWindow(
       anchorRect: rect,
       model: model,
@@ -172,6 +177,8 @@ final class ScrollingCaptureCoordinator {
     commitScheduler = nil
     stopLivePreviewIfNeeded()
     removeSessionKeyMonitors()
+    sessionModelObservation?.cancel()
+    sessionModelObservation = nil
 
     if let scrollMonitor {
       NSEvent.removeMonitor(scrollMonitor)
@@ -571,9 +578,49 @@ final class ScrollingCaptureCoordinator {
       let overlay = RecordingRegionOverlayWindow(screen: screen, highlightRect: rect)
       overlay.interactionDelegate = self
       overlay.setInteractionEnabled(true)
+      overlay.updateGuidance(currentRegionOverlayGuidance())
       overlay.orderFrontRegardless()
       regionOverlayWindows.append(overlay)
     }
+  }
+
+  private func bindRegionOverlayGuidance(to model: ScrollingCaptureSessionModel) {
+    sessionModelObservation?.cancel()
+    sessionModelObservation = model.objectWillChange.sink { [weak self] _ in
+      DispatchQueue.main.async {
+        self?.syncRegionOverlayGuidance()
+      }
+    }
+    syncRegionOverlayGuidance()
+  }
+
+  private func syncRegionOverlayGuidance() {
+    let guidance = currentRegionOverlayGuidance()
+    for overlay in regionOverlayWindows {
+      overlay.updateGuidance(guidance)
+    }
+  }
+
+  private func currentRegionOverlayGuidance() -> RecordingRegionOverlayGuidance? {
+    guard let guidance = sessionModel?.selectionGuidance else { return nil }
+    let tone: RecordingRegionOverlayGuidanceTone
+
+    switch guidance.tone {
+    case .neutral:
+      tone = .neutral
+    case .active:
+      tone = .active
+    case .warning:
+      tone = .warning
+    case .progress:
+      tone = .progress
+    }
+
+    return RecordingRegionOverlayGuidance(
+      title: guidance.title,
+      detail: guidance.detail,
+      tone: tone
+    )
   }
 
   private func setRegionOverlayInteractionEnabled(_ enabled: Bool) {
