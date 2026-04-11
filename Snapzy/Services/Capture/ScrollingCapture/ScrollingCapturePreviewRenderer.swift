@@ -11,7 +11,6 @@ import SwiftUI
 
 enum ScrollingCapturePreviewScaling {
   case fit
-  case fillBottom
 }
 
 struct ScrollingCapturePreviewRenderer: NSViewRepresentable {
@@ -93,8 +92,6 @@ final class ScrollingCapturePreviewImageView: NSView {
     switch currentScaling {
     case .fit:
       scale = min(widthScale, heightScale)
-    case .fillBottom:
-      scale = max(widthScale, heightScale)
     }
 
     let scaledSize = CGSize(
@@ -107,8 +104,6 @@ final class ScrollingCapturePreviewImageView: NSView {
     switch currentScaling {
     case .fit:
       originY = (bounds.height - scaledSize.height) / 2
-    case .fillBottom:
-      originY = 0
     }
 
     contentLayer.frame = CGRect(origin: CGPoint(x: originX, y: originY), size: scaledSize)

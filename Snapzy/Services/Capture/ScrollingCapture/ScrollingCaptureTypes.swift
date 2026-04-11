@@ -152,11 +152,7 @@ final class ScrollingCaptureSessionModel: ObservableObject {
   }
 
   var activePreviewImage: CGImage? {
-    if isShowingLiveViewport, let livePreviewImage {
-      return livePreviewImage
-    }
-
-    return previewImage ?? livePreviewImage
+    previewImage ?? livePreviewImage
   }
 
   var previewTruthDescription: String {
@@ -164,11 +160,11 @@ final class ScrollingCaptureSessionModel: ObservableObject {
     case .ready:
       return "Press Start Capture to begin."
     case .committedOnly:
-      return "Showing the latest captured result."
+      return "Showing the latest stitched capture."
     case .liveSynced:
-      return "Live preview is up to date."
+      return "Preview matches the stitched capture."
     case .liveAhead:
-      return "Processing the latest capture…"
+      return "Showing the latest stitched result while Snapzy locks newer content."
     case .pausedRecovery:
       return "Preview paused — scroll slowly so Snapzy can re-align."
     case .finalizing:

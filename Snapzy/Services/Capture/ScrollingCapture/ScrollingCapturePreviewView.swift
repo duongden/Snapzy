@@ -7,6 +7,22 @@
 
 import SwiftUI
 
+enum ScrollingCapturePreviewLayout {
+  static let panelWidth: CGFloat = 244
+  static let previewWidth: CGFloat = 220
+  static let minPreviewHeight: CGFloat = 160
+  static let maxPreviewHeight: CGFloat = 420
+
+  static func previewHeight(for image: CGImage?) -> CGFloat {
+    guard let image, image.width > 0, image.height > 0 else {
+      return minPreviewHeight
+    }
+
+    let scaledHeight = previewWidth * CGFloat(image.height) / CGFloat(image.width)
+    return min(maxPreviewHeight, max(minPreviewHeight, scaledHeight))
+  }
+}
+
 struct ScrollingCapturePreviewView: View {
   @ObservedObject var model: ScrollingCaptureSessionModel
 
@@ -28,6 +44,8 @@ struct ScrollingCapturePreviewView: View {
   }
 
   var body: some View {
+    let previewHeight = ScrollingCapturePreviewLayout.previewHeight(for: model.activePreviewImage)
+
     VStack(alignment: .leading, spacing: 8) {
       HStack(spacing: 6) {
         Text("Preview")
@@ -51,7 +69,7 @@ struct ScrollingCapturePreviewView: View {
           GeometryReader { geometry in
             ScrollingCapturePreviewRenderer(
               image: previewImage,
-              scaling: model.isShowingLiveViewport || model.acceptedFrameCount <= 1 ? .fit : .fillBottom
+              scaling: .fit
             )
               .frame(
                 width: geometry.size.width,
@@ -73,7 +91,7 @@ struct ScrollingCapturePreviewView: View {
           .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
       }
-      .frame(width: 220, height: 160)
+      .frame(width: ScrollingCapturePreviewLayout.previewWidth, height: previewHeight)
       .background(
         RoundedRectangle(cornerRadius: 12, style: .continuous)
           .fill(Color.black.opacity(0.08))
@@ -94,7 +112,7 @@ struct ScrollingCapturePreviewView: View {
       }
     }
     .padding(12)
-    .frame(width: 244)
+    .frame(width: ScrollingCapturePreviewLayout.panelWidth)
     .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     .overlay(
       RoundedRectangle(cornerRadius: 16, style: .continuous)

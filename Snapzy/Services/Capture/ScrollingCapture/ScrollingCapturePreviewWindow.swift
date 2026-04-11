@@ -6,10 +6,12 @@
 //
 
 import AppKit
+import Combine
 import SwiftUI
 
 final class ScrollingCapturePreviewWindow: NSPanel {
   private var anchorRect: CGRect
+  private var modelObservation: AnyCancellable?
 
   init(anchorRect: CGRect, model: ScrollingCaptureSessionModel) {
     self.anchorRect = anchorRect
@@ -32,15 +34,36 @@ final class ScrollingCapturePreviewWindow: NSPanel {
     ignoresMouseEvents = true
     collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
     contentView = NSHostingView(rootView: ScrollingCapturePreviewView(model: model))
+    modelObservation = model.objectWillChange.sink { [weak self] _ in
+      DispatchQueue.main.async {
+        self?.updateLayout()
+      }
+    }
 
-    let size = contentView?.fittingSize ?? CGSize(width: 244, height: 236)
-    setContentSize(size)
-    position(near: anchorRect, size: size)
+    updateLayout()
   }
 
   func updateAnchorRect(_ rect: CGRect) {
     anchorRect = rect
     position(near: rect, size: frame.size)
+  }
+
+  private func updateLayout() {
+    contentView?.invalidateIntrinsicContentSize()
+    contentView?.layoutSubtreeIfNeeded()
+    let size =
+      contentView?.fittingSize
+      ?? CGSize(
+        width: ScrollingCapturePreviewLayout.panelWidth,
+        height: 236
+      )
+    guard frame.size != size else {
+      position(near: anchorRect, size: frame.size)
+      return
+    }
+
+    setContentSize(size)
+    position(near: anchorRect, size: size)
   }
 
   private func position(near rect: CGRect, size: CGSize) {

@@ -617,6 +617,69 @@ final class ScrollingCaptureStitcher {
     return cachedMergedImage
   }
 
+  func previewImage(maxPixelWidth: Int, maxPixelHeight: Int) -> CGImage? {
+    guard let baseRaster else { return nil }
+    let safeMaxPixelWidth = max(1, maxPixelWidth)
+    let safeMaxPixelHeight = max(1, maxPixelHeight)
+    let targetScale = min(
+      1,
+      Double(safeMaxPixelWidth) / Double(baseRaster.width),
+      Double(safeMaxPixelHeight) / Double(max(outputHeight, 1))
+    )
+
+    let targetWidth = max(1, Int((Double(baseRaster.width) * targetScale).rounded()))
+    let targetHeight = max(1, Int((Double(outputHeight) * targetScale).rounded()))
+    let bytesPerRow = targetWidth * 4
+    let colorSpace = CGColorSpaceCreateDeviceRGB()
+    let bitmapInfo = CGImageAlphaInfo.premultipliedLast.rawValue | CGBitmapInfo.byteOrder32Big.rawValue
+
+    guard
+      let context = CGContext(
+        data: nil,
+        width: targetWidth,
+        height: targetHeight,
+        bitsPerComponent: 8,
+        bytesPerRow: bytesPerRow,
+        space: colorSpace,
+        bitmapInfo: bitmapInfo
+      )
+    else {
+      return nil
+    }
+
+    context.interpolationQuality = .medium
+
+    var destinationRow = 0
+    for slice in contentSlices {
+      guard
+        let sliceImage = slice.raster.makeCroppedCGImage(
+          xStart: 0,
+          xEnd: slice.raster.width,
+          startRow: slice.startRow,
+          rowCount: slice.rowCount
+        )
+      else {
+        destinationRow += slice.rowCount
+        continue
+      }
+
+      let sourceTop = CGFloat(destinationRow) / CGFloat(max(outputHeight, 1))
+      let sourceBottom = CGFloat(destinationRow + slice.rowCount) / CGFloat(max(outputHeight, 1))
+      let destinationTop = CGFloat(targetHeight) * (1 - sourceTop)
+      let destinationBottom = CGFloat(targetHeight) * (1 - sourceBottom)
+      let destinationRect = CGRect(
+        x: 0,
+        y: destinationBottom,
+        width: CGFloat(targetWidth),
+        height: max(1, destinationTop - destinationBottom)
+      )
+      context.draw(sliceImage, in: destinationRect)
+      destinationRow += slice.rowCount
+    }
+
+    return context.makeImage()
+  }
+
   private func currentUpdate(
     outcome: ScrollingCaptureStitchOutcome,
     includeMergedImage: Bool = true,

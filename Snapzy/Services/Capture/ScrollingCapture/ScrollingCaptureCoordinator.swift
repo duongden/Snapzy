@@ -27,6 +27,7 @@ final class ScrollingCaptureCoordinator {
   private let fastForcedRefreshScrollPoints: CGFloat = 28
   private let previewTruthLagToleranceMs = 90
   private let scrollHitSlop: CGFloat = 32
+  private let previewRenderScale: CGFloat = 2
   private let processingQueue = DispatchQueue(
     label: "com.snapzy.scrolling-capture.processing",
     qos: .userInitiated
@@ -444,7 +445,12 @@ final class ScrollingCaptureCoordinator {
       let previewPublishStartedAt = CFAbsoluteTimeGetCurrent()
       if let mergedImage = update.mergedImage {
         latestImage = mergedImage
-        sessionModel.previewImage = mergedImage
+      }
+      if let processedStitcher {
+        sessionModel.previewImage =
+          makePreviewImage(from: processedStitcher)
+          ?? update.mergedImage
+          ?? sessionModel.previewImage
       }
       if
         case .appended = update.outcome,
@@ -998,6 +1004,13 @@ final class ScrollingCaptureCoordinator {
     sessionModel.previewCaption = "Finalizing stitched result..."
     sessionMetrics.recordFinalizingStarted(at: ProcessInfo.processInfo.systemUptime)
     updatePreviewTruthState()
+  }
+
+  private func makePreviewImage(from stitcher: ScrollingCaptureStitcher) -> CGImage? {
+    stitcher.previewImage(
+      maxPixelWidth: Int((ScrollingCapturePreviewLayout.previewWidth * previewRenderScale).rounded()),
+      maxPixelHeight: Int((ScrollingCapturePreviewLayout.maxPreviewHeight * previewRenderScale).rounded())
+    )
   }
 
   private func installSessionKeyMonitorsIfNeeded() {
