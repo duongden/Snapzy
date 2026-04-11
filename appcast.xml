@@ -6,6 +6,22 @@
     <description>Snapzy application updates</description>
     <language>en</language>
     <item>
+      <title>Version 1.6.0</title>
+      <sparkle:version>52</sparkle:version>
+      <sparkle:shortVersionString>1.6.0</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <pubDate>Sat, 11 Apr 2026 06:19:11 +0000</pubDate>
+      <description><![CDATA[
+        <style>:root { color-scheme: light dark; } body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 13px; line-height: 1.5; padding: 8px 16px; } h3 { font-size: 14px; margin: 12px 0 6px; } ul { padding-left: 20px; margin: 4px 0; } li { margin: 3px 0; }</style>
+        <h3>✨ Features</h3><ul><li>Add preview image generation and scaling adjustments for scrolling capture</li><li>Enhance scrolling capture feedback with boundary detection and status updates</li><li>Introduce guidance system for scrolling capture with visual cues and state management</li><li>Enhance scrolling capture with finalizing state, preview truth management, and HUD updates</li><li>Implement Scrolling Capture Preview Renderer and Update Capture Flow</li><li>Enhance zoom and pan functionality with dynamic limits and improved state management</li><li>Add scrolling capture feature with keyboard shortcut and documentation</li><li>Update shortcut display names and descriptions for clarity</li></ul>
+      ]]></description>
+      <enclosure
+        url="https://github.com/duongductrong/Snapzy/releases/download/v1.6.0/Snapzy-v1.6.0.dmg"
+        sparkle:edSignature="QhRiQ5aoAhjYBiuu2MroXCocB12ntwiGGEcEM91VmeNQPtD9zeTHjPSvbIFkwStP9KD2kGMZafrx3bQes2IHBQ=="
+        length="12498779"
+        type="application/octet-stream"/>
+    </item>
+    <item>
       <title>Version 1.5.11</title>
       <sparkle:version>51</sparkle:version>
       <sparkle:shortVersionString>1.5.11</sparkle:shortVersionString>
