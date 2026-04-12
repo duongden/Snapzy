@@ -623,63 +623,10 @@ final class AreaSelectionOverlayView: NSView {
   // MARK: - Drawing (Only for size indicator text)
 
   override func draw(_ dirtyRect: NSRect) {
-    drawModeGuidance()
-
     // Only draw size indicator - layers handle dim, crosshair, selection
     if isSelecting, let rect = calculateSelectionRect() {
       drawSizeIndicator(for: rect)
     }
-  }
-
-  private func drawModeGuidance() {
-    guard selectionMode == .scrollingCapture else { return }
-
-    let title = "Scrolling Capture"
-    let subtitle = "Drag only around the content that will scroll."
-
-    let titleAttributes: [NSAttributedString.Key: Any] = [
-      .font: NSFont.systemFont(ofSize: 13, weight: .semibold),
-      .foregroundColor: NSColor.white,
-    ]
-    let subtitleAttributes: [NSAttributedString.Key: Any] = [
-      .font: NSFont.systemFont(ofSize: 11, weight: .regular),
-      .foregroundColor: NSColor.white.withAlphaComponent(0.78),
-    ]
-
-    let titleSize = title.size(withAttributes: titleAttributes)
-    let subtitleSize = subtitle.size(withAttributes: subtitleAttributes)
-    let pillWidth = max(titleSize.width, subtitleSize.width) + 28
-    let pillHeight = titleSize.height + subtitleSize.height + 18
-    let pillRect = CGRect(
-      x: (bounds.width - pillWidth) / 2,
-      y: bounds.maxY - pillHeight - 26,
-      width: pillWidth,
-      height: pillHeight
-    )
-
-    let pillPath = NSBezierPath(roundedRect: pillRect, xRadius: 11, yRadius: 11)
-    NSColor.black.withAlphaComponent(0.68).setFill()
-    pillPath.fill()
-
-    NSColor.white.withAlphaComponent(0.12).setStroke()
-    pillPath.lineWidth = 1
-    pillPath.stroke()
-
-    let titleRect = CGRect(
-      x: pillRect.minX + 14,
-      y: pillRect.maxY - titleSize.height - 8,
-      width: pillRect.width - 28,
-      height: titleSize.height
-    )
-    let subtitleRect = CGRect(
-      x: pillRect.minX + 14,
-      y: pillRect.minY + 7,
-      width: pillRect.width - 28,
-      height: subtitleSize.height
-    )
-
-    (title as NSString).draw(in: titleRect, withAttributes: titleAttributes)
-    (subtitle as NSString).draw(in: subtitleRect, withAttributes: subtitleAttributes)
   }
 
   private func drawSizeIndicator(for rect: CGRect) {
