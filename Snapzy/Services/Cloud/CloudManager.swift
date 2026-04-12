@@ -39,12 +39,6 @@ final class CloudManager: ObservableObject {
     case unavailable
   }
 
-  private enum CredentialAvailability {
-    case available
-    case missing
-    case unavailable
-  }
-
   // MARK: - Init
 
   private init() {
@@ -58,7 +52,6 @@ final class CloudManager: ObservableObject {
     {
       providerType = type
     }
-    repairStaleConfiguredStateIfNeeded()
     cachedConfiguration = loadConfiguration()
     cachedMaskedAccessKey = isConfigured ? DisplayStrings.storedSecurely : DisplayStrings.hidden
   }
@@ -276,8 +269,24 @@ final class CloudManager: ObservableObject {
   }
 
   private func loadCredentialPair(context: String) -> (accessKey: String, secretKey: String)? {
-    guard let accessKey = loadFromKeychain(item: .accessKey, context: "\(context).accessKey"),
-      let secretKey = loadFromKeychain(item: .secretKey, context: "\(context).secretKey")
+    let accessContext = "\(context).accessKey"
+    let secretContext = "\(context).secretKey"
+    let accessOutcome = CloudKeychainStore.read(item: .accessKey, context: accessContext)
+    let secretOutcome = CloudKeychainStore.read(item: .secretKey, context: secretContext)
+
+    if case .itemNotFound = accessOutcome,
+      case .itemNotFound = secretOutcome,
+      isConfigured
+    {
+      logger.error(
+        "Cloud configuration references missing credentials [\(context, privacy: .public)]. Clearing stale configuration."
+      )
+      clearConfiguration()
+      return nil
+    }
+
+    guard let accessKey = value(from: accessOutcome, context: accessContext),
+      let secretKey = value(from: secretOutcome, context: secretContext)
     else { return nil }
     return (accessKey, secretKey)
   }
@@ -334,39 +343,6 @@ final class CloudManager: ObservableObject {
     case .unavailable:
       logger.notice("Keychain rollback skipped due unavailable snapshot [\(context, privacy: .public)]")
     }
-  }
-
-  private func repairStaleConfiguredStateIfNeeded() {
-    guard isConfigured else { return }
-
-    switch determineCredentialAvailabilityForRepair() {
-    case .available:
-      return
-    case .missing:
-      logger.error("Stale cloud configured state detected with missing credentials. Clearing cloud configuration.")
-      clearConfiguration()
-    case .unavailable:
-      logger.notice("Skipping cloud configured-state repair because keychain is temporarily unavailable.")
-    }
-  }
-
-  private func determineCredentialAvailabilityForRepair() -> CredentialAvailability {
-    let accessOutcome = CloudKeychainStore.read(
-      item: .accessKey,
-      context: "repairConfiguredState.accessKey"
-    )
-    let secretOutcome = CloudKeychainStore.read(
-      item: .secretKey,
-      context: "repairConfiguredState.secretKey"
-    )
-
-    if accessOutcome.isTemporarilyUnavailable || secretOutcome.isTemporarilyUnavailable {
-      return .unavailable
-    }
-    if accessOutcome.hasValue && secretOutcome.hasValue {
-      return .available
-    }
-    return .missing
   }
 
   /// Validate credentials using in-memory values before persistence.
@@ -563,7 +539,11 @@ final class CloudManager: ObservableObject {
   }
 
   private func loadFromKeychain(item: CloudKeychainItem, context: String) -> String? {
-    switch CloudKeychainStore.read(item: item, context: context) {
+    value(from: CloudKeychainStore.read(item: item, context: context), context: context)
+  }
+
+  private func value(from outcome: CloudKeychainReadOutcome, context: String) -> String? {
+    switch outcome {
     case .success(let value):
       return value
     case .itemNotFound:
@@ -589,22 +569,6 @@ final class CloudManager: ObservableObject {
       logger.error(
         "Keychain delete failed (\(issue.status, privacy: .public)) [\(contextLabel, privacy: .public)] at \(issue.locationDescription, privacy: .public)"
       )
-    }
-  }
-}
-
-private extension CloudKeychainReadOutcome {
-  var hasValue: Bool {
-    if case .success = self { return true }
-    return false
-  }
-
-  var isTemporarilyUnavailable: Bool {
-    switch self {
-    case .authRequired, .interactionNotAllowed, .error:
-      return true
-    case .success, .itemNotFound:
-      return false
     }
   }
 }

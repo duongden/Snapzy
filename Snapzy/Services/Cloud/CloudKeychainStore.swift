@@ -69,7 +69,7 @@ struct CloudKeychainStore {
     let primaryLocation = Location(
       service: currentService,
       account: item.account,
-      usesDataProtection: false
+      usesDataProtection: true
     )
     let primaryOutcome = readValue(at: primaryLocation)
 
@@ -106,11 +106,12 @@ struct CloudKeychainStore {
     let location = Location(
       service: currentService,
       account: item.account,
-      usesDataProtection: false
+      usesDataProtection: true
     )
     let matchQuery = baseQuery(for: location)
     let updateAttributes: [String: Any] = [
       kSecValueData as String: data,
+      kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlocked,
     ]
 
     let updateStatus = SecItemUpdate(matchQuery as CFDictionary, updateAttributes as CFDictionary)
@@ -124,6 +125,7 @@ struct CloudKeychainStore {
 
     var addQuery = matchQuery
     addQuery[kSecValueData as String] = data
+    addQuery[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlocked
 
     let addStatus = SecItemAdd(addQuery as CFDictionary, nil)
     guard addStatus == errSecSuccess else {
@@ -138,7 +140,7 @@ struct CloudKeychainStore {
     let primaryLocation = Location(
       service: currentService,
       account: item.account,
-      usesDataProtection: false
+      usesDataProtection: true
     )
     collectDeleteIssue(at: primaryLocation, into: &issues)
 
@@ -164,12 +166,9 @@ struct CloudKeychainStore {
   }
 
   private static func legacyLocations(for item: CloudKeychainItem) -> [Location] {
-    var locations: [Location] = []
-
-    // Data Protection keychain items (from builds that used DP keychain)
-    locations.append(
-      Location(service: currentService, account: item.account, usesDataProtection: true)
-    )
+    var locations = [
+      Location(service: currentService, account: item.account, usesDataProtection: false)
+    ]
 
     // Legacy service + legacy account names
     for account in item.legacyAccounts {

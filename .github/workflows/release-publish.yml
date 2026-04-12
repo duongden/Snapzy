@@ -24,6 +24,8 @@ jobs:
       HAS_SELF_SIGNED_CERT: ${{ secrets.SELF_SIGNED_CERT_P12 != '' && secrets.SELF_SIGNED_CERT_PASSWORD != '' && 'true' || 'false' }}
       HAS_NOTARIZATION_CREDENTIALS: ${{ secrets.APPLE_ID != '' && secrets.APPLE_ID_PASSWORD != '' && secrets.APPLE_TEAM_ID != '' && 'true' || 'false' }}
       HAS_SPARKLE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY != '' && 'true' || 'false' }}
+      ALLOW_ADHOC_RELEASE: ${{ vars.ALLOW_ADHOC_RELEASE == 'true' && 'true' || 'false' }}
+      ALLOW_SIGNING_IDENTITY_CHANGE: ${{ vars.ALLOW_SIGNING_IDENTITY_CHANGE == 'true' && 'true' || 'false' }}
 
     steps:
       - name: Extract version
@@ -82,6 +84,28 @@ jobs:
             echo "::error::Archive not found at build/Snapzy.xcarchive"
             exit 1
           fi
+
+      - name: Guard release signing strategy
+        run: |
+          set -euo pipefail
+
+          if [ "${HAS_DEVELOPER_ID_CERT}" = "true" ]; then
+            echo "Release signing strategy: Developer ID"
+            exit 0
+          fi
+
+          if [ "${HAS_SELF_SIGNED_CERT}" = "true" ]; then
+            echo "Release signing strategy: stable self-signed certificate"
+            exit 0
+          fi
+
+          if [ "${ALLOW_ADHOC_RELEASE}" = "true" ]; then
+            echo "::warning::ALLOW_ADHOC_RELEASE=true — proceeding with ad-hoc release signing by explicit override"
+            exit 0
+          fi
+
+          echo "::error::Release publish requires Developer ID or SELF_SIGNED_CERT_* secrets. Ad-hoc fallback is disabled by default."
+          exit 1
 
       # --- Code Signing (conditional) ---
       # Priority: Developer ID > Self-signed cert > Ad-hoc
@@ -166,7 +190,7 @@ jobs:
               echo "Signing with self-signed certificate: $SIGN_IDENTITY"
             else
               SIGN_IDENTITY="-"
-              echo "::warning::Signing ad-hoc — TCC permissions will be lost after each update"
+              echo "::warning::Signing ad-hoc by explicit override — TCC and Keychain trust may be lost after update"
             fi
 
             # Sign Sparkle components inside-out per official docs
@@ -219,6 +243,89 @@ jobs:
             echo "::error::Expected app sandbox entitlement missing from exported app"
             exit 1
           fi
+
+      - name: Capture candidate signing metadata
+        run: |
+          set -euo pipefail
+          APP_PATH="build/Snapzy.app"
+          if [ -d "build/export/Snapzy.app" ]; then
+            APP_PATH="build/export/Snapzy.app"
+          fi
+
+          codesign -dr - "$APP_PATH" 2>&1 | sed -n 's/^designated => //p' > build/candidate-designated-requirement.txt
+          codesign -dvv "$APP_PATH" > build/candidate-signature.txt 2>&1 || true
+
+          if [ ! -s build/candidate-designated-requirement.txt ]; then
+            echo "::error::Failed to extract candidate designated requirement"
+            exit 1
+          fi
+
+          echo "--- Candidate designated requirement ---"
+          cat build/candidate-designated-requirement.txt
+
+      - name: Compare signing identity with previous release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p build/previous-release
+
+          PREVIOUS_TAG=$(gh release list --limit 1 --exclude-drafts --exclude-pre-releases --json tagName --jq '.[0].tagName' 2>/dev/null || true)
+          if [ -z "$PREVIOUS_TAG" ] || [ "$PREVIOUS_TAG" = "null" ]; then
+            echo "No previous GitHub release found. Skipping signing comparison."
+            exit 0
+          fi
+
+          echo "Comparing candidate app against release: $PREVIOUS_TAG"
+          if ! gh release download "$PREVIOUS_TAG" -p 'Snapzy-v*.dmg' -D build/previous-release; then
+            echo "::warning::Failed to download previous release asset. Skipping signing comparison."
+            exit 0
+          fi
+
+          PREVIOUS_DMG=$(find build/previous-release -name 'Snapzy-v*.dmg' -type f | head -1)
+          if [ -z "$PREVIOUS_DMG" ]; then
+            echo "::warning::Previous release has no Snapzy DMG asset. Skipping signing comparison."
+            exit 0
+          fi
+
+          MOUNT_POINT=$(mktemp -d /tmp/snapzy-previous-release.XXXXXX)
+          cleanup() {
+            hdiutil detach "$MOUNT_POINT" -quiet >/dev/null 2>&1 || true
+            rm -rf "$MOUNT_POINT"
+          }
+          trap cleanup EXIT
+
+          hdiutil attach "$PREVIOUS_DMG" -mountpoint "$MOUNT_POINT" -nobrowse -quiet
+          if [ ! -d "$MOUNT_POINT/Snapzy.app" ]; then
+            echo "::warning::Previous release DMG does not contain Snapzy.app at root. Skipping signing comparison."
+            exit 0
+          fi
+
+          ditto "$MOUNT_POINT/Snapzy.app" build/previous-release/Snapzy.app
+
+          codesign -dr - build/previous-release/Snapzy.app 2>&1 | sed -n 's/^designated => //p' > build/previous-designated-requirement.txt
+          codesign -dvv build/previous-release/Snapzy.app > build/previous-signature.txt 2>&1 || true
+
+          if [ ! -s build/previous-designated-requirement.txt ]; then
+            echo "::warning::Failed to extract previous release designated requirement. Skipping signing comparison."
+            exit 0
+          fi
+
+          echo "--- Previous designated requirement ---"
+          cat build/previous-designated-requirement.txt
+
+          if diff -u build/previous-designated-requirement.txt build/candidate-designated-requirement.txt; then
+            echo "Designated requirement matches previous release."
+            exit 0
+          fi
+
+          if [ "${ALLOW_SIGNING_IDENTITY_CHANGE}" = "true" ]; then
+            echo "::warning::ALLOW_SIGNING_IDENTITY_CHANGE=true — proceeding despite designated requirement drift"
+            exit 0
+          fi
+
+          echo "::error::Candidate designated requirement differs from previous release. Set ALLOW_SIGNING_IDENTITY_CHANGE=true only for intentional signing migrations."
+          exit 1
 
       - name: Install create-dmg
         run: HOMEBREW_NO_AUTO_UPDATE=1 brew install create-dmg
@@ -282,8 +389,11 @@ jobs:
             NOTE="- Release artifact: Developer ID signed, not notarized."
           elif [ "${HAS_SELF_SIGNED_CERT}" = "true" ]; then
             NOTE="- Release artifact: self-signed certificate, not notarized. Permissions persist across updates. Install to /Applications before first launch."
+          elif [ "${ALLOW_ADHOC_RELEASE}" = "true" ]; then
+            NOTE="- Release artifact: ad-hoc signed by explicit override. Permissions and keychain trust may be lost after updates."
           else
-            NOTE="- Release artifact: ad-hoc signed fallback, not notarized. Install to /Applications before first launch."
+            echo "::error::Unexpected release note state: no approved signing strategy resolved"
+            exit 1
           fi
 
           {
