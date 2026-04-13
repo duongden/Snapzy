@@ -48,7 +48,7 @@
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Xoa toan bo lich su"
+            "value": "Xóa toàn bộ lịch sử"
           }
         },
         "zh-Hans": {
@@ -176,7 +176,7 @@
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Xoa toan bo lich su tai len?"
+            "value": "Xóa toàn bộ lịch sử tải lên?"
           }
         },
         "zh-Hans": {
@@ -240,7 +240,7 @@
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Chi xoa lich su"
+            "value": "Chỉ xóa lịch sử"
           }
         },
         "zh-Hans": {
@@ -304,7 +304,7 @@
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Sao chep lien ket"
+            "value": "Sao chép liên kết"
           }
         },
         "zh-Hans": {
@@ -432,7 +432,7 @@
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Dong"
+            "value": "Đóng"
           }
         },
         "zh-Hans": {
@@ -496,7 +496,7 @@
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Thoi gian het han"
+            "value": "Thời gian hết hạn"
           }
         },
         "zh-Hans": {
@@ -560,7 +560,7 @@
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Da het han"
+            "value": "Đã hết hạn"
           }
         },
         "zh-Hans": {
@@ -624,7 +624,7 @@
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Khong the xoa %@: %@"
+            "value": "Không thể xóa %@: %@"
           }
         },
         "zh-Hans": {
@@ -688,7 +688,7 @@
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Bo loc"
+            "value": "Bộ lọc"
           }
         },
         "zh-Hans": {
@@ -752,7 +752,7 @@
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Lon nhat truoc"
+            "value": "Lớn nhất trước"
           }
         },
         "zh-Hans": {
@@ -816,7 +816,7 @@
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Moi nhat truoc"
+            "value": "Mới nhất trước"
           }
         },
         "zh-Hans": {
@@ -880,7 +880,7 @@
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Khong tim thay ket qua"
+            "value": "Không tim thay kết quả"
           }
         },
         "zh-Hans": {
@@ -944,7 +944,7 @@
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Chua co luot tai len nao"
+            "value": "Chưa có lượt tải lên nào"
           }
         },
         "zh-Hans": {
@@ -1008,7 +1008,7 @@
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Cu nhat truoc"
+            "value": "Cũ nhất trước"
           }
         },
         "zh-Hans": {
@@ -1072,7 +1072,7 @@
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Mo trong trinh duyet"
+            "value": "Mở trong trình duyệt"
           }
         },
         "zh-Hans": {
@@ -1136,7 +1136,7 @@
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Nha cung cap"
+            "value": "Nhà cung cấp"
           }
         },
         "zh-Hans": {
@@ -1200,7 +1200,7 @@
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Xoa khoi lich su"
+            "value": "Xóa khỏi lịch sử"
           }
         },
         "zh-Hans": {
@@ -1264,7 +1264,7 @@
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Dat lai bo loc"
+            "value": "Đặt lại bộ lọc"
           }
         },
         "zh-Hans": {
@@ -1328,7 +1328,7 @@
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Tim kiem luot tai len..."
+            "value": "Tìm kiếm lượt tải lên..."
           }
         },
         "zh-Hans": {
@@ -1392,7 +1392,7 @@
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Nho nhat truoc"
+            "value": "Nhỏ nhất trước"
           }
         },
         "zh-Hans": {
@@ -1456,7 +1456,7 @@
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Mot so tep khong the xoa: %@"
+            "value": "Một số tệp không thể xóa: %@"
           }
         },
         "zh-Hans": {
@@ -1520,7 +1520,7 @@
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Sap xep theo"
+            "value": "Sắp xếp theo"
           }
         },
         "zh-Hans": {
@@ -1584,7 +1584,7 @@
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Trang thai"
+            "value": "Trạng thái"
           }
         },
         "zh-Hans": {
@@ -1648,7 +1648,7 @@
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Con hieu luc"
+            "value": "Còn hiệu lực"
           }
         },
         "zh-Hans": {
@@ -1712,7 +1712,7 @@
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Tat ca"
+            "value": "Tất cả"
           }
         },
         "zh-Hans": {
@@ -1776,7 +1776,7 @@
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Da het han"
+            "value": "Đã hết hạn"
           }
         },
         "zh-Hans": {
@@ -1840,7 +1840,7 @@
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "%d luot tai len"
+            "value": "%d lượt tải lên"
           }
         },
         "zh-Hans": {

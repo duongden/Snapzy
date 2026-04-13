@@ -48,7 +48,7 @@
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Mac dinh %@"
+            "value": "Mặc định %@"
           }
         },
         "zh-Hans": {
@@ -112,7 +112,7 @@
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Da chon %@"
+            "value": "Đã chọn %@"
           }
         },
         "zh-Hans": {
@@ -176,7 +176,7 @@
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Rung xanh"
+            "value": "Rừng xanh"
           }
         },
         "zh-Hans": {
@@ -240,7 +240,7 @@
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Dai duong"
+            "value": "Đại dương"
           }
         },
         "zh-Hans": {
@@ -304,7 +304,7 @@
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Hoang hon"
+            "value": "Hoàng hôn"
           }
         },
         "zh-Hans": {
@@ -368,7 +368,7 @@
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Them preset moi"
+            "value": "Thêm preset mới"
           }
         },
         "zh-Hans": {
@@ -432,7 +432,7 @@
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Can chinh"
+            "value": "Căn chỉnh"
           }
         },
         "zh-Hans": {
@@ -496,7 +496,7 @@
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Chu thich"
+            "value": "Chú thích"
           }
         },
         "zh-Hans": {
@@ -560,7 +560,7 @@
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ap dung preset kieu dang da luu"
+            "value": "Áp dụng preset kiểu dáng đã lưu"
           }
         },
         "zh-Hans": {
@@ -624,7 +624,7 @@
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Tu can bang"
+            "value": "Tự cân bằng"
           }
         },
         "zh-Hans": {
@@ -816,7 +816,7 @@
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Kieu lam mo"
+            "value": "Kiểu làm mờ"
           }
         },
         "zh-Hans": {
@@ -1264,7 +1264,7 @@
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Mui ten chu thich cong mem"
+            "value": "Mũi tên chú thích cong mềm"
           }
         },
         "zh-Hans": {
@@ -1392,7 +1392,7 @@
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Xoa preset"
+            "value": "Xóa preset"
           }
         },
         "zh-Hans": {
@@ -1456,7 +1456,7 @@
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Xoa \"%@\"?"
+            "value": "Xóa \"%@\"?"
           }
         },
         "zh-Hans": {
@@ -1520,7 +1520,7 @@
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Xoa preset"
+            "value": "Xóa preset"
           }
         },
         "zh-Hans": {
@@ -1712,7 +1712,7 @@
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Do sau"
+            "value": "Độ sâu"
           }
         },
         "zh-Hans": {
@@ -1776,7 +1776,7 @@
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Khong luu"
+            "value": "Không lưu"
           }
         },
         "zh-Hans": {
@@ -2032,7 +2032,7 @@
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Gap khuc"
+            "value": "Gấp khúc"
           }
         },
         "zh-Hans": {
@@ -2096,7 +2096,7 @@
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Mui ten chu thich goc vuong"
+            "value": "Mũi tên chú thích góc vuông"
           }
         },
         "zh-Hans": {
@@ -2288,7 +2288,7 @@
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Lam mo Gaussian muot nhu bo loc CSS"
+            "value": "Làm mờ Gaussian mượt như bộ lọc CSS"
           }
         },
         "zh-Hans": {
@@ -2352,7 +2352,7 @@
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Hinh anh nay dang dung nen trong suot sau khi tach nen. Luu duoi dang JPEG se lam phang nen trong suot thanh nen duc. Hay dung PNG hoac WebP de giu nen trong suot."
+            "value": "Hình ảnh này đang dùng nền trong suốt sau khi tách nền. Lưu dưới dạng JPEG sẽ làm phẳng nền trong suốt thành nền đục. Hãy dùng PNG hoặc WebP để giữ nền trong suốt."
           }
         },
         "zh-Hans": {
@@ -2416,7 +2416,7 @@
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "JPEG se lam mat nen trong suot"
+            "value": "JPEG sẽ làm mất nền trong suốt"
           }
         },
         "zh-Hans": {
@@ -2480,7 +2480,7 @@
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Dang tai hinh nen..."
+            "value": "Đang tải hình nền..."
           }
         },
         "zh-Hans": {
@@ -2736,7 +2736,7 @@
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Chua co preset nao"
+            "value": "Chưa có preset nào"
           }
         },
         "zh-Hans": {
@@ -2800,7 +2800,7 @@
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Mo sidebar de xem them tuy chon chu thich"
+            "value": "Mở sidebar để xem thêm tùy chọn chú thích"
           }
         },
         "zh-Hans": {
@@ -3120,7 +3120,7 @@
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Diem anh"
+            "value": "Điểm ảnh"
           }
         },
         "zh-Hans": {
@@ -3184,7 +3184,7 @@
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Lam mo pixel de che noi dung nhay cam"
+            "value": "Làm mờ pixel để che nội dung nhạy cảm"
           }
         },
         "zh-Hans": {
@@ -3248,7 +3248,7 @@
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ban co the luu toi da 20 preset. Hay xoa mot preset de them preset moi."
+            "value": "Bạn có thể lưu tối đa 20 preset. Hãy xóa một preset để thêm preset mới."
           }
         },
         "zh-Hans": {
@@ -3312,7 +3312,7 @@
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Da dat gioi han preset"
+            "value": "Đã đạt giới hạn preset"
           }
         },
         "zh-Hans": {
@@ -3376,7 +3376,7 @@
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ten preset"
+            "value": "Tên preset"
           }
         },
         "zh-Hans": {
@@ -3632,7 +3632,7 @@
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Xoa hinh nen tuy chinh"
+            "value": "Xóa hình nền tùy chỉnh"
           }
         },
         "zh-Hans": {
@@ -3760,7 +3760,7 @@
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Dat lai nen, khoang dem, bong do va bo goc"
+            "value": "Đặt lại nền, khoảng đệm, bóng đổ và bo góc"
           }
         },
         "zh-Hans": {
@@ -3824,7 +3824,7 @@
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Dat lai mockup"
+            "value": "Đặt lại mockup"
           }
         },
         "zh-Hans": {
@@ -3888,7 +3888,7 @@
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Dat lai mac dinh"
+            "value": "Đặt lại mặc định"
           }
         },
         "zh-Hans": {
@@ -4016,7 +4016,7 @@
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Luu duoi dang JPEG"
+            "value": "Lưu dưới dạng JPEG"
           }
         },
         "zh-Hans": {
@@ -4080,7 +4080,7 @@
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Snapzy khong the ghi vao vi tri da chon. Vui long chon thu muc khac."
+            "value": "Snapzy không thể ghi vào vị trí đã chọn. Vui lòng chọn thư mục khác."
           }
         },
         "zh-Hans": {
@@ -4144,7 +4144,7 @@
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Luu that bai"
+            "value": "Lưu thất bại"
           }
         },
         "zh-Hans": {
@@ -4208,7 +4208,7 @@
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Nhap ten cho preset khung nen nay."
+            "value": "Nhập tên cho preset khung nền này."
           }
         },
         "zh-Hans": {
@@ -4272,7 +4272,7 @@
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Luu preset"
+            "value": "Lưu preset"
           }
         },
         "zh-Hans": {
@@ -4336,7 +4336,7 @@
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Chon preset"
+            "value": "Chọn preset"
           }
         },
         "zh-Hans": {
@@ -4400,7 +4400,7 @@
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Thang"
+            "value": "Thẳng"
           }
         },
         "zh-Hans": {
@@ -4464,7 +4464,7 @@
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Duong thang truc tiep tu diem dau den diem cuoi"
+            "value": "Đường thẳng trực tiếp từ điểm đầu đến điểm cuối"
           }
         },
         "zh-Hans": {
@@ -4528,7 +4528,7 @@
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Mau chu"
+            "value": "Màu chữ"
           }
         },
         "zh-Hans": {
@@ -4592,7 +4592,7 @@
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Kieu chu"
+            "value": "Kiểu chữ"
           }
         },
         "zh-Hans": {
@@ -5680,7 +5680,7 @@
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Kieu khung nen hien tai chua the luu thanh preset luc nay."
+            "value": "Kiểu khung nền hiện tại chưa thể lưu thành preset lúc này."
           }
         },
         "zh-Hans": {
@@ -5744,7 +5744,7 @@
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Khong the luu preset"
+            "value": "Không thể lưu preset"
           }
         },
         "zh-Hans": {
@@ -5872,7 +5872,7 @@
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ban co thay doi chua luu. Ban co muon luu truoc khi dong khong?"
+            "value": "Bạn có thay đổi chưa lưu. Bạn có muốn lưu trước khi đóng không?"
           }
         },
         "zh-Hans": {
@@ -5936,7 +5936,7 @@
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Thay doi chua luu"
+            "value": "Thay đổi chưa lưu"
           }
         },
         "zh-Hans": {
@@ -6000,7 +6000,7 @@
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Cap nhat preset"
+            "value": "Cập nhật preset"
           }
         },
         "zh-Hans": {
@@ -6064,7 +6064,7 @@
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Thay \"%@\" bang thiet lap hien tai?"
+            "value": "Thay \"%@\" bang thiết lập hiện tại?"
           }
         },
         "zh-Hans": {
@@ -6128,7 +6128,7 @@
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Cap nhat preset"
+            "value": "Cập nhật preset"
           }
         },
         "zh-Hans": {
@@ -6192,7 +6192,7 @@
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Cap nhat preset dang chon bang gia tri hien tai"
+            "value": "Cập nhật preset đang chọn bang giá trị hiện tại"
           }
         },
         "zh-Hans": {
@@ -6384,7 +6384,7 @@
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Truc X"
+            "value": "Trục X"
           }
         },
         "zh-Hans": {
@@ -6448,7 +6448,7 @@
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Truc Y"
+            "value": "Trục Y"
           }
         },
         "zh-Hans": {
@@ -6512,7 +6512,7 @@
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Truc Z"
+            "value": "Trục Z"
           }
         },
         "zh-Hans": {
