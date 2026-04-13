@@ -1,6 +1,5 @@
 {
-  "runtimeCatalog": "Snapzy/Resources/Localizable.xcstrings",
-  "sourceDirectory": "LocalizationCatalogSources",
+  "sourceDirectory": "Snapzy/Resources/L10n",
   "sourceLanguage": "en",
   "version": "1.0",
   "fragments": [
@@ -44,16 +43,26 @@
       ]
     },
     {
-      "file": "preferences-cloud-history-and-about.xcstrings",
+      "file": "preferences-cloud-history.xcstrings",
       "prefixes": [
-        "preferences-cloud-history.",
+        "preferences-cloud-history."
+      ]
+    },
+    {
+      "file": "preferences-about.xcstrings",
+      "prefixes": [
         "preferences-about."
       ]
     },
     {
-      "file": "preferences-quick-access-and-permissions.xcstrings",
+      "file": "preferences-quick-access.xcstrings",
       "prefixes": [
-        "preferences-quick-access.",
+        "preferences-quick-access."
+      ]
+    },
+    {
+      "file": "preferences-permissions.xcstrings",
+      "prefixes": [
         "preferences-permissions."
       ]
     },
@@ -88,10 +97,15 @@
       ]
     },
     {
-      "file": "annotate-and-quick-access.xcstrings",
+      "file": "annotate.xcstrings",
       "prefixes": [
         "annotate.",
-        "annotate-context.",
+        "annotate-context."
+      ]
+    },
+    {
+      "file": "quick-access.xcstrings",
+      "prefixes": [
         "quick-access."
       ]
     },

@@ -8,7 +8,6 @@ struct Manifest: Decodable {
     let prefixes: [String]
   }
 
-  let runtimeCatalog: String
   let sourceDirectory: String
   let sourceLanguage: String
   let version: String
@@ -39,7 +38,6 @@ enum ToolError: LocalizedError {
   case missingOwner(key: String)
   case misplacedKey(key: String, expected: String, actual: String)
   case duplicateKey(key: String, first: String, second: String)
-  case runtimeMismatch
   case l10nDrift(missing: [String], extra: [String])
 
   var errorDescription: String? {
@@ -62,8 +60,6 @@ enum ToolError: LocalizedError {
       return "Key \(key) belongs in \(expected) but was found in \(actual)"
     case .duplicateKey(let key, let first, let second):
       return "Duplicate key \(key) in \(first) and \(second)"
-    case .runtimeMismatch:
-      return "Runtime Localizable.xcstrings is out of date. Run split then merge."
     case .l10nDrift(let missing, let extra):
       return "L10n drift detected. missing=\(missing.count) extra=\(extra.count)"
     }
@@ -77,8 +73,6 @@ func usage() -> Never {
   let message = """
   Usage:
     swift tools/localization/catalog-tool.swift audit
-    swift tools/localization/catalog-tool.swift split
-    swift tools/localization/catalog-tool.swift merge
     swift tools/localization/catalog-tool.swift verify
   """
   fputs("\(message)\n", stderr)
@@ -86,7 +80,7 @@ func usage() -> Never {
 }
 
 func loadManifest() throws -> Manifest {
-  let manifestURL = repoRoot.appendingPathComponent("LocalizationCatalogSources/manifest.json")
+  let manifestURL = repoRoot.appendingPathComponent("Snapzy/Resources/L10n/manifest.json")
   let data = try Data(contentsOf: manifestURL)
   let decoder = JSONDecoder()
   let manifest = try decoder.decode(Manifest.self, from: data)
@@ -129,16 +123,6 @@ func canonicalData(for object: Any) throws -> Data {
     data.append(0x0A)
   }
   return data
-}
-
-func writeJSONObject(_ object: Any, to url: URL) throws {
-  try fileManager.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-  let data = try canonicalData(for: object)
-  try data.write(to: url, options: .atomic)
-}
-
-func runtimeCatalogURL(_ manifest: Manifest) -> URL {
-  repoRoot.appendingPathComponent(manifest.runtimeCatalog)
 }
 
 func sourceDirectoryURL(_ manifest: Manifest) -> URL {
@@ -203,40 +187,9 @@ func mergedCatalog(from manifest: Manifest) throws -> Catalog {
   )
 }
 
-func splitRuntimeCatalog(using manifest: Manifest) throws {
-  let runtimeCatalog = try catalog(from: runtimeCatalogURL(manifest))
-  var buckets: [String: [String: Any]] = [:]
-
-  for fragment in manifest.fragments {
-    buckets[fragment.file] = [:]
-  }
-
-  for key in runtimeCatalog.strings.keys.sorted() {
-    let owner = try ownerFragment(for: key, in: manifest)
-    buckets[owner.file, default: [:]][key] = runtimeCatalog.strings[key]
-  }
-
-  for fragment in manifest.fragments {
-    let fragmentCatalog = Catalog(
-      sourceLanguage: manifest.sourceLanguage,
-      version: manifest.version,
-      strings: buckets[fragment.file] ?? [:]
-    )
-    try writeJSONObject(fragmentCatalog.rootObject, to: fragmentURL(manifest, fragment))
-  }
-
-  print("Split \(runtimeCatalog.strings.count) keys into \(manifest.fragments.count) fragment catalogs.")
-}
-
-func mergeFragments(using manifest: Manifest) throws {
-  let merged = try mergedCatalog(from: manifest)
-  try writeJSONObject(merged.rootObject, to: runtimeCatalogURL(manifest))
-  print("Merged \(merged.strings.count) keys into \(manifest.runtimeCatalog).")
-}
-
 func extractL10nKeys() throws -> Set<String> {
   let localizationRoot = repoRoot.appendingPathComponent("Snapzy/Shared/Localization")
-  let regex = try NSRegularExpression(pattern: #""([a-z0-9][a-z0-9.-]*\.[a-z0-9][a-z0-9.-]*)""#)
+  let regex = try NSRegularExpression(pattern: #"(?:string|format)\(\s*"([a-z0-9][a-z0-9.-]*\.[a-z0-9][a-z0-9.-]*)""#)
   var keys = Set<String>()
 
   let enumerator = fileManager.enumerator(at: localizationRoot, includingPropertiesForKeys: [.isRegularFileKey])
@@ -284,14 +237,7 @@ func countsByFragment(using manifest: Manifest, catalog: Catalog) throws -> [(St
 }
 
 func verify(manifest: Manifest) throws {
-  let runtimeCatalog = try catalog(from: runtimeCatalogURL(manifest))
   let merged = try mergedCatalog(from: manifest)
-
-  let runtimeData = try canonicalData(for: runtimeCatalog.rootObject)
-  let mergedData = try canonicalData(for: merged.rootObject)
-  guard runtimeData == mergedData else {
-    throw ToolError.runtimeMismatch
-  }
 
   let catalogKeys = Set(merged.strings.keys)
   let l10nKeys = try extractL10nKeys()
@@ -310,18 +256,18 @@ func verify(manifest: Manifest) throws {
 }
 
 func audit(manifest: Manifest) throws {
-  let runtimeCatalog = try catalog(from: runtimeCatalogURL(manifest))
-  let counts = try countsByFragment(using: manifest, catalog: runtimeCatalog)
+  let merged = try mergedCatalog(from: manifest)
+  let counts = try countsByFragment(using: manifest, catalog: merged)
   let l10nKeys = try extractL10nKeys()
-  let catalogKeys = Set(runtimeCatalog.strings.keys)
+  let catalogKeys = Set(merged.strings.keys)
   let missing = l10nKeys.subtracting(catalogKeys).sorted()
   let extra = catalogKeys.subtracting(l10nKeys).sorted()
 
-  print("Runtime catalog: \(manifest.runtimeCatalog)")
+  print("Catalog directory: \(manifest.sourceDirectory)")
   print("  keys=\(catalogKeys.count)")
-  print("  locales=\(allLocales(in: runtimeCatalog).count)")
-  print("  sourceLanguage=\(runtimeCatalog.sourceLanguage)")
-  print("  version=\(runtimeCatalog.version)")
+  print("  locales=\(allLocales(in: merged).count)")
+  print("  sourceLanguage=\(merged.sourceLanguage)")
+  print("  version=\(merged.version)")
   print("Fragment ownership:")
   for (file, count) in counts {
     print("  \(file): \(count)")
@@ -348,10 +294,6 @@ do {
   switch command {
   case "audit":
     try audit(manifest: manifest)
-  case "split":
-    try splitRuntimeCatalog(using: manifest)
-  case "merge":
-    try mergeFragments(using: manifest)
   case "verify":
     try verify(manifest: manifest)
   default:

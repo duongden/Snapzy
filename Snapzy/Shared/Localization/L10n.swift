@@ -8,8 +8,77 @@
 import Foundation
 
 enum L10n {
+  private nonisolated static let tableMappings: [(prefix: String, tableName: String)] = [
+    ("action.", "app-shell"),
+    ("menu.", "app-shell"),
+    ("common.", "app-shell"),
+    ("appearance.", "app-shell"),
+    ("splash.", "app-shell"),
+    ("app-identity.", "app-shell"),
+    ("permission-row.", "app-shell"),
+    ("crash-report.", "app-shell"),
+    ("onboarding.", "onboarding"),
+    ("sponsor.", "onboarding"),
+    ("preferences.tab.", "preferences-general"),
+    ("preferences-general.", "preferences-general"),
+    ("preferences-capture.", "preferences-capture"),
+    ("preferences-shortcuts.", "preferences-shortcuts"),
+    ("preferences-cloud-history.", "preferences-cloud-history"),
+    ("preferences-about.", "preferences-about"),
+    ("preferences-quick-access.", "preferences-quick-access"),
+    ("preferences-permissions.", "preferences-permissions"),
+    ("after-capture.", "capture-core"),
+    ("capture-kind.", "capture-core"),
+    ("capture-storage.", "capture-core"),
+    ("file-access.", "capture-core"),
+    ("foreground-cutout.", "capture-core"),
+    ("ocr.", "capture-core"),
+    ("screen-capture.", "capture-core"),
+    ("scrolling-capture.", "scrolling-capture"),
+    ("scrolling-capture-status.", "scrolling-capture"),
+    ("gif.", "recording"),
+    ("keystroke-position.", "recording"),
+    ("microphone.", "recording"),
+    ("recording.", "recording"),
+    ("recording-annotation.", "recording"),
+    ("recording-toolbar.", "recording"),
+    ("annotate.", "annotate"),
+    ("annotate-context.", "annotate"),
+    ("quick-access.", "quick-access"),
+    ("video-editor.", "video-editor"),
+    ("video-editor-timeline.", "video-editor"),
+    ("video-export.", "video-editor"),
+    ("zoom-compositor.", "video-editor"),
+    ("cloud-expire.", "cloud"),
+    ("cloud-operation.", "cloud"),
+    ("cloud-password.", "cloud"),
+    ("cloud-provider.", "cloud"),
+    ("cloud-settings.", "cloud"),
+    ("cloud-transfer.", "cloud"),
+    ("cloud-usage.", "cloud"),
+    ("shortcut-overlay.", "shortcuts"),
+    ("shortcut-recorder.", "shortcuts"),
+    ("shortcut-validation.", "shortcuts"),
+    ("system-shortcuts.", "shortcuts"),
+  ]
+
+  private nonisolated static func tableName(for key: String) -> String? {
+    for mapping in tableMappings where key.hasPrefix(mapping.prefix) {
+      return mapping.tableName
+    }
+
+    assertionFailure("Missing localization table mapping for key: \(key)")
+    return nil
+  }
+
   nonisolated static func string(_ key: String, defaultValue: String, comment: String) -> String {
-    NSLocalizedString(key, tableName: nil, bundle: .main, value: defaultValue, comment: comment)
+    NSLocalizedString(
+      key,
+      tableName: tableName(for: key),
+      bundle: .main,
+      value: defaultValue,
+      comment: comment
+    )
   }
 
   nonisolated static func format(
