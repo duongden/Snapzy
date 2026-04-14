@@ -68,21 +68,7 @@ final class AppStatusBarController: ObservableObject {
     statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
 
     if let button = statusItem?.button {
-      // Use AppIcon from Assets, resized for menu bar (18pt standard height)
-      if let appIcon = NSImage(named: "MenubarIcon") {
-        let size = NSSize(width: 18, height: 18)
-        let resizedIcon = NSImage(size: size)
-        resizedIcon.lockFocus()
-        appIcon.draw(
-          in: NSRect(origin: .zero, size: size),
-          from: NSRect(origin: .zero, size: appIcon.size),
-          operation: .copy,
-          fraction: 1.0
-        )
-        resizedIcon.unlockFocus()
-        resizedIcon.isTemplate = false
-        button.image = resizedIcon
-      }
+      button.image = makeIdleStatusImage()
 
       // Set up click action
       button.target = self
@@ -148,22 +134,8 @@ final class AppStatusBarController: ObservableObject {
     }
 
     if useTemplate {
-      // Use MenubarIcon for idle state, resized for menu bar
-      if let appIcon = NSImage(named: "MenubarIcon") {
-        let size = NSSize(width: 18, height: 18)
-        let resizedIcon = NSImage(size: size)
-        resizedIcon.lockFocus()
-        appIcon.draw(
-          in: NSRect(origin: .zero, size: size),
-          from: NSRect(origin: .zero, size: appIcon.size),
-          operation: .copy,
-          fraction: 1.0
-        )
-        resizedIcon.unlockFocus()
-        resizedIcon.isTemplate = false
-        button.image = resizedIcon
-        button.contentTintColor = nil
-      }
+      button.image = makeIdleStatusImage()
+      button.contentTintColor = nil
     } else {
       // Colored icon for recording states - use hierarchical rendering with red
       let config = NSImage.SymbolConfiguration(hierarchicalColor: .systemRed)
@@ -175,6 +147,24 @@ final class AppStatusBarController: ObservableObject {
         button.contentTintColor = nil
       }
     }
+  }
+
+  private func makeIdleStatusImage() -> NSImage? {
+    guard let appIcon = NSImage(named: "MenubarIcon") else { return nil }
+
+    let size = NSSize(width: 18, height: 18)
+    let resizedIcon = NSImage(size: size)
+    resizedIcon.lockFocus()
+    appIcon.draw(
+      in: NSRect(origin: .zero, size: size),
+      from: NSRect(origin: .zero, size: appIcon.size),
+      operation: .copy,
+      fraction: 1.0
+    )
+    resizedIcon.unlockFocus()
+    // Template images let AppKit adapt the glyph color to the current menu bar material.
+    resizedIcon.isTemplate = true
+    return resizedIcon
   }
 
   // MARK: - Menu Building
