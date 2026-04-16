@@ -126,17 +126,35 @@ final class AnnotateState: ObservableObject {
     Self.minimumZoomLevel...effectiveMaximumZoomLevel
   }
 
+  var actualPixelZoomLevel: CGFloat {
+    guard fitScale > 0 else { return 1.0 }
+    return clampedZoom(1.0 / fitScale)
+  }
+
+  var currentDisplayedZoomPercent: Int {
+    Int((fitScale * zoomLevel * 100).rounded())
+  }
+
   var zoomMenuPresetPercents: [Int] {
+    let maxDisplayedPercent = max(
+      25,
+      Int((effectiveMaximumZoomLevel * fitScale * 100).rounded(.down) / 25) * 25
+    )
+
     var options = Self.zoomPresetPercents.filter {
-      CGFloat($0) / 100 <= effectiveMaximumZoomLevel + 0.001
+      $0 <= maxDisplayedPercent
     }
 
-    let roundedCap = max(25, Int((effectiveMaximumZoomLevel * 100).rounded(.down) / 25) * 25)
-    if roundedCap > (options.last ?? 0) {
-      options.append(roundedCap)
+    if maxDisplayedPercent > (options.last ?? 0) {
+      options.append(maxDisplayedPercent)
     }
 
     return options
+  }
+
+  func zoomLevel(forDisplayedPercent percent: Int) -> CGFloat {
+    let normalizedFitScale = max(fitScale, 0.0001)
+    return clampedZoom(CGFloat(percent) / 100 / normalizedFitScale)
   }
 
   /// Clamp a zoom level to the valid range
@@ -1243,37 +1261,42 @@ final class AnnotateState: ObservableObject {
       NSImage(contentsOf: url)
     }) else { return nil }
 
-    // Get the actual pixel dimensions from the bitmap representation
-    guard let bitmapRep = image.representations.first as? NSBitmapImageRep else {
-      // If no bitmap rep, try to get pixel size from any representation
-      if let rep = image.representations.first {
-        let pixelWidth = rep.pixelsWide
-        let pixelHeight = rep.pixelsHigh
-        if pixelWidth > 0 && pixelHeight > 0 {
-          // Assume Retina (2x) - divide by main screen's backing scale
-          let scaleFactor = NSScreen.main?.backingScaleFactor ?? 2.0
-          image.size = NSSize(
-            width: CGFloat(pixelWidth) / scaleFactor,
-            height: CGFloat(pixelHeight) / scaleFactor
-          )
-        }
-      }
-      return image
+    let scaleFactor = NSScreen.main?.backingScaleFactor ?? 2.0
+    if let normalizedSize = normalizedRetinaLogicalSizeIfNeeded(for: image, scaleFactor: scaleFactor) {
+      image.size = normalizedSize
     }
 
-    let pixelWidth = bitmapRep.pixelsWide
-    let pixelHeight = bitmapRep.pixelsHigh
+    return image
+  }
 
-    // Get the screen's backing scale factor (2.0 for Retina)
-    let scaleFactor = NSScreen.main?.backingScaleFactor ?? 2.0
+  private static func normalizedRetinaLogicalSizeIfNeeded(
+    for image: NSImage,
+    scaleFactor: CGFloat
+  ) -> NSSize? {
+    guard scaleFactor > 1 else { return nil }
+    guard let rep = image.representations.first, rep.pixelsWide > 0, rep.pixelsHigh > 0 else {
+      return nil
+    }
 
-    // Set the image size to point dimensions (pixels / scale factor)
-    image.size = NSSize(
-      width: CGFloat(pixelWidth) / scaleFactor,
-      height: CGFloat(pixelHeight) / scaleFactor
+    let pixelWidth = CGFloat(rep.pixelsWide)
+    let pixelHeight = CGFloat(rep.pixelsHigh)
+    let currentSize = image.size
+    let expectedSize = NSSize(
+      width: pixelWidth / scaleFactor,
+      height: pixelHeight / scaleFactor
     )
 
-    return image
+    let isAlreadyScaled =
+      abs(currentSize.width - expectedSize.width) < 0.5 &&
+      abs(currentSize.height - expectedSize.height) < 0.5
+    if isAlreadyScaled {
+      return nil
+    }
+
+    let isUnscaledLogicalSize =
+      abs(currentSize.width - pixelWidth) < 0.5 &&
+      abs(currentSize.height - pixelHeight) < 0.5
+    return isUnscaledLogicalSize ? expectedSize : nil
   }
 
   private static func readImageData(from url: URL) -> Data? {

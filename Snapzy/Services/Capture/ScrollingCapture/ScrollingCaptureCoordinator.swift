@@ -273,7 +273,8 @@ final class ScrollingCaptureCoordinator {
       let result = await captureManager.saveProcessedImage(
         latestImage,
         to: saveDirectory,
-        format: format
+        format: format,
+        scaleFactor: captureScaleFactor
       )
 
       switch result {

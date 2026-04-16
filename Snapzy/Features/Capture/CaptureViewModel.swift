@@ -709,11 +709,20 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
               for: .screenshot,
               exportDirectory: resolvedSaveDirectory
             )
+            let cutoutScaleFactor: CGFloat
+            if selectedRect.width > 0 {
+              cutoutScaleFactor = CGFloat(capturedImage.width) / selectedRect.width
+            } else if selectedRect.height > 0 {
+              cutoutScaleFactor = CGFloat(capturedImage.height) / selectedRect.height
+            } else {
+              cutoutScaleFactor = NSScreen.main?.backingScaleFactor ?? 2.0
+            }
 
             let result = await self.captureManager.saveProcessedImage(
               outputImage,
               to: actualSaveDirectory,
-              format: output.format
+              format: output.format,
+              scaleFactor: cutoutScaleFactor
             )
             self.lastCaptureResult = result
             self.isCapturing = false

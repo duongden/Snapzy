@@ -98,12 +98,18 @@ struct AnnotateBottomBarView: View {
       ForEach(state.zoomMenuPresetPercents, id: \.self) { percent in
         Button("\(percent)%") {
           withAnimation(.easeOut(duration: 0.15)) {
-            state.zoomLevel = state.clampedZoom(CGFloat(percent) / 100)
+            state.zoomLevel = state.zoomLevel(forDisplayedPercent: percent)
           }
         }
       }
 
       Divider()
+
+      Button("1:1") {
+        withAnimation(.easeOut(duration: 0.15)) {
+          state.zoomLevel = state.actualPixelZoomLevel
+        }
+      }
 
       Button(L10n.AnnotateUI.fitWithShortcut("⌘0")) {
         withAnimation(.easeOut(duration: 0.15)) {
@@ -112,7 +118,7 @@ struct AnnotateBottomBarView: View {
       }
     } label: {
       HStack(spacing: 4) {
-        Text("\(Int(state.zoomLevel * 100))%")
+        Text("\(state.currentDisplayedZoomPercent)%")
           .font(.system(size: 12, weight: .medium))
           .foregroundColor(.primary)
         Image(systemName: "chevron.down")

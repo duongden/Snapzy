@@ -177,29 +177,10 @@ final class AnnotateWindowController: NSWindowController, NSWindowDelegate {
       NSImage(contentsOf: url)
     }) else { return nil }
 
-    guard let bitmapRep = image.representations.first as? NSBitmapImageRep else {
-      if let rep = image.representations.first {
-        let pixelWidth = rep.pixelsWide
-        let pixelHeight = rep.pixelsHigh
-        if pixelWidth > 0 && pixelHeight > 0 {
-          let scaleFactor = NSScreen.main?.backingScaleFactor ?? 2.0
-          image.size = NSSize(
-            width: CGFloat(pixelWidth) / scaleFactor,
-            height: CGFloat(pixelHeight) / scaleFactor
-          )
-        }
-      }
-      return image
-    }
-
-    let pixelWidth = bitmapRep.pixelsWide
-    let pixelHeight = bitmapRep.pixelsHigh
     let scaleFactor = NSScreen.main?.backingScaleFactor ?? 2.0
-
-    image.size = NSSize(
-      width: CGFloat(pixelWidth) / scaleFactor,
-      height: CGFloat(pixelHeight) / scaleFactor
-    )
+    if let normalizedSize = normalizedRetinaLogicalSizeIfNeeded(for: image, scaleFactor: scaleFactor) {
+      image.size = normalizedSize
+    }
 
     return image
   }
@@ -207,18 +188,40 @@ final class AnnotateWindowController: NSWindowController, NSWindowDelegate {
   /// Apply Retina scaling to an image loaded from Data (same logic as loadImageWithCorrectScale)
   private static func applyRetinaScaling(to image: NSImage) -> NSImage {
     let scaleFactor = NSScreen.main?.backingScaleFactor ?? 2.0
-    if let bitmapRep = image.representations.first as? NSBitmapImageRep {
-      image.size = NSSize(
-        width: CGFloat(bitmapRep.pixelsWide) / scaleFactor,
-        height: CGFloat(bitmapRep.pixelsHigh) / scaleFactor
-      )
-    } else if let rep = image.representations.first, rep.pixelsWide > 0, rep.pixelsHigh > 0 {
-      image.size = NSSize(
-        width: CGFloat(rep.pixelsWide) / scaleFactor,
-        height: CGFloat(rep.pixelsHigh) / scaleFactor
-      )
+    if let normalizedSize = normalizedRetinaLogicalSizeIfNeeded(for: image, scaleFactor: scaleFactor) {
+      image.size = normalizedSize
     }
     return image
+  }
+
+  private static func normalizedRetinaLogicalSizeIfNeeded(
+    for image: NSImage,
+    scaleFactor: CGFloat
+  ) -> NSSize? {
+    guard scaleFactor > 1 else { return nil }
+    guard let rep = image.representations.first, rep.pixelsWide > 0, rep.pixelsHigh > 0 else {
+      return nil
+    }
+
+    let pixelWidth = CGFloat(rep.pixelsWide)
+    let pixelHeight = CGFloat(rep.pixelsHigh)
+    let currentSize = image.size
+    let expectedSize = NSSize(
+      width: pixelWidth / scaleFactor,
+      height: pixelHeight / scaleFactor
+    )
+
+    let isAlreadyScaled =
+      abs(currentSize.width - expectedSize.width) < 0.5 &&
+      abs(currentSize.height - expectedSize.height) < 0.5
+    if isAlreadyScaled {
+      return nil
+    }
+
+    let isUnscaledLogicalSize =
+      abs(currentSize.width - pixelWidth) < 0.5 &&
+      abs(currentSize.height - pixelHeight) < 0.5
+    return isUnscaledLogicalSize ? expectedSize : nil
   }
 
   /// Read raw file bytes from disk (fast: no image decoding or re-encoding)

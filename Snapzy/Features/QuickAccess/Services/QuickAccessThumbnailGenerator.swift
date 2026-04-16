@@ -51,6 +51,29 @@ enum ThumbnailGenerator {
     return await generateFromImage(url: url, maxSize: maxSize)
   }
 
+  private static func normalizeRetinaLogicalSizeIfNeeded(_ image: NSImage) -> NSImage {
+    guard let rep = image.representations.first, rep.pixelsWide > 0, rep.pixelsHigh > 0 else {
+      return image
+    }
+
+    let currentSize = image.size
+    let pixelWidth = CGFloat(rep.pixelsWide)
+    let pixelHeight = CGFloat(rep.pixelsHigh)
+    let scaleFactor = NSScreen.main?.backingScaleFactor ?? 1.0
+    guard scaleFactor > 1 else { return image }
+
+    let isUnscaledLogicalSize =
+      abs(currentSize.width - pixelWidth) < 0.5 &&
+      abs(currentSize.height - pixelHeight) < 0.5
+    guard isUnscaledLogicalSize else { return image }
+
+    image.size = NSSize(
+      width: pixelWidth / scaleFactor,
+      height: pixelHeight / scaleFactor
+    )
+    return image
+  }
+
   /// Generate a simple placeholder thumbnail for failed loads
   static func placeholderThumbnail(size: CGFloat = 200) -> NSImage {
     let thumbSize = NSSize(width: size, height: size)
@@ -82,7 +105,8 @@ enum ThumbnailGenerator {
       }
 
       if let image = NSImage(contentsOf: url) {
-        let originalSize = image.size
+        let normalizedImage = normalizeRetinaLogicalSizeIfNeeded(image)
+        let originalSize = normalizedImage.size
         guard originalSize.width > 0, originalSize.height > 0 else { return nil }
 
         let scale: CGFloat
@@ -92,7 +116,7 @@ enum ThumbnailGenerator {
           scale = min(maxSize / originalSize.height, 1.0)
         }
 
-        if scale >= 1.0 { return image }
+        if scale >= 1.0 { return normalizedImage }
 
         let newSize = CGSize(
           width: originalSize.width * scale,
@@ -102,7 +126,7 @@ enum ThumbnailGenerator {
         let thumbnail = NSImage(size: newSize)
         thumbnail.lockFocus()
         NSGraphicsContext.current?.imageInterpolation = .high
-        image.draw(
+        normalizedImage.draw(
           in: NSRect(origin: .zero, size: newSize),
           from: NSRect(origin: .zero, size: originalSize),
           operation: .copy,
@@ -150,7 +174,8 @@ enum ThumbnailGenerator {
   }
 
   private static func scaleImage(_ image: NSImage, maxSize: CGFloat) -> NSImage {
-    let originalSize = image.size
+    let normalizedImage = normalizeRetinaLogicalSizeIfNeeded(image)
+    let originalSize = normalizedImage.size
     guard originalSize.width > 0, originalSize.height > 0 else { return image }
 
     let scale: CGFloat
@@ -160,7 +185,7 @@ enum ThumbnailGenerator {
       scale = min(maxSize / originalSize.height, 1.0)
     }
 
-    if scale >= 1.0 { return image }
+    if scale >= 1.0 { return normalizedImage }
 
     let newSize = CGSize(
       width: originalSize.width * scale,
@@ -170,7 +195,7 @@ enum ThumbnailGenerator {
     let thumbnail = NSImage(size: newSize)
     thumbnail.lockFocus()
     NSGraphicsContext.current?.imageInterpolation = .high
-    image.draw(
+    normalizedImage.draw(
       in: NSRect(origin: .zero, size: newSize),
       from: NSRect(origin: .zero, size: originalSize),
       operation: .copy,

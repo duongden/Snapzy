@@ -11,6 +11,7 @@ import CoreGraphics
 import CoreImage
 import CoreMedia
 import Foundation
+import ImageIO
 import os.log
 import ScreenCaptureKit
 
@@ -204,12 +205,13 @@ final class ScreenCaptureManager: ObservableObject {
         excludeOwnApplication: excludeOwnApplication
       )
       // Get the display's backing scale factor dynamically
-      let scaleFactor: CGFloat
-      if let screen = NSScreen.screens.first(where: {
+      let matchedScreen = NSScreen.screens.first(where: {
         Int($0.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID ?? 0)
           == display.displayID
-      }) {
-        scaleFactor = screen.backingScaleFactor
+      })
+      let scaleFactor: CGFloat
+      if let matchedScreen {
+        scaleFactor = matchedScreen.backingScaleFactor
       } else {
         scaleFactor = display.frame.width > 0 ? CGFloat(display.width) / display.frame.width : 2.0
       }
@@ -221,6 +223,9 @@ final class ScreenCaptureManager: ObservableObject {
       config.height = Int(CGFloat(display.height) * scaleFactor)
       config.pixelFormat = kCVPixelFormatType_32BGRA
       config.showsCursor = showCursor
+      if let matchedScreen, let colorSpaceName = preferredCaptureColorSpaceName(for: matchedScreen) {
+        config.colorSpaceName = colorSpaceName
+      }
 
       // Capture the image (compat: SCScreenshotManager requires macOS 14+)
       let image = try await captureImageCompat(
@@ -229,7 +234,13 @@ final class ScreenCaptureManager: ObservableObject {
       )
 
       // Save the image
-      return await saveImage(image, to: saveDirectory, fileName: fileName, format: format)
+      return await saveImage(
+        image,
+        to: saveDirectory,
+        fileName: fileName,
+        format: format,
+        scaleFactor: scaleFactor
+      )
 
     } catch {
       DiagnosticLogger.shared.log(.error, .capture, "Fullscreen capture failed: \(error.localizedDescription)")
@@ -281,7 +292,13 @@ final class ScreenCaptureManager: ObservableObject {
       }
 
       // Save the cropped image
-      return await saveImage(croppedImage, to: saveDirectory, fileName: fileName, format: format)
+      return await saveImage(
+        croppedImage,
+        to: saveDirectory,
+        fileName: fileName,
+        format: format,
+        scaleFactor: context.scaleFactor
+      )
 
     } catch {
       DiagnosticLogger.shared.log(.error, .capture, "Area capture failed: \(error.localizedDescription)")
@@ -296,7 +313,8 @@ final class ScreenCaptureManager: ObservableObject {
     _ image: CGImage,
     to directory: URL,
     fileName: String?,
-    format: ImageFormat
+    format: ImageFormat,
+    scaleFactor: CGFloat? = nil
   ) async -> CaptureResult {
     let directoryAccess = SandboxFileAccessManager.shared.beginAccessingURL(directory)
     defer { directoryAccess.stop() }
@@ -316,6 +334,7 @@ final class ScreenCaptureManager: ObservableObject {
 
     // Move file I/O to background thread to avoid blocking main thread
     let isWebP = fileExtension == "webp"
+    let destinationProperties = Self.imageDestinationProperties(for: format, scaleFactor: scaleFactor)
     let writeResult: Result<URL, CaptureError> = await Task.detached {
       // Create directory if needed
       do {
@@ -348,7 +367,7 @@ final class ScreenCaptureManager: ObservableObject {
           return .failure(.saveFailed(L10n.ScreenCapture.couldNotCreateImageDestination))
         }
 
-        CGImageDestinationAddImage(destination, image, nil)
+        CGImageDestinationAddImage(destination, image, destinationProperties)
 
         guard CGImageDestinationFinalize(destination) else {
           return .failure(.saveFailed(L10n.ScreenCapture.failedToWriteImageToDisk))
@@ -382,9 +401,16 @@ final class ScreenCaptureManager: ObservableObject {
     _ image: CGImage,
     to directory: URL,
     fileName: String? = nil,
-    format: ImageFormat = .png
+    format: ImageFormat = .png,
+    scaleFactor: CGFloat? = nil
   ) async -> CaptureResult {
-    await saveImage(image, to: directory, fileName: fileName, format: format)
+    await saveImage(
+      image,
+      to: directory,
+      fileName: fileName,
+      format: format,
+      scaleFactor: scaleFactor
+    )
   }
 
   /// Verify file exists on disk with non-zero size, retrying up to maxAttempts.
@@ -406,6 +432,33 @@ final class ScreenCaptureManager: ObservableObject {
     }
     logger.error("File verification failed after \(maxAttempts) attempts: \(url.lastPathComponent)")
     return false
+  }
+
+  private nonisolated static func imageDestinationProperties(
+    for format: ImageFormat,
+    scaleFactor: CGFloat?
+  ) -> CFDictionary? {
+    let resolvedScale = max(Double(scaleFactor ?? 1.0), 1.0)
+    let dpi = resolvedScale * 72.0
+    var properties: [CFString: Any] = [
+      kCGImagePropertyDPIWidth: dpi,
+      kCGImagePropertyDPIHeight: dpi
+    ]
+
+    switch format {
+    case .png:
+      let pixelsPerMeter = Int((dpi / 0.0254).rounded())
+      properties[kCGImagePropertyPNGDictionary] = [
+        kCGImagePropertyPNGXPixelsPerMeter: pixelsPerMeter,
+        kCGImagePropertyPNGYPixelsPerMeter: pixelsPerMeter
+      ] as CFDictionary
+    case .jpeg(let quality):
+      properties[kCGImageDestinationLossyCompressionQuality] = quality
+    case .webp:
+      break
+    }
+
+    return properties as CFDictionary
   }
 
   // MARK: - Utility
@@ -508,6 +561,7 @@ final class ScreenCaptureManager: ObservableObject {
     if #available(macOS 14.2, *) {
       configuration.captureResolution = .best
     }
+    configuration.colorSpaceName = context.configuration.colorSpaceName
     return configuration
   }
 
@@ -554,12 +608,6 @@ final class ScreenCaptureManager: ObservableObject {
       excludeDesktopWidgets: excludeDesktopWidgets,
       excludeOwnApplication: excludeOwnApplication
     )
-    let config = SCStreamConfiguration()
-    if #available(macOS 14.0, *) { config.ignoreShadowsSingleWindow = false }
-    if #available(macOS 14.2, *) { config.captureResolution = .best }
-    config.pixelFormat = kCVPixelFormatType_32BGRA
-    config.showsCursor = showCursor
-
     let scaleFactor: CGFloat
     if let screen = targetScreen {
       scaleFactor = screen.backingScaleFactor
@@ -609,15 +657,27 @@ final class ScreenCaptureManager: ObservableObject {
     )
     let outputWidth = max(1, Int((alignedRect.width * scaleFactor).rounded()))
     let outputHeight = max(1, Int((alignedRect.height * scaleFactor).rounded()))
-    config.width = outputWidth
-    config.height = outputHeight
-    config.sourceRect = sourceRect
+    let fullCaptureWidth = max(1, Int((screenFrame.width * scaleFactor).rounded()))
+    let fullCaptureHeight = max(1, Int((screenFrame.height * scaleFactor).rounded()))
+
+    let config = SCStreamConfiguration()
+    if #available(macOS 14.0, *) { config.ignoreShadowsSingleWindow = false }
+    if #available(macOS 14.2, *) { config.captureResolution = .best }
+    config.width = fullCaptureWidth
+    config.height = fullCaptureHeight
+    config.pixelFormat = kCVPixelFormatType_32BGRA
+    config.showsCursor = showCursor
+    if let colorSpaceName = preferredCaptureColorSpaceName(for: matchingScreen) {
+      config.colorSpaceName = colorSpaceName
+    }
 
     let pixelCropRect = CGRect(
-      x: 0,
-      y: 0,
-      width: outputWidth,
-      height: outputHeight
+      x: (sourceRect.origin.x * scaleFactor).rounded(),
+      y: (sourceRect.origin.y * scaleFactor).rounded(),
+      width: CGFloat(outputWidth),
+      height: CGFloat(outputHeight)
+    ).intersection(
+      CGRect(x: 0, y: 0, width: CGFloat(fullCaptureWidth), height: CGFloat(fullCaptureHeight))
     )
 
     return PreparedAreaCaptureContext(
@@ -647,6 +707,22 @@ final class ScreenCaptureManager: ObservableObject {
     )
 
     return alignedRect.intersection(bounds)
+  }
+
+  private func preferredCaptureColorSpaceName(for screen: NSScreen) -> CFString? {
+    guard let colorSpaceName = screen.colorSpace?.cgColorSpace?.name else {
+      return nil
+    }
+
+    if CFEqual(colorSpaceName, CGColorSpace.displayP3) {
+      return CGColorSpace.displayP3
+    }
+
+    if CFEqual(colorSpaceName, CGColorSpace.sRGB) {
+      return CGColorSpace.sRGB
+    }
+
+    return nil
   }
 
   // MARK: - Filter Builder

@@ -6,6 +6,7 @@
 //
 
 import AppKit
+import ImageIO
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -136,16 +137,20 @@ final class AnnotateExporter {
   }
 
   /// Determine the pixel-to-point scale factor from the source image.
-  /// Falls back to screen's backing scale factor, then 2.0.
+  /// Falls back to 1.0 when bitmap metadata is unavailable.
   private static func sourceImageScale(_ sourceImage: NSImage) -> CGFloat {
     if let rep = sourceImage.representations.first as? NSBitmapImageRep {
       let pixelWidth = CGFloat(rep.pixelsWide)
       let pointWidth = sourceImage.size.width
-      if pointWidth > 0 && pixelWidth > pointWidth {
-        return pixelWidth / pointWidth
+      let pixelHeight = CGFloat(rep.pixelsHigh)
+      let pointHeight = sourceImage.size.height
+      if pointWidth > 0 && pointHeight > 0 && pixelWidth > 0 && pixelHeight > 0 {
+        let widthScale = pixelWidth / pointWidth
+        let heightScale = pixelHeight / pointHeight
+        return max(widthScale, heightScale, 1.0)
       }
     }
-    return NSScreen.main?.backingScaleFactor ?? 2.0
+    return 1.0
   }
 
   /// Convert NSImage to Data for any supported format (PNG, JPEG, WebP)
@@ -155,6 +160,7 @@ final class AnnotateExporter {
       return nil
     }
 
+    let scale = sourceImageScale(image)
     let ext = fileExtension.lowercased()
 
     // WebP: use WebPEncoder (cwebp CLI) since ImageIO doesn't support WebP encoding
@@ -175,11 +181,38 @@ final class AnnotateExporter {
     guard let destination = CGImageDestinationCreateWithData(data, utType, 1, nil) else {
       return nil
     }
-    CGImageDestinationAddImage(destination, cgImage, nil)
+    CGImageDestinationAddImage(destination, cgImage, imageDestinationProperties(for: ext, scaleFactor: scale))
     guard CGImageDestinationFinalize(destination) else {
       return nil
     }
     return data as Data
+  }
+
+  private static func imageDestinationProperties(
+    for fileExtension: String,
+    scaleFactor: CGFloat
+  ) -> CFDictionary? {
+    let resolvedScale = max(Double(scaleFactor), 1.0)
+    let dpi = resolvedScale * 72.0
+    var properties: [CFString: Any] = [
+      kCGImagePropertyDPIWidth: dpi,
+      kCGImagePropertyDPIHeight: dpi
+    ]
+
+    switch fileExtension {
+    case "png":
+      let pixelsPerMeter = Int((dpi / 0.0254).rounded())
+      properties[kCGImagePropertyPNGDictionary] = [
+        kCGImagePropertyPNGXPixelsPerMeter: pixelsPerMeter,
+        kCGImagePropertyPNGYPixelsPerMeter: pixelsPerMeter
+      ] as CFDictionary
+    case "jpg", "jpeg":
+      properties[kCGImageDestinationLossyCompressionQuality] = 0.9
+    default:
+      break
+    }
+
+    return properties as CFDictionary
   }
 
   /// Generate unique copy URL from original file path
