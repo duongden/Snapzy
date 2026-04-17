@@ -148,11 +148,17 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
     !includesOwnAppInScreenshots && !includesOwnAppInRecordings
   }
 
-  private func hideVisibleNormalWindowsIfNeeded(_ shouldHide: Bool) {
-    guard shouldHide else { return }
-    NSApp.windows
-      .filter { $0.isVisible && $0.level == .normal }
-      .forEach { $0.orderOut(nil) }
+  private let windowHideSettleDelay: TimeInterval = 1.0 / 60.0
+
+  @discardableResult
+  private func hideVisibleNormalWindowsIfNeeded(_ shouldHide: Bool) -> Bool {
+    guard shouldHide else { return false }
+
+    let visibleNormalWindows = NSApp.windows.filter { $0.isVisible && $0.level == .normal }
+    guard !visibleNormalWindows.isEmpty else { return false }
+
+    visibleNormalWindows.forEach { $0.orderOut(nil) }
+    return true
   }
 
   // MARK: - Quick Access Settings
@@ -314,10 +320,10 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
     let shouldHideOwnWindows = !includesOwnAppInScreenshots
 
     // Hide only normal-level app windows (not overlay panels) to avoid hiding pooled overlay windows
-    hideVisibleNormalWindowsIfNeeded(shouldHideOwnWindows)
+    let didHideOwnWindows = hideVisibleNormalWindowsIfNeeded(shouldHideOwnWindows)
 
     // Minimal delay to ensure own windows are hidden before the frozen snapshot is taken.
-    let snapshotDelay = shouldHideOwnWindows ? (1.0 / 60.0) : 0
+    let snapshotDelay = didHideOwnWindows ? windowHideSettleDelay : 0
     DispatchQueue.main.asyncAfter(deadline: .now() + snapshotDelay) { [weak self] in
       guard let self = self else {
         DiagnosticLogger.shared.log(.warning, .capture, "captureArea: self deallocated")
@@ -458,9 +464,9 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
     DiagnosticLogger.shared.log(.info, .capture, "Scrolling capture flow started", context: ["format": resolvedFormat.fileExtension])
     let prefetchedContentTask = captureManager.prefetchShareableContent()
 
-    hideVisibleNormalWindowsIfNeeded(true)
+    let didHideOwnWindows = hideVisibleNormalWindowsIfNeeded(true)
 
-    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+    DispatchQueue.main.asyncAfter(deadline: .now() + (didHideOwnWindows ? windowHideSettleDelay : 0)) { [weak self] in
       guard let self = self else {
         DiagnosticLogger.shared.log(.warning, .capture, "captureScrolling: self deallocated")
         AreaSelectionController.shared.cancelSelection()
@@ -586,10 +592,10 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
     let prefetchedContentTask = captureManager.prefetchShareableContent()
 
     // Hide only normal-level app windows (not overlay panels)
-    hideVisibleNormalWindowsIfNeeded(!includesOwnAppInScreenshots)
+    let didHideOwnWindows = hideVisibleNormalWindowsIfNeeded(!includesOwnAppInScreenshots)
 
-    // Minimal delay to ensure window is hidden
-    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+    // Minimal delay to ensure window is hidden when we actually hid one.
+    DispatchQueue.main.asyncAfter(deadline: .now() + (didHideOwnWindows ? windowHideSettleDelay : 0)) { [weak self] in
       guard let self = self else {
         DiagnosticLogger.shared.log(.warning, .ocr, "captureOCR: self deallocated")
         AreaSelectionController.shared.cancelSelection()
@@ -686,9 +692,9 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
     let prefetchedContentTask = captureManager.prefetchShareableContent()
 
     // Hide only normal-level app windows (not overlay panels)
-    hideVisibleNormalWindowsIfNeeded(!includesOwnAppInScreenshots)
+    let didHideOwnWindows = hideVisibleNormalWindowsIfNeeded(!includesOwnAppInScreenshots)
 
-    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+    DispatchQueue.main.asyncAfter(deadline: .now() + (didHideOwnWindows ? windowHideSettleDelay : 0)) { [weak self] in
       guard let self = self else {
         DiagnosticLogger.shared.log(.warning, .capture, "captureObjectCutout: self deallocated")
         AreaSelectionController.shared.cancelSelection()

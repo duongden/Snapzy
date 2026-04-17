@@ -18,6 +18,10 @@ import ScreenCaptureKit
 private let logger = Logger(subsystem: "Snapzy", category: "ScreenCaptureManager")
 typealias ShareableContentPrefetchTask = Task<SCShareableContent, Error>
 
+private struct ShareableContentCacheEntry {
+  let task: ShareableContentPrefetchTask
+}
+
 /// Result type for capture operations
 enum CaptureResult {
   case success(URL)
@@ -82,8 +86,20 @@ final class ScreenCaptureManager: ObservableObject {
   var captureCompletedPublisher: AnyPublisher<URL, Never> {
     captureCompletedSubject.eraseToAnyPublisher()
   }
+  private var standardShareableContentCache: ShareableContentCacheEntry?
+  private var screenParametersObserver: NSObjectProtocol?
 
   private init() {
+    screenParametersObserver = NotificationCenter.default.addObserver(
+      forName: NSApplication.didChangeScreenParametersNotification,
+      object: nil,
+      queue: .main
+    ) { [weak self] _ in
+      Task { @MainActor [weak self] in
+        self?.invalidateShareableContentCache()
+      }
+    }
+
     Task {
       await checkPermission()
     }
@@ -143,12 +159,18 @@ final class ScreenCaptureManager: ObservableObject {
 
   /// Start loading shareable content before the user finishes a selection so
   /// the actual screenshot can happen immediately on completion.
-  func prefetchShareableContent() -> ShareableContentPrefetchTask? {
+  func prefetchShareableContent(forceRefresh: Bool = false) -> ShareableContentPrefetchTask? {
     guard hasPermission else { return nil }
 
-    return Task(priority: .userInitiated) {
+    if !forceRefresh, let cached = standardShareableContentCache {
+      return cached.task
+    }
+
+    let task = Task(priority: .userInitiated) {
       try await SCShareableContent.current
     }
+    standardShareableContentCache = ShareableContentCacheEntry(task: task)
+    return task
   }
 
   func captureDisplaySnapshots(
@@ -832,11 +854,30 @@ final class ScreenCaptureManager: ObservableObject {
       do {
         return try await prefetchedContentTask.value
       } catch {
+        invalidateShareableContentCache(ifTaskMatches: prefetchedContentTask)
         logger.debug("Prefetched shareable content failed; refetching current content")
       }
     }
 
-    return try await SCShareableContent.current
+    if let cachedTask = prefetchShareableContent() {
+      do {
+        return try await cachedTask.value
+      } catch {
+        invalidateShareableContentCache(ifTaskMatches: cachedTask)
+        logger.debug("Cached shareable content failed; forcing refresh")
+      }
+    }
+
+    guard let refreshedTask = prefetchShareableContent(forceRefresh: true) else {
+      return try await SCShareableContent.current
+    }
+
+    do {
+      return try await refreshedTask.value
+    } catch {
+      invalidateShareableContentCache(ifTaskMatches: refreshedTask)
+      throw error
+    }
   }
 
   private func ensureCaptureAvailability() async -> CaptureError? {
@@ -860,6 +901,7 @@ final class ScreenCaptureManager: ObservableObject {
     if !systemGranted {
       permissionStatus = .notGranted
       hasPermission = false
+      invalidateShareableContentCache()
       return
     }
 
@@ -867,11 +909,17 @@ final class ScreenCaptureManager: ObservableObject {
     if !identityHealth.isHealthy {
       permissionStatus = .grantedButUnavailableDueToAppIdentity(identityHealth.summary)
       hasPermission = false
+      invalidateShareableContentCache()
       return
     }
 
     permissionStatus = .granted
     hasPermission = true
+    _ = prefetchShareableContent()
+  }
+
+  private func invalidateShareableContentCache(ifTaskMatches _: ShareableContentPrefetchTask? = nil) {
+    standardShareableContentCache = nil
   }
 
   /// Compatibility wrapper: uses SCScreenshotManager on macOS 14+, falls back to SCStream single-frame capture on macOS 13.
