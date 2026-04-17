@@ -151,6 +151,80 @@ final class ScreenCaptureManager: ObservableObject {
     }
   }
 
+  func captureDisplaySnapshots(
+    displayIDs: Set<CGDirectDisplayID>? = nil,
+    showCursor: Bool = false,
+    excludeDesktopIcons: Bool = false,
+    excludeDesktopWidgets: Bool = false,
+    excludeOwnApplication: Bool = false,
+    prefetchedContentTask: ShareableContentPrefetchTask? = nil
+  ) async throws -> [CGDirectDisplayID: FrozenDisplaySnapshot] {
+    if let unavailableError = await ensureCaptureAvailability() {
+      throw unavailableError
+    }
+
+    isCapturing = true
+    defer { isCapturing = false }
+    DiagnosticLogger.shared.log(.info, .capture, "Frozen display snapshot capture started")
+
+    let includeDesktopWindows = excludeDesktopIcons || excludeDesktopWidgets
+    let content = try await loadShareableContent(
+      prefetchedContentTask: prefetchedContentTask,
+      includeDesktopWindows: includeDesktopWindows
+    )
+
+    let screensToCapture = NSScreen.screens.filter { screen in
+      guard let displayID = screen.displayID else { return false }
+      guard let displayIDs else { return true }
+      return displayIDs.contains(displayID)
+    }
+
+    guard !screensToCapture.isEmpty else {
+      throw CaptureError.noDisplayFound
+    }
+
+    var snapshots: [CGDirectDisplayID: FrozenDisplaySnapshot] = [:]
+
+    for screen in screensToCapture {
+      guard let displayID = screen.displayID else { continue }
+      guard let display = content.displays.first(where: { $0.displayID == Int(displayID) }) else {
+        throw CaptureError.noDisplayFound
+      }
+
+      let scaleFactor = screen.backingScaleFactor
+      let filter = buildFilter(
+        display: display,
+        content: content,
+        excludeDesktopIcons: excludeDesktopIcons,
+        excludeDesktopWidgets: excludeDesktopWidgets,
+        excludeOwnApplication: excludeOwnApplication
+      )
+      let configuration = makeDisplaySnapshotConfiguration(
+        for: screen,
+        scaleFactor: scaleFactor,
+        showsCursor: showCursor
+      )
+      let image = try await captureImageCompat(
+        contentFilter: filter,
+        configuration: configuration
+      )
+
+      snapshots[displayID] = FrozenDisplaySnapshot(
+        displayID: displayID,
+        screenFrame: screen.frame,
+        scaleFactor: scaleFactor,
+        colorSpaceName: configuration.colorSpaceName,
+        image: image
+      )
+    }
+
+    guard !snapshots.isEmpty else {
+      throw CaptureError.noDisplayFound
+    }
+
+    return snapshots
+  }
+
   // MARK: - Capture Fullscreen
 
   /// Capture the entire screen and save to specified directory
@@ -707,6 +781,24 @@ final class ScreenCaptureManager: ObservableObject {
     )
 
     return alignedRect.intersection(bounds)
+  }
+
+  private func makeDisplaySnapshotConfiguration(
+    for screen: NSScreen,
+    scaleFactor: CGFloat,
+    showsCursor: Bool
+  ) -> SCStreamConfiguration {
+    let configuration = SCStreamConfiguration()
+    if #available(macOS 14.0, *) { configuration.ignoreShadowsSingleWindow = false }
+    if #available(macOS 14.2, *) { configuration.captureResolution = .best }
+    configuration.width = max(1, Int((screen.frame.width * scaleFactor).rounded()))
+    configuration.height = max(1, Int((screen.frame.height * scaleFactor).rounded()))
+    configuration.pixelFormat = kCVPixelFormatType_32BGRA
+    configuration.showsCursor = showsCursor
+    if let colorSpaceName = preferredCaptureColorSpaceName(for: screen) {
+      configuration.colorSpaceName = colorSpaceName
+    }
+    return configuration
   }
 
   private func preferredCaptureColorSpaceName(for screen: NSScreen) -> CFString? {

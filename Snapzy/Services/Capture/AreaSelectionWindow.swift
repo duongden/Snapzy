@@ -58,7 +58,9 @@ final class AreaSelectionController: NSObject {
 
   private var completion: AreaSelectionCompletion?
   private var completionWithMode: AreaSelectionCompletionWithMode?
+  private var completionWithResult: AreaSelectionResultCompletion?
   private var selectionMode: SelectionMode = .screenshot
+  private var selectionBackdrops: [CGDirectDisplayID: AreaSelectionBackdrop] = [:]
   private var activeWindow: AreaSelectionWindow?
   private var localEscapeMonitor: Any?
   private var globalEscapeMonitor: Any?
@@ -133,6 +135,7 @@ final class AreaSelectionController: NSObject {
   private func activatePooledWindows() {
     for screen in NSScreen.screens {
       guard let displayID = screen.displayID else { continue }
+      let allowsSelection = selectionBackdrops.isEmpty || selectionBackdrops[displayID] != nil
 
       if let window = windowPool[displayID] {
         // Sync frame to current screen position before showing
@@ -143,6 +146,12 @@ final class AreaSelectionController: NSObject {
         }
         // Reset and show existing pooled window without stealing focus
         window.updateSelectionMode(selectionMode)
+        if let backdrop = selectionBackdrops[displayID] {
+          window.overlayView.applyBackdrop(backdrop)
+        } else {
+          window.overlayView.clearBackdrop()
+        }
+        window.overlayView.setSelectionEnabled(allowsSelection)
         window.overlayView.resetSelection()
         window.selectionDelegate = self
         window.orderFrontRegardless()
@@ -150,6 +159,13 @@ final class AreaSelectionController: NSObject {
         // Fallback: create window if not pooled
         let window = AreaSelectionWindow(screen: screen, pooled: false)
         window.updateSelectionMode(selectionMode)
+        if let backdrop = selectionBackdrops[displayID] {
+          window.overlayView.applyBackdrop(backdrop)
+        } else {
+          window.overlayView.clearBackdrop()
+        }
+        window.overlayView.setSelectionEnabled(allowsSelection)
+        window.overlayView.resetSelection()
         window.selectionDelegate = self
         windowPool[displayID] = window
         window.orderFrontRegardless()
@@ -162,6 +178,7 @@ final class AreaSelectionController: NSObject {
     for (_, window) in windowPool {
       window.orderOut(nil)
       window.overlayView.resetSelection()
+      window.overlayView.clearBackdrop()
     }
     activeWindow = nil
   }
@@ -171,9 +188,10 @@ final class AreaSelectionController: NSObject {
   /// Start area selection mode (legacy - for screenshots)
   /// - Parameter completion: Called with the selected rect, or nil if cancelled
   func startSelection(completion: @escaping AreaSelectionCompletion) {
-    startSelection(mode: .screenshot) { rect, _ in
-      completion(rect)
-    }
+    completionWithMode = nil
+    completionWithResult = nil
+    self.completion = completion
+    startSelectionSession(mode: .screenshot, backdrops: [:])
   }
 
   /// Start area selection with mode
@@ -181,12 +199,33 @@ final class AreaSelectionController: NSObject {
   ///   - mode: The selection mode (screenshot or recording)
   ///   - completion: Called with the selected rect and mode, or nil if cancelled
   func startSelection(mode: SelectionMode, completion: @escaping AreaSelectionCompletionWithMode) {
+    self.completion = nil
+    completionWithResult = nil
+    completionWithMode = completion
+    startSelectionSession(mode: mode, backdrops: [:])
+  }
+
+  func startSelection(
+    mode: SelectionMode,
+    backdrops: [CGDirectDisplayID: AreaSelectionBackdrop],
+    completion: @escaping AreaSelectionResultCompletion
+  ) {
+    self.completion = nil
+    completionWithMode = nil
+    completionWithResult = completion
+    startSelectionSession(mode: mode, backdrops: backdrops)
+  }
+
+  private func startSelectionSession(
+    mode: SelectionMode,
+    backdrops: [CGDirectDisplayID: AreaSelectionBackdrop]
+  ) {
     // Always clean up prior session's monitors to prevent orphaned leaks
     removeEscapeMonitors()
     print("[Snapzy:AreaSelection] startSelection(mode: \(mode)) — monitors cleaned, starting")
 
-    self.selectionMode = mode
-    self.completionWithMode = completion
+    selectionMode = mode
+    selectionBackdrops = backdrops
 
     // Ensure pool is ready (lazy initialization if not called at app launch)
     if !isPoolReady {
@@ -221,9 +260,9 @@ final class AreaSelectionController: NSObject {
     removeEscapeMonitors()
     deactivatePooledWindows()
     completion?(nil)
-    completion = nil
     completionWithMode?(nil, selectionMode)
-    completionWithMode = nil
+    completionWithResult?(nil)
+    resetCallbacks()
   }
 
   /// Complete selection with the given rect
@@ -232,9 +271,13 @@ final class AreaSelectionController: NSObject {
     removeEscapeMonitors()
     deactivatePooledWindows()
     completion?(rect)
-    completion = nil
     completionWithMode?(rect, selectionMode)
-    completionWithMode = nil
+    if let displayID = window.displayID ?? NSScreen.screens.first(where: { $0.frame.intersects(rect) })?.displayID {
+      completionWithResult?(AreaSelectionResult(rect: rect, displayID: displayID, mode: selectionMode))
+    } else {
+      completionWithResult?(nil)
+    }
+    resetCallbacks()
   }
 
   private func removeEscapeMonitors() {
@@ -246,6 +289,13 @@ final class AreaSelectionController: NSObject {
       NSEvent.removeMonitor(monitor)
       globalEscapeMonitor = nil
     }
+  }
+
+  private func resetCallbacks() {
+    completion = nil
+    completionWithMode = nil
+    completionWithResult = nil
+    selectionBackdrops.removeAll()
   }
 
   deinit {
@@ -340,6 +390,10 @@ final class AreaSelectionWindow: NSPanel {
     overlayView.selectionMode = mode
   }
 
+  var displayID: CGDirectDisplayID? {
+    targetScreen.displayID
+  }
+
   // Non-activating: prevent stealing focus from other apps
   override var canBecomeKey: Bool { false }
   override var canBecomeMain: Bool { false }
@@ -401,6 +455,7 @@ final class AreaSelectionOverlayView: NSView {
 
   // MARK: - CALayer-based Rendering (Phase 2 Optimization)
 
+  private var snapshotLayer: CALayer!
   private var dimLayer: CALayer!
   private var horizontalCrosshairLayer: CAShapeLayer!
   private var verticalCrosshairLayer: CAShapeLayer!
@@ -415,6 +470,7 @@ final class AreaSelectionOverlayView: NSView {
   private let crosshairIndicatorSize: CGFloat = 10.0
   private let crosshairIndicatorLineWidth: CGFloat = 1.5
   private let crosshairIndicatorCenterRadius: CGFloat = 6.0
+  private var selectionEnabled = true
 
   /// Disabled animations for instant layer updates
   private var disabledActions: [String: CAAction] {
@@ -425,7 +481,9 @@ final class AreaSelectionOverlayView: NSView {
       "hidden": NSNull(),
       "opacity": NSNull(),
       "backgroundColor": NSNull(),
-      "frame": NSNull()
+      "frame": NSNull(),
+      "contents": NSNull(),
+      "contentsScale": NSNull()
     ]
   }
 
@@ -452,6 +510,13 @@ final class AreaSelectionOverlayView: NSView {
 
     CATransaction.begin()
     CATransaction.setDisableActions(true)
+
+    snapshotLayer = CALayer()
+    snapshotLayer.frame = bounds
+    snapshotLayer.contentsGravity = .resize
+    snapshotLayer.actions = disabledActions
+    snapshotLayer.isHidden = true
+    rootLayer.addSublayer(snapshotLayer)
 
     // Dim overlay layer (full screen semi-transparent)
     dimLayer = CALayer()
@@ -516,11 +581,11 @@ final class AreaSelectionOverlayView: NSView {
   // MARK: - Cursor
 
   override func cursorUpdate(with event: NSEvent) {
-    NSCursor.crosshair.push()
+    activeCursor.set()
   }
 
   override func mouseEntered(with event: NSEvent) {
-    NSCursor.crosshair.push()
+    activeCursor.push()
   }
 
   override func mouseExited(with event: NSEvent) {
@@ -528,7 +593,7 @@ final class AreaSelectionOverlayView: NSView {
   }
 
   override func resetCursorRects() {
-    addCursorRect(bounds, cursor: .crosshair)
+    addCursorRect(bounds, cursor: activeCursor)
   }
 
   override func updateTrackingAreas() {
@@ -548,7 +613,11 @@ final class AreaSelectionOverlayView: NSView {
     selectionEndPoint = nil
 
     // Initialize crosshair at current mouse position immediately
-    initializeCrosshairAtCurrentMousePosition()
+    if selectionEnabled {
+      initializeCrosshairAtCurrentMousePosition()
+    } else {
+      currentMousePosition = .zero
+    }
 
     // Rebuild tracking areas for current bounds (prevents stale hit-testing)
     updateTrackingAreas()
@@ -560,16 +629,41 @@ final class AreaSelectionOverlayView: NSView {
     horizontalCrosshairLayer.isHidden = true
     verticalCrosshairLayer.isHidden = true
     selectionBorderLayer.isHidden = true
-    crosshairIndicatorLayer.isHidden = false
+    crosshairIndicatorLayer.isHidden = !selectionEnabled
     dimLayer.mask = nil
     dimLayer.frame = bounds
 
     CATransaction.commit()
 
     // Update crosshair position immediately
-    updateCrosshairLayers()
+    if selectionEnabled {
+      updateCrosshairLayers()
+    }
 
     needsDisplay = true
+  }
+
+  func setSelectionEnabled(_ enabled: Bool) {
+    selectionEnabled = enabled
+  }
+
+  func applyBackdrop(_ backdrop: AreaSelectionBackdrop) {
+    CATransaction.begin()
+    CATransaction.setDisableActions(true)
+    snapshotLayer.frame = bounds
+    snapshotLayer.contents = backdrop.image
+    snapshotLayer.contentsScale = backdrop.scaleFactor
+    snapshotLayer.isHidden = false
+    CATransaction.commit()
+  }
+
+  func clearBackdrop() {
+    CATransaction.begin()
+    CATransaction.setDisableActions(true)
+    snapshotLayer.contents = nil
+    snapshotLayer.contentsScale = 1.0
+    snapshotLayer.isHidden = true
+    CATransaction.commit()
   }
 
   /// Initialize crosshair at current mouse position (called on activation)
@@ -596,6 +690,7 @@ final class AreaSelectionOverlayView: NSView {
 
     CATransaction.begin()
     CATransaction.setDisableActions(true)
+    snapshotLayer.frame = bounds
     dimLayer.frame = bounds
     CATransaction.commit()
 
@@ -616,6 +711,7 @@ final class AreaSelectionOverlayView: NSView {
 
     CATransaction.begin()
     CATransaction.setDisableActions(true)
+    snapshotLayer.frame = bounds
     dimLayer.frame = bounds
     CATransaction.commit()
   }
@@ -678,6 +774,14 @@ final class AreaSelectionOverlayView: NSView {
   // MARK: - CALayer Updates (60fps performance)
 
   private func updateCrosshairLayers() {
+    guard selectionEnabled else {
+      CATransaction.begin()
+      CATransaction.setDisableActions(true)
+      crosshairIndicatorLayer.isHidden = true
+      CATransaction.commit()
+      return
+    }
+
     CATransaction.begin()
     CATransaction.setDisableActions(true)
 
@@ -743,6 +847,7 @@ final class AreaSelectionOverlayView: NSView {
   // MARK: - Mouse Events
 
   override func mouseDown(with event: NSEvent) {
+    guard selectionEnabled else { return }
     let point = convert(event.locationInWindow, from: nil)
     selectionStartPoint = point
     selectionEndPoint = point
@@ -751,12 +856,14 @@ final class AreaSelectionOverlayView: NSView {
   }
 
   override func mouseDragged(with event: NSEvent) {
+    guard selectionEnabled else { return }
     guard isSelecting else { return }
     selectionEndPoint = convert(event.locationInWindow, from: nil)
     updateSelectionLayers()
   }
 
   override func mouseUp(with event: NSEvent) {
+    guard selectionEnabled else { return }
     guard isSelecting else { return }
     selectionEndPoint = convert(event.locationInWindow, from: nil)
     isSelecting = false
@@ -772,6 +879,7 @@ final class AreaSelectionOverlayView: NSView {
   }
 
   override func mouseMoved(with event: NSEvent) {
+    guard selectionEnabled else { return }
     currentMousePosition = convert(event.locationInWindow, from: nil)
     if !isSelecting {
       updateCrosshairLayers()
@@ -780,5 +888,9 @@ final class AreaSelectionOverlayView: NSView {
 
   override func rightMouseDown(with event: NSEvent) {
     delegate?.overlayViewDidCancel(self)
+  }
+
+  private var activeCursor: NSCursor {
+    selectionEnabled ? .crosshair : .arrow
   }
 }

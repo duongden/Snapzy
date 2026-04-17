@@ -310,62 +310,120 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
     isAreaSelectionActive = true
     DiagnosticLogger.shared.log(.info, .capture, "Area capture flow started", context: ["format": resolvedFormat.fileExtension])
     let prefetchedContentTask = captureManager.prefetchShareableContent()
+    let targetDisplayID = ScreenUtility.activeDisplayID()
+    let shouldHideOwnWindows = !includesOwnAppInScreenshots
 
     // Hide only normal-level app windows (not overlay panels) to avoid hiding pooled overlay windows
-    hideVisibleNormalWindowsIfNeeded(!includesOwnAppInScreenshots)
+    hideVisibleNormalWindowsIfNeeded(shouldHideOwnWindows)
 
-    // Minimal delay to ensure window is hidden
-    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+    // Minimal delay to ensure own windows are hidden before the frozen snapshot is taken.
+    let snapshotDelay = shouldHideOwnWindows ? (1.0 / 60.0) : 0
+    DispatchQueue.main.asyncAfter(deadline: .now() + snapshotDelay) { [weak self] in
       guard let self = self else {
         DiagnosticLogger.shared.log(.warning, .capture, "captureArea: self deallocated")
         AreaSelectionController.shared.cancelSelection()
         return
       }
 
-      AreaSelectionController.shared.startSelection { [weak self] rect in
-        guard let self = self else {
-          DiagnosticLogger.shared.log(.warning, .capture, "captureArea completion: self deallocated")
-          return
-        }
-        // Always reset flag regardless of outcome
-        defer {
-          self.isAreaSelectionActive = false
-        }
-
-        guard let selectedRect = rect else {
-          // Cancelled
-          DiagnosticLogger.shared.log(.info, .capture, "Area capture cancelled by user")
-          self.lastCaptureResult = .failure(.cancelled)
-          return
-        }
-
-        DiagnosticLogger.shared.log(.info, .capture, "Area selected", context: ["rect": "\(Int(selectedRect.width))x\(Int(selectedRect.height))"])
-        Task { @MainActor in
+      Task { @MainActor in
+        let frozenSession: FrozenAreaCaptureSession
+        do {
           self.isCapturing = true
-          await Task.yield()
-
-          // Resolve save directory based on auto-save toggle
-          let actualSaveDirectory = self.tempCaptureManager.resolveSaveDirectory(
-            for: .screenshot,
-            exportDirectory: resolvedSaveDirectory
-          )
-
-          let result = await self.captureManager.captureArea(
-            rect: selectedRect,
-            saveDirectory: actualSaveDirectory,
-            format: self.resolvedFormat,
+          let snapshotStartedAt = Date()
+          frozenSession = try await FrozenAreaCaptureSession.prepare(
+            displayIDs: [targetDisplayID],
             showCursor: self.showsCursorInScreenshots,
             excludeDesktopIcons: DesktopIconManager.shared.isIconHidingEnabled,
             excludeDesktopWidgets: DesktopIconManager.shared.isWidgetHidingEnabled,
             excludeOwnApplication: !self.includesOwnAppInScreenshots,
             prefetchedContentTask: prefetchedContentTask
           )
-
+          let snapshotDurationMs = Int(Date().timeIntervalSince(snapshotStartedAt) * 1000)
+          DiagnosticLogger.shared.log(
+            .info,
+            .capture,
+            "Frozen area snapshot prepared",
+            context: [
+              "displayID": "\(targetDisplayID)",
+              "duration_ms": "\(snapshotDurationMs)",
+            ]
+          )
           self.isCapturing = false
-          self.lastCaptureResult = result
+        } catch let error as CaptureError {
+          self.isCapturing = false
+          self.isAreaSelectionActive = false
+          self.lastCaptureResult = .failure(error)
+          DiagnosticLogger.shared.log(.error, .capture, "Frozen area capture setup failed: \(error.localizedDescription)")
+          return
+        } catch {
+          self.isCapturing = false
+          self.isAreaSelectionActive = false
+          self.lastCaptureResult = .failure(.captureFailed(error.localizedDescription))
+          DiagnosticLogger.shared.log(.error, .capture, "Frozen area capture setup failed: \(error.localizedDescription)")
+          return
+        }
 
-          if case .success = result {
-            SoundManager.playScreenshotCapture()
+        AreaSelectionController.shared.startSelection(
+          mode: .screenshot,
+          backdrops: frozenSession.backdrops
+        ) { [weak self] selection in
+          guard let self = self else {
+            DiagnosticLogger.shared.log(.warning, .capture, "captureArea completion: self deallocated")
+            frozenSession.invalidate()
+            return
+          }
+          defer {
+            self.isAreaSelectionActive = false
+          }
+
+          guard let selection else {
+            frozenSession.invalidate()
+            DiagnosticLogger.shared.log(.info, .capture, "Area capture cancelled by user")
+            self.lastCaptureResult = .failure(.cancelled)
+            return
+          }
+
+          DiagnosticLogger.shared.log(
+            .info,
+            .capture,
+            "Area selected from frozen snapshot",
+            context: ["rect": "\(Int(selection.rect.width))x\(Int(selection.rect.height))"]
+          )
+          Task { @MainActor in
+            self.isCapturing = true
+            await Task.yield()
+
+            do {
+              let cropResult = try frozenSession.cropImage(for: selection)
+              let actualSaveDirectory = self.tempCaptureManager.resolveSaveDirectory(
+                for: .screenshot,
+                exportDirectory: resolvedSaveDirectory
+              )
+              let result = await self.captureManager.saveProcessedImage(
+                cropResult.image,
+                to: actualSaveDirectory,
+                format: self.resolvedFormat,
+                scaleFactor: cropResult.scaleFactor
+              )
+
+              frozenSession.invalidate()
+              self.isCapturing = false
+              self.lastCaptureResult = result
+
+              if case .success = result {
+                SoundManager.playScreenshotCapture()
+              }
+            } catch let error as CaptureError {
+              frozenSession.invalidate()
+              self.isCapturing = false
+              self.lastCaptureResult = .failure(error)
+              DiagnosticLogger.shared.log(.error, .capture, "Frozen area crop failed: \(error.localizedDescription)")
+            } catch {
+              frozenSession.invalidate()
+              self.isCapturing = false
+              self.lastCaptureResult = .failure(.captureFailed(error.localizedDescription))
+              DiagnosticLogger.shared.log(.error, .capture, "Frozen area crop failed: \(error.localizedDescription)")
+            }
           }
         }
       }

@@ -17,34 +17,35 @@ flowchart LR
 
     subgraph CaptureDomain["Capture domain"]
         G["ScreenCaptureViewModel"]
-        H["ScreenCaptureManager"]
-        I["ScrollingCaptureCoordinator"]
-        J["RecordingCoordinator"]
-        K["ScreenRecordingManager"]
-        L["PostCaptureActionHandler"]
-        M["TempCaptureManager"]
+        H["FrozenAreaCaptureSession"]
+        I["ScreenCaptureManager"]
+        J["ScrollingCaptureCoordinator"]
+        K["RecordingCoordinator"]
+        L["ScreenRecordingManager"]
+        M["PostCaptureActionHandler"]
+        N["TempCaptureManager"]
     end
 
     subgraph EditingUX["Editing + post-capture UX"]
-        N["QuickAccessManager"]
-        O["AnnotateManager"]
-        P["VideoEditorManager"]
+        O["QuickAccessManager"]
+        P["AnnotateManager"]
+        Q["VideoEditorManager"]
     end
 
     subgraph PlatformServices["Platform services"]
-        Q["KeyboardShortcutManager"]
-        R["CloudManager"]
-        S["UpdaterManager"]
-        T["DiagnosticLogger + CrashSentinel"]
-        U["DesktopIconManager"]
+        R["KeyboardShortcutManager"]
+        S["CloudManager"]
+        T["UpdaterManager"]
+        U["DiagnosticLogger + CrashSentinel"]
+        V["DesktopIconManager"]
     end
 
     subgraph Storage["Persistence"]
-        V["Application Support/Snapzy/Captures"]
-        W["RecordingMetadataStore"]
-        X["Application Support/Snapzy/snapzy.db"]
-        Y["Keychain"]
-        Z["UserDefaults"]
+        W["Application Support/Snapzy/Captures"]
+        X["RecordingMetadataStore"]
+        Y["Application Support/Snapzy/snapzy.db"]
+        Z["Keychain"]
+        AA["UserDefaults"]
     end
 
     A --> B --> C
@@ -52,36 +53,37 @@ flowchart LR
     C --> E
     D --> F
     D --> G
-    D --> Q
-    D --> S
-    C --> T
+    D --> R
+    D --> T
+    C --> U
 
     G --> H
-    G --> I
+    H --> I
     G --> J
-    G --> U
-    G --> Z
+    G --> K
+    G --> V
+    G --> AA
 
-    J --> K
-    H --> L
-    I --> L
     K --> L
+    I --> M
+    J --> M
     L --> M
-    L --> N
-    L --> O
+    M --> N
+    M --> O
+    M --> P
 
-    N --> O
-    N --> P
-    N --> R
-    O --> R
+    O --> P
+    O --> Q
+    O --> S
+    P --> S
 
-    M --> V
-    K --> W
-    R --> X
-    R --> Y
-    G --> Z
-    Q --> Z
-    F --> Z
+    N --> W
+    L --> X
+    S --> Y
+    S --> Z
+    G --> AA
+    R --> AA
+    F --> AA
 ```
 
 ## Source Tree
@@ -203,6 +205,7 @@ Snapzy/
 ## Implementation Notes That Matter
 
 - `ScreenCaptureViewModel` is the main entrypoint for capture actions fired from shortcuts or the status bar menu.
+- Area screenshot now freezes the active display first through `FrozenAreaCaptureSession`, then crops from that cached bitmap instead of live-recapturing after selection while blocker overlays keep other displays non-interactive.
 - `PostCaptureActionHandler` executes Quick Access, clipboard copy, and screenshot auto-open in Annotate after files already exist.
 - `TempCaptureManager` is where the `Save` after-capture toggle becomes real behavior.
 - `RecordingCoordinator` owns the toolbar/overlay UX. `ScreenRecordingManager` owns the media pipeline.

@@ -47,35 +47,38 @@ flowchart TD
     C --> D{"Capture mode"}
 
     D -->|Fullscreen| E["captureFullscreen()"]
-    D -->|Area| F["AreaSelectionController.startSelection()"]
+    D -->|Area| F["FrozenAreaCaptureSession.prepare()"]
     D -->|OCR| G["AreaSelectionController.startSelection()"]
     D -->|Cutout| H["AreaSelectionController.startSelection()"]
 
     E --> I["ScreenCaptureManager.captureFullscreen()"]
-    F --> J["ScreenCaptureManager.captureArea()"]
-    G --> K["ScreenCaptureManager.captureAreaAsImage()"]
-    H --> L["ScreenCaptureManager.captureAreaAsImage()"]
+    F --> J["AreaSelectionController.startSelection(backdrops:)"]
+    J --> K["FrozenAreaCaptureSession.cropImage()"]
+    G --> L["ScreenCaptureManager.captureAreaAsImage()"]
+    H --> M["ScreenCaptureManager.captureAreaAsImage()"]
 
-    I --> M["TempCaptureManager.resolveSaveDirectory(.screenshot)"]
-    J --> M
-    M --> N["saveImage()/saveProcessedImage()"]
-    N --> O["PostCaptureActionHandler"]
+    I --> N["TempCaptureManager.resolveSaveDirectory(.screenshot)"]
+    K --> N
+    N --> O["saveImage()/saveProcessedImage()"]
+    O --> P["PostCaptureActionHandler"]
 
-    K --> P["OCRService.recognizeText()"]
-    P --> Q["Copy recognized text to NSPasteboard"]
+    L --> Q["OCRService.recognizeText()"]
+    Q --> R["Copy recognized text to NSPasteboard"]
 
-    L --> R["ForegroundCutoutService.extractForegroundResult()"]
-    R --> S{"Auto-crop suggested and enabled?"}
-    S -->|Yes| T["Crop transparent canvas to suggested rect"]
-    S -->|No| U["Keep full transparent canvas"]
-    T --> V["saveProcessedImage()"]
-    U --> V
-    V --> O
+    M --> S["ForegroundCutoutService.extractForegroundResult()"]
+    S --> T{"Auto-crop suggested and enabled?"}
+    T -->|Yes| U["Crop transparent canvas to suggested rect"]
+    T -->|No| V["Keep full transparent canvas"]
+    U --> W["saveProcessedImage()"]
+    V --> W
+    W --> P
 ```
 
 ### Notes
 
-- Fullscreen and area capture both run through `ScreenCaptureManager`, with desktop icon/widget exclusion and include-own-app settings applied before the image is written.
+- Fullscreen still runs directly through `ScreenCaptureManager`, but area screenshot now freezes the active display first via `FrozenAreaCaptureSession`, then crops from that cached snapshot instead of live-recapturing after selection.
+- Non-target displays still get blocking overlay windows during area screenshot, but only the frozen display accepts the drag selection in the current implementation.
+- The frozen area path still uses the same desktop icon/widget exclusion, cursor, own-app exclusion, temp-save, Quick Access, clipboard, and annotate routing as the old live area capture path.
 - OCR is the only capture path that does not create a file; it captures a `CGImage`, runs Vision OCR, and copies text to the pasteboard.
 - Object cutout is macOS 14+ only. JPEG is overridden to PNG because transparency must be preserved.
 - Capture toasts, alerts, open-panel prompts, and error surfaces are localized through `L10n`.
@@ -260,7 +263,8 @@ flowchart TD
 | `Snapzy/Shared/Localization/L10n.swift` | Shared localization bridge for these flows |
 | `Snapzy/Resources/Localization/{Shared,Features}/*.xcstrings` | Split runtime String Catalogs backing translated flow copy |
 | `Snapzy/Features/Capture/CaptureViewModel.swift` | Entry point for screenshot, scrolling capture, OCR, cutout, and recording launch |
-| `Snapzy/Services/Capture/ScreenCaptureManager.swift` | Core screenshot engine and file writing |
+| `Snapzy/Services/Capture/ScreenCaptureManager.swift` | Core screenshot engine, frozen snapshot capture, and file writing |
+| `Snapzy/Services/Capture/FrozenAreaCaptureSession.swift` | Frozen display snapshots used by area screenshot selection |
 | `Snapzy/Services/Capture/PostCaptureActionHandler.swift` | Quick Access, clipboard, and screenshot auto-open routing |
 | `Snapzy/Services/Capture/TempCaptureManager.swift` | Save-vs-temp destination logic and temp capture lifecycle |
 | `Snapzy/Services/Capture/ScrollingCapture/ScrollingCaptureCoordinator.swift` | Long screenshot session orchestration |
