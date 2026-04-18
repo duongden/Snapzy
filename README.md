@@ -23,12 +23,14 @@
     <a href="#install">Install</a> •
     <a href="#build-from-source">Build from source</a> •
     <a href="#documentation">Documentation</a> •
+    <a href="#community">Community</a> •
     <a href="#security">Security</a> •
     <a href="#contributing">Contributing</a>
   </p>
 
   <p>
     <a href="https://deepwiki.com/duongductrong/Snapzy"><img alt="Ask DeepWiki" src="https://deepwiki.com/badge.svg" /></a>
+    <a href="https://discord.gg/6CRdUKaC"><img alt="Join Discord Community" src="https://img.shields.io/badge/Discord-Join%20Community-5865F2?style=flat&amp;logo=discord&amp;logoColor=white" /></a>
     <a href="#featured-on"><img alt="Featured On" src="https://img.shields.io/badge/Featured%20On-Product%20Hunt%20%2B%20Unikorn-111827?style=flat&amp;logo=producthunt&amp;logoColor=white" /></a>
   </p>
 </div>
@@ -128,6 +130,10 @@ For release packaging details, see [docs/project-build.md](docs/project-build.md
 - [Project build guide](docs/project-build.md)
 - [Release and update workflow](docs/project-workflow.md)
 - [Local Sparkle update testing](docs/local-update-testing.md)
+
+## Community
+
+- Join the Snapzy Discord community for support, feedback, and discussion: [https://discord.gg/6CRdUKaC](https://discord.gg/6CRdUKaC)
 
 ## Featured On
 

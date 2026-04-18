@@ -23,12 +23,14 @@
     <a href="#install">Cài đặt</a> •
     <a href="#build-from-source">Build từ source</a> •
     <a href="#documentation">Tài liệu</a> •
+    <a href="#community">Cộng đồng</a> •
     <a href="#security">Bảo mật</a> •
     <a href="#contributing">Đóng góp</a>
   </p>
 
   <p>
     <a href="https://deepwiki.com/duongductrong/Snapzy"><img alt="Hỏi DeepWiki" src="https://deepwiki.com/badge.svg" /></a>
+    <a href="https://discord.gg/6CRdUKaC"><img alt="Tham gia cộng đồng Discord" src="https://img.shields.io/badge/Discord-Join%20Community-5865F2?style=flat&amp;logo=discord&amp;logoColor=white" /></a>
     <a href="#featured-on"><img alt="Được giới thiệu trên" src="https://img.shields.io/badge/Featured%20On-Product%20Hunt%20%2B%20Unikorn-111827?style=flat&amp;logo=producthunt&amp;logoColor=white" /></a>
   </p>
 </div>
@@ -132,6 +134,11 @@ Chi tiết đóng gói bản phát hành nằm ở [docs/project-build.md](docs/
 - [Hướng dẫn build dự án](docs/project-build.md)
 - [Quy trình release và update](docs/project-workflow.md)
 - [Kiểm thử update Sparkle cục bộ](docs/local-update-testing.md)
+
+<a id="community"></a>
+## Cộng đồng
+
+- Tham gia cộng đồng Snapzy trên Discord để nhận hỗ trợ, góp ý và thảo luận: [https://discord.gg/6CRdUKaC](https://discord.gg/6CRdUKaC)
 
 <a id="featured-on"></a>
 ## Được giới thiệu trên

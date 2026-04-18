@@ -23,12 +23,14 @@
     <a href="#install">安装</a> •
     <a href="#build-from-source">从源码构建</a> •
     <a href="#documentation">文档</a> •
+    <a href="#community">社区</a> •
     <a href="#security">安全</a> •
     <a href="#contributing">贡献</a>
   </p>
 
   <p>
     <a href="https://deepwiki.com/duongductrong/Snapzy"><img alt="询问 DeepWiki" src="https://deepwiki.com/badge.svg" /></a>
+    <a href="https://discord.gg/6CRdUKaC"><img alt="加入 Discord 社区" src="https://img.shields.io/badge/Discord-Join%20Community-5865F2?style=flat&amp;logo=discord&amp;logoColor=white" /></a>
     <a href="#featured-on"><img alt="已收录平台" src="https://img.shields.io/badge/Featured%20On-Product%20Hunt%20%2B%20Unikorn-111827?style=flat&amp;logo=producthunt&amp;logoColor=white" /></a>
   </p>
 </div>
@@ -132,6 +134,11 @@ xcodebuild -project Snapzy.xcodeproj -scheme Snapzy -configuration Debug build
 - [项目构建指南](docs/project-build.md)
 - [发布与更新工作流](docs/project-workflow.md)
 - [本地 Sparkle 更新测试](docs/local-update-testing.md)
+
+<a id="community"></a>
+## 社区
+
+- 加入 Snapzy Discord 社区，获取支持、反馈与讨论：[https://discord.gg/6CRdUKaC](https://discord.gg/6CRdUKaC)
 
 <a id="featured-on"></a>
 ## 收录平台
