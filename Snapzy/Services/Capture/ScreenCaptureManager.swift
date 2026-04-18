@@ -173,6 +173,31 @@ final class ScreenCaptureManager: ObservableObject {
     return task
   }
 
+  func captureFastDisplaySnapshot(
+    displayID: CGDirectDisplayID,
+    showCursor: Bool,
+    excludeDesktopIcons: Bool,
+    excludeDesktopWidgets: Bool
+  ) -> FrozenDisplaySnapshot? {
+    guard !showCursor else { return nil }
+    guard !excludeDesktopIcons else { return nil }
+    guard !excludeDesktopWidgets else { return nil }
+    guard let screen = NSScreen.screens.first(where: { $0.displayID == displayID }) else {
+      return nil
+    }
+    guard let image = CGDisplayCreateImage(displayID) else {
+      return nil
+    }
+
+    return FrozenDisplaySnapshot(
+      displayID: displayID,
+      screenFrame: screen.frame,
+      scaleFactor: screen.backingScaleFactor,
+      colorSpaceName: preferredCaptureColorSpaceName(for: screen),
+      image: image
+    )
+  }
+
   func captureDisplaySnapshots(
     displayIDs: Set<CGDirectDisplayID>? = nil,
     showCursor: Bool = false,

@@ -29,6 +29,10 @@ final class FrozenAreaCaptureSession {
     self.snapshots = snapshots
   }
 
+  static func fromSnapshot(_ snapshot: FrozenDisplaySnapshot) -> FrozenAreaCaptureSession {
+    FrozenAreaCaptureSession(snapshots: [snapshot.displayID: snapshot])
+  }
+
   static func prepare(
     captureManager: ScreenCaptureManager? = nil,
     displayIDs: Set<CGDirectDisplayID>? = nil,
