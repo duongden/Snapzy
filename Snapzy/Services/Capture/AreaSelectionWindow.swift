@@ -612,7 +612,6 @@ final class AreaSelectionOverlayView: NSView {
   private let crosshairIndicatorLineWidth: CGFloat = 1.5
   private let crosshairIndicatorCenterRadius: CGFloat = 6.0
   private var selectionEnabled = true
-  private lazy var applicationCaptureCursor: NSCursor = Self.makeApplicationCaptureCursor()
 
   /// Disabled animations for instant layer updates
   private var disabledActions: [String: CAAction] {
@@ -1204,42 +1203,9 @@ final class AreaSelectionOverlayView: NSView {
     delegate?.overlayViewDidCancel(self)
   }
 
-  private static func makeApplicationCaptureCursor() -> NSCursor {
-    let cursorSize = NSSize(width: 24, height: 24)
-    let image = NSImage(size: cursorSize)
-
-    image.lockFocus()
-
-    // Circular dark plate to keep icon visible over bright content.
-    let plateRect = NSRect(x: 2, y: 2, width: 20, height: 20)
-    NSColor.black.withAlphaComponent(0.84).setFill()
-    NSBezierPath(ovalIn: plateRect).fill()
-
-    // Camera body.
-    let bodyRect = NSRect(x: 6.5, y: 9, width: 11, height: 7.5)
-    NSColor.white.setFill()
-    NSBezierPath(roundedRect: bodyRect, xRadius: 1.6, yRadius: 1.6).fill()
-
-    // Camera top bump.
-    let topRect = NSRect(x: 9, y: 15.2, width: 4.5, height: 1.6)
-    NSBezierPath(roundedRect: topRect, xRadius: 0.8, yRadius: 0.8).fill()
-
-    // Lens ring.
-    let lensRect = NSRect(x: 10, y: 10.8, width: 4, height: 4)
-    NSColor.black.withAlphaComponent(0.88).setFill()
-    NSBezierPath(ovalIn: lensRect).fill()
-
-    image.unlockFocus()
-
-    return NSCursor(
-      image: image,
-      hotSpot: NSPoint(x: cursorSize.width / 2, y: cursorSize.height / 2)
-    )
-  }
-
   private var activeCursor: NSCursor {
     guard selectionEnabled else { return .arrow }
-    return interactionMode == .manualRegion ? .crosshair : applicationCaptureCursor
+    return interactionMode == .manualRegion ? .crosshair : .pointingHand
   }
 
   var isManualSelectionInProgress: Bool {
