@@ -5401,6 +5401,21 @@ enum L10n {
       defaultValue: "Failed to create an image from the captured frame",
       comment: "Error shown when Snapzy cannot convert a captured stream frame into an image"
     )
+    nonisolated static let selectedWindowUnavailable = string(
+      "screen-capture.selected-window-unavailable",
+      defaultValue: "The selected window is no longer available",
+      comment: "Error shown when application mode resolves a window target that disappeared before capture"
+    )
+    static let applicationModeHint = string(
+      "screen-capture.application-mode-hint",
+      defaultValue: "Press A to capture an app window",
+      comment: "Hint shown in screenshot area selection when manual mode is active and application mode can be toggled on"
+    )
+    static let manualModeHint = string(
+      "screen-capture.manual-mode-hint",
+      defaultValue: "Press A for manual area capture",
+      comment: "Hint shown in screenshot area selection when application mode is active and manual mode can be toggled on"
+    )
     static func captureFailed(_ reason: String) -> String {
       format(
         "screen-capture.capture-failed",

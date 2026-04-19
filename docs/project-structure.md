@@ -19,33 +19,35 @@ flowchart LR
         G["ScreenCaptureViewModel"]
         H["FrozenAreaCaptureSession"]
         I["ScreenCaptureManager"]
-        J["ScrollingCaptureCoordinator"]
-        K["RecordingCoordinator"]
-        L["ScreenRecordingManager"]
-        M["PostCaptureActionHandler"]
-        N["TempCaptureManager"]
+        J["AreaSelectionController"]
+        K["WindowSelectionQueryService"]
+        L["ScrollingCaptureCoordinator"]
+        M["RecordingCoordinator"]
+        N["ScreenRecordingManager"]
+        O["PostCaptureActionHandler"]
+        P["TempCaptureManager"]
     end
 
     subgraph EditingUX["Editing + post-capture UX"]
-        O["QuickAccessManager"]
-        P["AnnotateManager"]
-        Q["VideoEditorManager"]
+        QA["QuickAccessManager"]
+        AN["AnnotateManager"]
+        VE["VideoEditorManager"]
     end
 
     subgraph PlatformServices["Platform services"]
-        R["KeyboardShortcutManager"]
-        S["CloudManager"]
-        T["UpdaterManager"]
-        U["DiagnosticLogger + CrashSentinel"]
-        V["DesktopIconManager"]
+        KS["KeyboardShortcutManager"]
+        CL["CloudManager"]
+        UP["UpdaterManager"]
+        DG["DiagnosticLogger + CrashSentinel"]
+        DI["DesktopIconManager"]
     end
 
     subgraph Storage["Persistence"]
-        W["Application Support/Snapzy/Captures"]
-        X["RecordingMetadataStore"]
-        Y["Application Support/Snapzy/snapzy.db"]
-        Z["Keychain"]
-        AA["UserDefaults"]
+        STC["Application Support/Snapzy/Captures"]
+        RMD["RecordingMetadataStore"]
+        DB["Application Support/Snapzy/snapzy.db"]
+        KC["Keychain"]
+        UD["UserDefaults"]
     end
 
     A --> B --> C
@@ -53,37 +55,39 @@ flowchart LR
     C --> E
     D --> F
     D --> G
-    D --> R
-    D --> T
-    C --> U
+    D --> KS
+    D --> UP
+    C --> DG
 
     G --> H
     H --> I
     G --> J
-    G --> K
-    G --> V
-    G --> AA
+    J --> K
+    G --> L
+    G --> M
+    G --> DI
+    G --> UD
 
-    K --> L
-    I --> M
-    J --> M
-    L --> M
     M --> N
-    M --> O
-    M --> P
-
+    I --> O
+    L --> O
+    N --> O
     O --> P
-    O --> Q
-    O --> S
-    P --> S
+    O --> QA
+    O --> AN
 
-    N --> W
-    L --> X
-    S --> Y
-    S --> Z
-    G --> AA
-    R --> AA
-    F --> AA
+    QA --> AN
+    QA --> VE
+    QA --> CL
+    AN --> CL
+
+    P --> STC
+    N --> RMD
+    CL --> DB
+    CL --> KC
+    G --> UD
+    KS --> UD
+    F --> UD
 ```
 
 ## Source Tree
@@ -117,6 +121,9 @@ Snapzy/
     AppIdentity/
     Appearance/
     Capture/
+      AreaSelectionBackdrop.swift
+      AreaSelectionWindow.swift
+      WindowSelectionQueryService.swift
       ScrollingCapture/
     Clipboard/
     Cloud/
@@ -170,7 +177,7 @@ Snapzy/
 
 | Path | Owns |
 | --- | --- |
-| `Services/Capture/` | ScreenCaptureKit capture engine, recording engine, temp storage, post-capture routing |
+| `Services/Capture/` | ScreenCaptureKit capture engine, area selection overlay/controller, window-target resolution, recording engine, temp storage, post-capture routing |
 | `Services/Capture/ScrollingCapture/` | Long screenshot session model, live preview, stitcher, HUD, metrics |
 | `Services/Cloud/` | S3/R2 providers, upload orchestration, GRDB history, Keychain credentials, encrypted transfer |
 | `Services/FileAccess/` | Sandbox-scoped save-folder permissions and bookmarks |
@@ -206,7 +213,9 @@ Snapzy/
 
 - `ScreenCaptureViewModel` is the main entrypoint for capture actions fired from shortcuts or the status bar menu.
 - `AppStatusBarController` is the AppKit bridge for the menu bar item. It now keeps the menu accessible during active recording, renders the live recording timer from `ScreenRecordingManager`, and coordinates temporary Preferences-window exclusion for record-own-app sessions.
-- Area screenshot now freezes the active display first through `FrozenAreaCaptureSession`, then crops from that cached bitmap instead of live-recapturing after selection while blocker overlays keep other displays non-interactive.
+- Area screenshot now freezes the active display first through `FrozenAreaCaptureSession`, then keeps one overlay session that can toggle between manual region selection and application window selection with `A`.
+- `AreaSelectionController` and `AreaSelectionWindow` own the cross-display overlay session, keyboard handling, and highlight rendering for both manual and application screenshot interaction modes.
+- `WindowSelectionQueryService` resolves the hovered topmost app window from CoreGraphics window lists plus `SCShareableContent`, so app-mode hover stays accurate without doing expensive live queries on every draw pass.
 - `PostCaptureActionHandler` executes Quick Access, clipboard copy, and screenshot auto-open in Annotate after files already exist.
 - `TempCaptureManager` is where the `Save` after-capture toggle becomes real behavior.
 - `RecordingCoordinator` owns the toolbar/overlay UX. `ScreenRecordingManager` owns the media pipeline.
@@ -223,7 +232,7 @@ Snapzy/
 | Task | Start here |
 | --- | --- |
 | Localization, String Catalog, alert copy, translated display labels | `Resources/Localization/manifest.json`, `tools/localization/CatalogTool.swift`, `Shared/Localization/L10n.swift`, `docs/localization.md` |
-| New screenshot mode or capture behavior | `Features/Capture/CaptureViewModel.swift`, `Services/Capture/ScreenCaptureManager.swift`, `docs/capture-flow.md` |
+| New screenshot mode or capture behavior | `Features/Capture/CaptureViewModel.swift`, `Services/Capture/AreaSelectionWindow.swift`, `Services/Capture/ScreenCaptureManager.swift`, `Services/Capture/WindowSelectionQueryService.swift`, `docs/capture-flow.md` |
 | Scrolling capture UX or stitching | `Services/Capture/ScrollingCapture/` |
 | Recording toolbar, overlays, GIF flow | `Features/Recording/`, `Services/Capture/ScreenRecordingManager.swift` |
 | Post-capture actions or temp-file logic | `Features/Preferences/PreferencesManager.swift`, `Services/Capture/PostCaptureActionHandler.swift`, `Services/Capture/TempCaptureManager.swift`, `Features/QuickAccess/` |

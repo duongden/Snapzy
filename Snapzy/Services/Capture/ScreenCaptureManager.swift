@@ -427,6 +427,88 @@ final class ScreenCaptureManager: ObservableObject {
     }
   }
 
+  func captureWindow(
+    target: WindowCaptureTarget,
+    saveDirectory: URL,
+    fileName: String? = nil,
+    format: ImageFormat = .png,
+    showCursor: Bool = false,
+    excludeDesktopIcons: Bool = false,
+    excludeDesktopWidgets: Bool = false,
+    excludeOwnApplication: Bool = false,
+    prefetchedContentTask: ShareableContentPrefetchTask? = nil
+  ) async -> CaptureResult {
+    if let unavailableError = await ensureCaptureAvailability() {
+      return .failure(unavailableError)
+    }
+
+    isCapturing = true
+    defer { isCapturing = false }
+    DiagnosticLogger.shared.log(
+      .info,
+      .capture,
+      "Window capture started",
+      context: ["windowID": "\(target.windowID)"]
+    )
+
+    guard
+      let shareableWindow = await WindowSelectionQueryService.resolveWindow(
+        windowID: target.windowID,
+        prefetchedContentTask: prefetchedContentTask
+      )
+    else {
+      DiagnosticLogger.shared.log(
+        .info,
+        .capture,
+        "Window missing from shareable content; falling back to area capture",
+        context: ["windowID": "\(target.windowID)"]
+      )
+      return await captureArea(
+        rect: target.frame,
+        saveDirectory: saveDirectory,
+        fileName: fileName,
+        format: format,
+        showCursor: showCursor,
+        excludeDesktopIcons: excludeDesktopIcons,
+        excludeDesktopWidgets: excludeDesktopWidgets,
+        excludeOwnApplication: excludeOwnApplication,
+        prefetchedContentTask: prefetchedContentTask
+      )
+    }
+
+    do {
+      let windowImage = try await captureWindowImage(
+        shareableWindow,
+        fallbackTarget: target,
+        showCursor: showCursor
+      )
+      return await saveImage(
+        windowImage.image,
+        to: saveDirectory,
+        fileName: fileName,
+        format: format,
+        scaleFactor: windowImage.scaleFactor
+      )
+    } catch {
+      DiagnosticLogger.shared.logError(
+        .capture,
+        error,
+        "Exact window capture failed; falling back to rect capture"
+      )
+      return await captureArea(
+        rect: target.frame,
+        saveDirectory: saveDirectory,
+        fileName: fileName,
+        format: format,
+        showCursor: showCursor,
+        excludeDesktopIcons: excludeDesktopIcons,
+        excludeDesktopWidgets: excludeDesktopWidgets,
+        excludeOwnApplication: excludeOwnApplication,
+        prefetchedContentTask: prefetchedContentTask
+      )
+    }
+  }
+
   // MARK: - Image Saving
 
   /// Save a CGImage to disk with write verification
@@ -810,6 +892,76 @@ final class ScreenCaptureManager: ObservableObject {
       outputHeight: outputHeight,
       scaleFactor: scaleFactor
     )
+  }
+
+  private func captureWindowImage(
+    _ window: SCWindow,
+    fallbackTarget: WindowCaptureTarget,
+    showCursor: Bool
+  ) async throws -> (image: CGImage, scaleFactor: CGFloat) {
+    let contentFilter = SCContentFilter(desktopIndependentWindow: window)
+    let scaleFactor = resolvedWindowScaleFactor(window: window, fallbackDisplayID: fallbackTarget.displayID)
+    let contentRect: CGRect
+    if #available(macOS 14.0, *) {
+      contentRect = contentFilter.contentRect.isEmpty ? window.frame : contentFilter.contentRect
+    } else {
+      contentRect = window.frame
+    }
+
+    let configuration = SCStreamConfiguration()
+    if #available(macOS 14.0, *) { configuration.ignoreShadowsSingleWindow = false }
+    if #available(macOS 14.2, *) { configuration.captureResolution = .best }
+    configuration.width = max(1, Int((contentRect.width * scaleFactor).rounded()))
+    configuration.height = max(1, Int((contentRect.height * scaleFactor).rounded()))
+    configuration.pixelFormat = kCVPixelFormatType_32BGRA
+    configuration.showsCursor = showCursor
+
+    if let screen = screenContainingWindow(window, fallbackDisplayID: fallbackTarget.displayID),
+       let colorSpaceName = preferredCaptureColorSpaceName(for: screen) {
+      configuration.colorSpaceName = colorSpaceName
+    }
+
+    let image = try await captureImageCompat(
+      contentFilter: contentFilter,
+      configuration: configuration
+    )
+    return (image, scaleFactor)
+  }
+
+  private func resolvedWindowScaleFactor(
+    window: SCWindow,
+    fallbackDisplayID: CGDirectDisplayID
+  ) -> CGFloat {
+    if #available(macOS 14.0, *) {
+      let filter = SCContentFilter(desktopIndependentWindow: window)
+      let pointPixelScale = CGFloat(filter.pointPixelScale)
+      if pointPixelScale > 0 {
+        return pointPixelScale
+      }
+    }
+
+    if let screen = screenContainingWindow(window, fallbackDisplayID: fallbackDisplayID) {
+      return screen.backingScaleFactor
+    }
+
+    return NSScreen.main?.backingScaleFactor ?? 2.0
+  }
+
+  private func screenContainingWindow(
+    _ window: SCWindow,
+    fallbackDisplayID: CGDirectDisplayID
+  ) -> NSScreen? {
+    let midpoint = CGPoint(x: window.frame.midX, y: window.frame.midY)
+    if let screen = NSScreen.screens.first(where: { $0.frame.contains(midpoint) }) {
+      return screen
+    }
+    if let screen = NSScreen.screens.first(where: { $0.displayID == fallbackDisplayID }) {
+      return screen
+    }
+    return NSScreen.screens.max {
+      $0.frame.intersection(window.frame).width * $0.frame.intersection(window.frame).height
+        < $1.frame.intersection(window.frame).width * $1.frame.intersection(window.frame).height
+    }
   }
 
   private func pixelAlignedRect(_ rect: CGRect, scaleFactor: CGFloat, bounds: CGRect) -> CGRect {
