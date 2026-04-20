@@ -27,13 +27,8 @@ struct VideoDetailsSidebarView: View {
             .font(Typography.sectionHeader)
             .foregroundColor(SidebarColors.labelPrimary)
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 10)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-          RoundedRectangle(cornerRadius: 12, style: .continuous)
-            .fill(SidebarColors.itemDefault)
-        )
+
+        Divider()
 
         // File Info Section
         SidebarSection(title: L10n.Common.file) {

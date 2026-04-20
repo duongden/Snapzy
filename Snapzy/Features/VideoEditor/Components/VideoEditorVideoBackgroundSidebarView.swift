@@ -23,7 +23,7 @@ struct VideoBackgroundSidebarView: View {
         wallpaperSection
         colorSection
 
-        Divider().background(Color(nsColor: .separatorColor))
+        Divider()
 
         slidersSection
 

@@ -28,7 +28,6 @@ struct VerticalTabItem: View {
             if isSelected {
               RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .fill(Color.accentColor)
-                .shadow(color: Color.accentColor.opacity(0.28), radius: 10, y: 4)
             } else if isHovered {
               RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .fill(SidebarColors.itemHover)
@@ -76,6 +75,7 @@ struct VerticalTabBar<Tab: Hashable>: View {
     .padding(.vertical, 8)
     .padding(.horizontal, 6)
     .frame(width: 48)
+    .frame(maxHeight: .infinity, alignment: .top)
   }
 }
 
@@ -97,9 +97,9 @@ struct VerticalTabBar<Tab: Hashable>: View {
     ) { tab in
       switch tab {
       case "background":
-        return (icon: "rectangle.on.rectangle", title: L10n.VideoEditor.backgroundTab)
+        return (icon: "swatchpalette", title: L10n.VideoEditor.backgroundTab)
       case "zoom":
-        return (icon: "plus.magnifyingglass", title: L10n.VideoEditor.zoomTab)
+        return (icon: "viewfinder", title: L10n.VideoEditor.zoomTab)
       default:
         return (icon: "questionmark", title: L10n.VideoEditor.unknownTab)
       }

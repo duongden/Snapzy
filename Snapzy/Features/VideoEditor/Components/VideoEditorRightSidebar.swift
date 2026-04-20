@@ -15,7 +15,7 @@ enum VideoEditorSidebarTab: CaseIterable {
 
   var icon: String {
     switch self {
-    case .background: return "rectangle.on.rectangle"
+    case .background: return "swatchpalette"
     case .zoom: return "plus.magnifyingglass"
     }
   }
@@ -37,9 +37,11 @@ struct VideoEditorRightSidebar: View {
   @State private var selectedTab: VideoEditorSidebarTab = .background
 
   var body: some View {
-    HStack(alignment: .top, spacing: 10) {
+    HStack(spacing: 0) {
       tabContent
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+      Divider()
 
       VerticalTabBar(
         selection: $selectedTab,
@@ -47,9 +49,7 @@ struct VideoEditorRightSidebar: View {
       ) { tab in
         (icon: tab.icon, title: tab.title)
       }
-      .videoEditorSidebarRail()
     }
-    .padding(10)
     .frame(width: 320)
     .frame(maxHeight: .infinity)
     .onChange(of: state.selectedZoomId) { newValue in
