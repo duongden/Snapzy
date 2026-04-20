@@ -113,7 +113,14 @@ final class GIFResizer {
       }
 
       context.interpolationQuality = .high
-      context.draw(sourceImage, in: CGRect(x: 0, y: 0, width: targetWidth, height: targetHeight))
+      context.setFillColor(CGColor(gray: 0, alpha: 1))
+      context.fill(CGRect(x: 0, y: 0, width: targetWidth, height: targetHeight))
+
+      let fittedRect = VideoEditorExportLayout.aspectFitRect(
+        sourceSize: CGSize(width: sourceImage.width, height: sourceImage.height),
+        in: CGSize(width: targetWidth, height: targetHeight)
+      )
+      context.draw(sourceImage, in: fittedRect)
 
       guard let resizedImage = context.makeImage() else {
         continue

@@ -108,14 +108,6 @@ private enum VideoControlsLayoutStyle {
     }
   }
 
-  var playButtonBorderOpacity: Double {
-    switch self {
-    case .compact: 0.08
-    case .regular: 0.09
-    case .expanded: 0.1
-    }
-  }
-
   var badgeIconSize: CGFloat {
     switch self {
     case .compact: 10
@@ -279,10 +271,6 @@ struct VideoControlsView: View {
         .frame(width: controlsLayout.playButtonSize, height: controlsLayout.playButtonSize)
         .background(Color.white)
         .clipShape(Circle())
-        .overlay(
-          Circle()
-            .stroke(Color.primary.opacity(controlsLayout.playButtonBorderOpacity), lineWidth: 1)
-        )
     }
     .buttonStyle(.plain)
     .keyboardShortcut(.space, modifiers: [])

@@ -25,29 +25,32 @@ struct ZoomableVideoPlayerSection: View {
 
       // Calculate the composite frame size (video + padding) maintaining aspect ratio
       let compositeSize = calculateCompositeSize(containerSize: geometry.size)
-      let videoFrameSize = calculateVideoFrameSize(
+      let videoCanvasSize = calculateVideoFrameSize(
         compositeSize: compositeSize,
         scaledPadding: scaledPadding
+      )
+      let displayedVideoRect = VideoEditorExportLayout.aspectFitRect(
+        sourceSize: state.naturalSize,
+        in: videoCanvasSize
       )
 
       ZStack {
         // Background layer - fills composite area only, no black gaps
-        if state.backgroundStyle != .none {
+        if state.backgroundStyle != .none || shouldShowNeutralCanvasBackground {
           backgroundView
             .frame(width: compositeSize.width, height: compositeSize.height)
             .clipped()
         }
 
         // Video with effects - use scaled values for WYSIWYG with export
-        videoPlayerContent(in: videoFrameSize)
-          .frame(width: videoFrameSize.width, height: videoFrameSize.height)
-          .cornerRadius(scaledCornerRadius)
-          .shadow(
-            color: .black.opacity(Double(state.backgroundShadowIntensity) * 0.5),
-            radius: scaledShadowRadius,
-            x: 0,
-            y: scaledShadowY
-          )
+        videoPlayerContent(
+          in: videoCanvasSize,
+          displayedVideoRect: displayedVideoRect,
+          cornerRadius: scaledCornerRadius,
+          shadowRadius: scaledShadowRadius,
+          shadowY: scaledShadowY
+        )
+          .frame(width: videoCanvasSize.width, height: videoCanvasSize.height)
           .padding(scaledPadding)
       }
       .frame(width: compositeSize.width, height: compositeSize.height)
@@ -74,7 +77,11 @@ struct ZoomableVideoPlayerSection: View {
     Group {
       switch state.backgroundStyle {
       case .none:
-        Color.clear
+        if shouldShowNeutralCanvasBackground {
+          Color.black
+        } else {
+          Color.clear
+        }
       case .gradient(let preset):
         LinearGradient(
           colors: preset.colors,
@@ -114,16 +121,31 @@ struct ZoomableVideoPlayerSection: View {
   // MARK: - Video Player Content
 
   @ViewBuilder
-  private func videoPlayerContent(in size: CGSize) -> some View {
+  private func videoPlayerContent(
+    in canvasSize: CGSize,
+    displayedVideoRect: CGRect,
+    cornerRadius: CGFloat,
+    shadowRadius: CGFloat,
+    shadowY: CGFloat
+  ) -> some View {
     VideoPlayerSection(player: state.player)
+      .frame(width: displayedVideoRect.width, height: displayedVideoRect.height)
       .scaleEffect(currentZoomLevel)
-      .offset(zoomOffset(in: size))
+      .offset(zoomOffset(in: displayedVideoRect.size))
       .clipped()
+      .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+      .shadow(
+        color: .black.opacity(Double(state.backgroundShadowIntensity) * 0.5),
+        radius: shadowRadius,
+        x: 0,
+        y: shadowY
+      )
       .overlay(alignment: .topTrailing) {
         zoomIndicator
           .allowsHitTesting(false)
       }
       .contentShape(Rectangle())
+      .frame(width: canvasSize.width, height: canvasSize.height)
   }
 
   // MARK: - Alignment
@@ -231,6 +253,19 @@ struct ZoomableVideoPlayerSection: View {
       width: max(compositeSize.width - (scaledPadding * 2), 0),
       height: max(compositeSize.height - (scaledPadding * 2), 0)
     )
+  }
+
+  private var shouldShowNeutralCanvasBackground: Bool {
+    guard state.backgroundStyle == .none else { return false }
+
+    let exportSize = state.exportSettings.exportSize(from: state.naturalSize)
+    let fittedRect = VideoEditorExportLayout.aspectFitRect(
+      sourceSize: state.naturalSize,
+      in: exportSize
+    )
+
+    return abs(fittedRect.width - exportSize.width) > 0.5
+      || abs(fittedRect.height - exportSize.height) > 0.5
   }
 
   // MARK: - Zoom Indicator

@@ -46,8 +46,10 @@ struct VideoEditorGIFSettingsPanel: View {
         }
       }
       .pickerStyle(.menu)
-      .frame(minWidth: 160)
+      .frame(minWidth: 180)
       .controlSize(.small)
+
+      aspectRatioPresetRow
 
       if state.exportSettings.dimensionPreset == .custom {
         customDimensionFields
@@ -55,6 +57,74 @@ struct VideoEditorGIFSettingsPanel: View {
         fileSizeReductionHint
       }
     }
+  }
+
+  private var aspectRatioPresetRow: some View {
+    VStack(alignment: .leading, spacing: 4) {
+      HStack(spacing: 8) {
+        HStack(spacing: 6) {
+          Image(systemName: "aspectratio")
+            .font(.system(size: 9, weight: .semibold))
+            .foregroundColor(.accentColor)
+            .frame(width: 18, height: 18)
+            .background(
+              RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(Color.accentColor.opacity(0.14))
+            )
+
+          Text(L10n.Common.aspectRatio)
+            .font(.system(size: 10, weight: .medium))
+            .foregroundColor(.secondary)
+        }
+
+        Spacer(minLength: 8)
+
+        if let exportAspectRatioText {
+          Text(exportAspectRatioText)
+            .font(.system(size: 9, weight: .medium))
+            .foregroundColor(.secondary)
+            .monospacedDigit()
+            .padding(.horizontal, 7)
+            .padding(.vertical, 3)
+            .background(
+              Capsule(style: .continuous)
+                .fill(Color.white.opacity(0.06))
+            )
+        }
+      }
+
+      HStack(spacing: 4) {
+        ForEach(ExportDimensionPreset.aspectRatioPresets) { preset in
+          aspectRatioPresetButton(preset)
+        }
+      }
+    }
+  }
+
+  private func aspectRatioPresetButton(_ preset: ExportDimensionPreset) -> some View {
+    let isSelected = state.exportSettings.dimensionPreset == preset
+
+    return Button {
+      var settings = state.exportSettings
+      settings.dimensionPreset = preset
+      state.updateExportSettings(settings)
+    } label: {
+      Text(preset.rawValue)
+        .font(.system(size: 9, weight: .medium))
+        .foregroundColor(isSelected ? .accentColor : .primary)
+        .frame(minWidth: 34)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 4)
+        .background(
+          RoundedRectangle(cornerRadius: 6, style: .continuous)
+            .fill(isSelected ? Color.accentColor.opacity(0.18) : Color.white.opacity(0.06))
+        )
+        .overlay(
+          RoundedRectangle(cornerRadius: 6, style: .continuous)
+            .stroke(isSelected ? Color.accentColor.opacity(0.3) : Color.white.opacity(0.08), lineWidth: 1)
+        )
+    }
+    .buttonStyle(.plain)
   }
 
   private var fileSizeReductionHint: some View {
@@ -70,6 +140,10 @@ struct VideoEditorGIFSettingsPanel: View {
           .foregroundColor(.green.opacity(0.8))
       }
     }
+  }
+
+  private var exportAspectRatioText: String? {
+    state.exportSettings.aspectRatioString(from: state.naturalSize)
   }
 
   private var customDimensionFields: some View {

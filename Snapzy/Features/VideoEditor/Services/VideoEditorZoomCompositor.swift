@@ -291,9 +291,15 @@ class ZoomVideoCompositorClass: NSObject, AVVideoCompositing {
     )
     let zoomLevel = cameraState.zoomLevel
     let zoomCenter = cameraState.center
+    let sourceSize = CGSize(
+      width: CVPixelBufferGetWidth(sourceBuffer),
+      height: CVPixelBufferGetHeight(sourceBuffer)
+    )
+    let needsCanvasFit = abs(sourceSize.width - instruction.renderSize.width) > 0.5
+      || abs(sourceSize.height - instruction.renderSize.height) > 0.5
 
     // If no zoom and no background, pass through original frame
-    if zoomLevel <= minimumRenderableZoomLevel && !instruction.hasBackground {
+    if zoomLevel <= minimumRenderableZoomLevel && !instruction.hasBackground && !needsCanvasFit {
       request.finish(withComposedVideoFrame: sourceBuffer)
       return
     }
@@ -338,6 +344,23 @@ class ZoomVideoCompositorClass: NSObject, AVVideoCompositing {
         .transformed(by: CGAffineTransform(scaleX: scaleX, y: scaleY))
     }
 
+    let fittedRect = VideoEditorExportLayout.aspectFitRect(
+      sourceSize: processedImage.extent.size,
+      in: instruction.renderSize
+    )
+    let needsCanvasFit = abs(fittedRect.origin.x) > 0.5
+      || abs(fittedRect.origin.y) > 0.5
+      || abs(fittedRect.width - processedImage.extent.width) > 0.5
+      || abs(fittedRect.height - processedImage.extent.height) > 0.5
+
+    if needsCanvasFit || instruction.cornerRadius > 0 {
+      processedImage = placeImageOnCanvas(
+        processedImage,
+        canvasSize: instruction.renderSize,
+        fittedRect: fittedRect
+      )
+    }
+
     // Apply background if needed
     if instruction.hasBackground {
       // Apply corner radius to video frame if specified
@@ -345,7 +368,8 @@ class ZoomVideoCompositorClass: NSObject, AVVideoCompositing {
         processedImage = applyCornerRadius(
           to: processedImage,
           cornerRadius: instruction.cornerRadius,
-          size: instruction.renderSize
+          roundedRect: fittedRect,
+          canvasSize: instruction.renderSize
         )
       }
 
@@ -375,11 +399,16 @@ class ZoomVideoCompositorClass: NSObject, AVVideoCompositing {
   }
 
   /// Apply corner radius mask to a CIImage
-  private func applyCornerRadius(to image: CIImage, cornerRadius: CGFloat, size: CGSize) -> CIImage {
-    let extent = image.extent
+  private func applyCornerRadius(
+    to image: CIImage,
+    cornerRadius: CGFloat,
+    roundedRect: CGRect,
+    canvasSize: CGSize
+  ) -> CIImage {
+    let extent = CGRect(origin: .zero, size: canvasSize)
 
     // Create a rounded rectangle mask using CGContext
-    let maskSize = CGSize(width: extent.width, height: extent.height)
+    let maskSize = canvasSize
     guard let cgContext = CGContext(
       data: nil,
       width: Int(maskSize.width),
@@ -392,19 +421,22 @@ class ZoomVideoCompositorClass: NSObject, AVVideoCompositing {
       return image
     }
 
-    // Scale corner radius proportionally to video size
-    // Use the smaller dimension as reference for consistent appearance
-    let scaleFactor = min(extent.width, extent.height) / min(size.width, size.height)
+    // Scale corner radius to the displayed video frame, not the whole canvas.
+    let scaleFactor = min(roundedRect.width, roundedRect.height) / min(canvasSize.width, canvasSize.height)
     let scaledCornerRadius = cornerRadius * scaleFactor
 
     // Clamp corner radius to prevent visual artifacts (max = half of smaller dimension)
-    let maxRadius = min(maskSize.width, maskSize.height) / 2
+    let maxRadius = min(roundedRect.width, roundedRect.height) / 2
     let clampedCornerRadius = min(scaledCornerRadius, maxRadius)
 
     // Draw white rounded rectangle (mask)
     cgContext.setFillColor(CGColor.white)
-    let maskRect = CGRect(origin: .zero, size: maskSize)
-    let path = CGPath(roundedRect: maskRect, cornerWidth: clampedCornerRadius, cornerHeight: clampedCornerRadius, transform: nil)
+    let path = CGPath(
+      roundedRect: roundedRect,
+      cornerWidth: clampedCornerRadius,
+      cornerHeight: clampedCornerRadius,
+      transform: nil
+    )
     cgContext.addPath(path)
     cgContext.fillPath()
 
@@ -427,6 +459,23 @@ class ZoomVideoCompositorClass: NSObject, AVVideoCompositing {
     blendFilter.setValue(maskImage, forKey: kCIInputMaskImageKey)
 
     return blendFilter.outputImage ?? image
+  }
+
+  private func placeImageOnCanvas(_ image: CIImage, canvasSize: CGSize, fittedRect: CGRect) -> CIImage {
+    let normalized = image.transformed(
+      by: CGAffineTransform(translationX: -image.extent.origin.x, y: -image.extent.origin.y)
+    )
+    let scale = min(
+      fittedRect.width / max(image.extent.width, 1),
+      fittedRect.height / max(image.extent.height, 1)
+    )
+    let transformed = normalized
+      .transformed(by: CGAffineTransform(scaleX: scale, y: scale))
+      .transformed(by: CGAffineTransform(translationX: fittedRect.origin.x, y: fittedRect.origin.y))
+
+    let canvasRect = CGRect(origin: .zero, size: canvasSize)
+    let clearCanvas = CIImage(color: .clear).cropped(to: canvasRect)
+    return transformed.composited(over: clearCanvas).cropped(to: canvasRect)
   }
 
   private func createBackgroundImage(style: BackgroundStyle, size: CGSize) -> CIImage {

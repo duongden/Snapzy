@@ -43,6 +43,9 @@ private enum VideoEditorExportInspectorTab: CaseIterable, Identifiable {
     case .dimensions:
       let size = state.exportSettings.exportSize(from: state.naturalSize)
       guard size.width > 0, size.height > 0 else { return "—" }
+      if let aspectRatio = state.exportSettings.aspectRatioString(from: state.naturalSize) {
+        return "\(Int(size.width)) × \(Int(size.height)) (\(aspectRatio))"
+      }
       return "\(Int(size.width)) × \(Int(size.height))"
     case .audio:
       switch state.exportSettings.audioMode {
@@ -226,7 +229,7 @@ struct VideoExportSettingsPanel: View {
         }
         .labelsHidden()
         .pickerStyle(.menu)
-        .frame(minWidth: 200)
+        .frame(minWidth: 220)
         .controlSize(.small)
 
         if state.exportSettings.dimensionPreset == .custom {
@@ -236,12 +239,82 @@ struct VideoExportSettingsPanel: View {
         }
       }
 
+      aspectRatioPresetRow
+
       if state.exportSettings.dimensionPreset != .custom,
          state.exportSettings.dimensionPreset != .original
       {
         fileSizeReductionHint
       }
     }
+  }
+
+  private var aspectRatioPresetRow: some View {
+    VStack(alignment: .leading, spacing: 6) {
+      HStack(spacing: 8) {
+        HStack(spacing: 6) {
+          Image(systemName: "aspectratio")
+            .font(.system(size: 10, weight: .semibold))
+            .foregroundColor(.accentColor)
+            .frame(width: 20, height: 20)
+            .background(
+              RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(Color.accentColor.opacity(0.14))
+            )
+
+          Text(L10n.Common.aspectRatio)
+            .font(.system(size: 10, weight: .medium))
+            .foregroundColor(.secondary)
+        }
+
+        Spacer(minLength: 8)
+
+        if let exportAspectRatioText {
+          Text(exportAspectRatioText)
+            .font(.system(size: 10, weight: .medium))
+            .foregroundColor(.secondary)
+            .monospacedDigit()
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(
+              Capsule(style: .continuous)
+                .fill(Color.white.opacity(0.06))
+            )
+        }
+      }
+
+      HStack(spacing: 6) {
+        ForEach(ExportDimensionPreset.aspectRatioPresets) { preset in
+          aspectRatioPresetButton(preset)
+        }
+      }
+    }
+  }
+
+  private func aspectRatioPresetButton(_ preset: ExportDimensionPreset) -> some View {
+    let isSelected = state.exportSettings.dimensionPreset == preset
+
+    return Button {
+      var settings = state.exportSettings
+      settings.dimensionPreset = preset
+      state.updateExportSettings(settings)
+    } label: {
+      Text(preset.rawValue)
+        .font(.system(size: 10, weight: .medium))
+        .foregroundColor(isSelected ? .accentColor : .primary)
+        .frame(minWidth: 44)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(
+          RoundedRectangle(cornerRadius: 8, style: .continuous)
+            .fill(isSelected ? Color.accentColor.opacity(0.18) : Color.white.opacity(0.06))
+        )
+        .overlay(
+          RoundedRectangle(cornerRadius: 8, style: .continuous)
+            .stroke(isSelected ? Color.accentColor.opacity(0.32) : Color.white.opacity(0.08), lineWidth: 1)
+        )
+    }
+    .buttonStyle(.plain)
   }
 
   private func resolutionBadge(_ text: String) -> some View {
@@ -403,7 +476,14 @@ struct VideoExportSettingsPanel: View {
 
   private var dimensionDisplayText: String {
     let size = state.exportSettings.exportSize(from: state.naturalSize)
+    if let aspectRatio = state.exportSettings.aspectRatioString(from: state.naturalSize) {
+      return "\(Int(size.width)) × \(Int(size.height)) (\(aspectRatio))"
+    }
     return "\(Int(size.width)) × \(Int(size.height))"
+  }
+
+  private var exportAspectRatioText: String? {
+    state.exportSettings.aspectRatioString(from: state.naturalSize)
   }
 
   // MARK: - Bindings

@@ -93,18 +93,15 @@ enum VideoEditorExporter {
         instruction.timeRange = timeRange
 
         let layerInstruction = AVMutableVideoCompositionLayerInstruction(assetTrack: videoTrack)
-
-        // Calculate uniform aspect-fit scale to preserve entire frame without cropping
-        let naturalSize = state.naturalSize
-        let scale = min(targetSize.width / naturalSize.width, targetSize.height / naturalSize.height)
-        let scaleTransform = CGAffineTransform(scaleX: scale, y: scale)
-
-        // Center the scaled content within target size
-        let scaledWidth = naturalSize.width * scale
-        let scaledHeight = naturalSize.height * scale
-        let translateX = (targetSize.width - scaledWidth) / 2
-        let translateY = (targetSize.height - scaledHeight) / 2
-        let centerTransform = CGAffineTransform(translationX: translateX, y: translateY)
+        let fittedRect = state.exportSettings.videoContentRect(from: state.naturalSize)
+        let scaleTransform = CGAffineTransform(
+          scaleX: fittedRect.width / state.naturalSize.width,
+          y: fittedRect.height / state.naturalSize.height
+        )
+        let centerTransform = CGAffineTransform(
+          translationX: fittedRect.origin.x,
+          y: fittedRect.origin.y
+        )
 
         // Apply preferred transform first, then scale, then center
         let preferredTransform = try await videoTrack.load(.preferredTransform)
@@ -417,18 +414,15 @@ enum VideoEditorExporter {
       instruction.timeRange = CMTimeRange(start: .zero, duration: compositionVideoTrack.timeRange.duration)
 
       let layerInstruction = AVMutableVideoCompositionLayerInstruction(assetTrack: compositionVideoTrack)
-
-      // Calculate uniform aspect-fit scale to preserve entire frame without cropping
-      let naturalSize = state.naturalSize
-      let scale = min(targetSize.width / naturalSize.width, targetSize.height / naturalSize.height)
-      let scaleTransform = CGAffineTransform(scaleX: scale, y: scale)
-
-      // Center the scaled content within target size
-      let scaledWidth = naturalSize.width * scale
-      let scaledHeight = naturalSize.height * scale
-      let translateX = (targetSize.width - scaledWidth) / 2
-      let translateY = (targetSize.height - scaledHeight) / 2
-      let centerTransform = CGAffineTransform(translationX: translateX, y: translateY)
+      let fittedRect = state.exportSettings.videoContentRect(from: state.naturalSize)
+      let scaleTransform = CGAffineTransform(
+        scaleX: fittedRect.width / state.naturalSize.width,
+        y: fittedRect.height / state.naturalSize.height
+      )
+      let centerTransform = CGAffineTransform(
+        translationX: fittedRect.origin.x,
+        y: fittedRect.origin.y
+      )
 
       layerInstruction.setTransform(transform.concatenating(scaleTransform).concatenating(centerTransform), at: .zero)
 
