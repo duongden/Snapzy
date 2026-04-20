@@ -88,13 +88,15 @@ struct VideoEditorMainView: View {
     VStack(spacing: 0) {
       AnimatedGIFView(url: state.sourceURL)
         .frame(minHeight: 200)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .layoutPriority(1)
+
+      Divider()
 
       VideoEditorGIFSettingsPanel(state: state)
         .windowContentHPadding()
-        .padding(.top, 8)
-        .padding(.bottom, WindowSpacingConfiguration.default.contentBottomPadding)
-
-      Spacer(minLength: 0)
+        .padding(.top, 6)
+        .padding(.bottom, 8)
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
   }

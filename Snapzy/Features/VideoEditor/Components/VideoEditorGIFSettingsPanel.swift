@@ -3,70 +3,219 @@
 //  Snapzy
 //
 //  Export settings panel for GIF files in video editor
-//  Provides dimension presets and estimated file size
+//  Keeps the dimensions workflow visually aligned with the video export inspector
 //
 
 import SwiftUI
+
+private enum VideoEditorGIFInspectorTab: CaseIterable, Identifiable {
+  case dimensions
+  case info
+
+  var id: Self { self }
+
+  var title: String {
+    switch self {
+    case .dimensions:
+      return L10n.Common.dimensions
+    case .info:
+      return L10n.VideoEditor.gifInfo
+    }
+  }
+
+  var icon: String {
+    switch self {
+    case .dimensions:
+      return "aspectratio"
+    case .info:
+      return "info.circle"
+    }
+  }
+
+  func summary(state: VideoEditorState) -> String {
+    switch self {
+    case .dimensions:
+      let size = state.exportSettings.exportSize(from: state.naturalSize)
+      guard size.width > 0, size.height > 0 else { return "—" }
+
+      if let aspectRatio = state.exportSettings.aspectRatioString(from: state.naturalSize) {
+        return "\(Int(size.width)) × \(Int(size.height)) (\(aspectRatio))"
+      }
+
+      return "\(Int(size.width)) × \(Int(size.height))"
+    case .info:
+      var parts: [String] = []
+
+      if state.gifFrameCount > 0 {
+        parts.append(L10n.VideoEditor.framesCount(state.gifFrameCount))
+      }
+
+      if state.gifDuration > 0 {
+        parts.append(String(format: "%.1fs", state.gifDuration))
+      }
+
+      if parts.isEmpty, state.naturalSize.width > 0, state.naturalSize.height > 0 {
+        parts.append("\(Int(state.naturalSize.width)) × \(Int(state.naturalSize.height))")
+      }
+
+      return parts.isEmpty ? "—" : parts.joined(separator: " • ")
+    }
+  }
+}
 
 /// Export settings panel for GIF mode
 struct VideoEditorGIFSettingsPanel: View {
   @ObservedObject var state: VideoEditorState
 
+  @State private var expandedTab: VideoEditorGIFInspectorTab? = .dimensions
+
   var body: some View {
-    HStack(alignment: .top, spacing: 24) {
-      // Dimensions section
-      dimensionsSection
+    VStack(alignment: .leading, spacing: 8) {
+      if let expandedTab {
+        expandedInspector(for: expandedTab)
+      }
 
-      Divider()
-        .frame(height: 80)
+      HStack(alignment: .center, spacing: 8) {
+        ForEach(VideoEditorGIFInspectorTab.allCases) { tab in
+          inspectorTabButton(tab)
+        }
 
-      // Info section
-      infoSection
+        Spacer(minLength: 10)
 
-      Spacer()
-
-      // File size estimate
-      fileSizeSection
+        fileSizeSection
+      }
     }
-    .padding(12)
+    .padding(10)
+    .background(
+      RoundedRectangle(cornerRadius: 14, style: .continuous)
+        .fill(Color.white.opacity(0.04))
+    )
+    .overlay(
+      RoundedRectangle(cornerRadius: 14, style: .continuous)
+        .stroke(Color.white.opacity(0.08), lineWidth: 1)
+    )
+    .animation(.spring(response: 0.24, dampingFraction: 0.9), value: expandedTab)
   }
 
-  // MARK: - Dimensions Section
+  private func inspectorTabButton(_ tab: VideoEditorGIFInspectorTab) -> some View {
+    let isExpanded = expandedTab == tab
 
-  private var dimensionsSection: some View {
-    VStack(alignment: .leading, spacing: 6) {
-      Text(L10n.Common.dimensions)
-        .font(.system(size: 11, weight: .medium))
-        .foregroundColor(.secondary)
+    return Button {
+      withAnimation(.spring(response: 0.24, dampingFraction: 0.9)) {
+        expandedTab = isExpanded ? nil : tab
+      }
+    } label: {
+      HStack(spacing: 10) {
+        Image(systemName: tab.icon)
+          .font(.system(size: 12, weight: .semibold))
+          .foregroundColor(isExpanded ? .accentColor : .secondary)
+          .frame(width: 20)
 
-      Picker("", selection: dimensionPresetBinding) {
-        ForEach(ExportDimensionPreset.allCases) { preset in
-          Text(preset.displayLabel(for: state.naturalSize))
-            .tag(preset)
+        VStack(alignment: .leading, spacing: 2) {
+          Text(tab.title)
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundColor(.primary)
+            .lineLimit(1)
+
+          Text(tab.summary(state: state))
+            .font(.system(size: 10))
+            .foregroundColor(.secondary)
+            .monospacedDigit()
+            .lineLimit(1)
+        }
+
+        Image(systemName: isExpanded ? "chevron.down" : "chevron.up")
+          .font(.system(size: 9, weight: .bold))
+          .foregroundColor(.secondary.opacity(0.8))
+      }
+      .padding(.horizontal, 12)
+      .padding(.vertical, 8)
+      .background(
+        RoundedRectangle(cornerRadius: 10, style: .continuous)
+          .fill(isExpanded ? Color.accentColor.opacity(0.14) : Color.white.opacity(0.05))
+      )
+      .overlay(
+        RoundedRectangle(cornerRadius: 10, style: .continuous)
+          .stroke(isExpanded ? Color.accentColor.opacity(0.32) : Color.white.opacity(0.08), lineWidth: 1)
+      )
+    }
+    .buttonStyle(.plain)
+  }
+
+  @ViewBuilder
+  private func expandedInspector(for tab: VideoEditorGIFInspectorTab) -> some View {
+    VStack(alignment: .leading, spacing: 10) {
+      HStack(spacing: 8) {
+        Label(tab.title, systemImage: tab.icon)
+          .font(.system(size: 12, weight: .semibold))
+
+        Spacer()
+
+        Text(tab.summary(state: state))
+          .font(.system(size: 11, weight: .medium))
+          .foregroundColor(.secondary)
+          .monospacedDigit()
+      }
+
+      switch tab {
+      case .dimensions:
+        dimensionsInspectorContent
+      case .info:
+        gifInfoSection
+      }
+    }
+    .padding(12)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(
+      RoundedRectangle(cornerRadius: 12, style: .continuous)
+        .fill(Color.white.opacity(0.03))
+    )
+    .overlay(
+      RoundedRectangle(cornerRadius: 12, style: .continuous)
+        .stroke(Color.white.opacity(0.06), lineWidth: 1)
+    )
+    .transition(.move(edge: .bottom).combined(with: .opacity))
+  }
+
+  private var dimensionsInspectorContent: some View {
+    VStack(alignment: .leading, spacing: 8) {
+      HStack(alignment: .center, spacing: 10) {
+        Picker("", selection: dimensionPresetBinding) {
+          ForEach(ExportDimensionPreset.allCases) { preset in
+            Text(preset.displayLabel(for: state.naturalSize))
+              .tag(preset)
+          }
+        }
+        .labelsHidden()
+        .pickerStyle(.menu)
+        .frame(minWidth: 220)
+        .controlSize(.small)
+
+        if state.exportSettings.dimensionPreset == .custom {
+          customDimensionFields
+        } else {
+          resolutionBadge(dimensionDisplayText)
         }
       }
-      .pickerStyle(.menu)
-      .frame(minWidth: 180)
-      .controlSize(.small)
 
       aspectRatioPresetRow
 
-      if state.exportSettings.dimensionPreset == .custom {
-        customDimensionFields
-      } else if state.exportSettings.dimensionPreset != .original {
+      if state.exportSettings.dimensionPreset != .custom,
+         state.exportSettings.dimensionPreset != .original
+      {
         fileSizeReductionHint
       }
     }
   }
 
   private var aspectRatioPresetRow: some View {
-    VStack(alignment: .leading, spacing: 4) {
+    VStack(alignment: .leading, spacing: 6) {
       HStack(spacing: 8) {
         HStack(spacing: 6) {
           Image(systemName: "aspectratio")
-            .font(.system(size: 9, weight: .semibold))
+            .font(.system(size: 10, weight: .semibold))
             .foregroundColor(.accentColor)
-            .frame(width: 18, height: 18)
+            .frame(width: 20, height: 20)
             .background(
               RoundedRectangle(cornerRadius: 6, style: .continuous)
                 .fill(Color.accentColor.opacity(0.14))
@@ -81,11 +230,11 @@ struct VideoEditorGIFSettingsPanel: View {
 
         if let exportAspectRatioText {
           Text(exportAspectRatioText)
-            .font(.system(size: 9, weight: .medium))
+            .font(.system(size: 10, weight: .medium))
             .foregroundColor(.secondary)
             .monospacedDigit()
-            .padding(.horizontal, 7)
-            .padding(.vertical, 3)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
             .background(
               Capsule(style: .continuous)
                 .fill(Color.white.opacity(0.06))
@@ -93,7 +242,7 @@ struct VideoEditorGIFSettingsPanel: View {
         }
       }
 
-      HStack(spacing: 4) {
+      HStack(spacing: 6) {
         ForEach(ExportDimensionPreset.aspectRatioPresets) { preset in
           aspectRatioPresetButton(preset)
         }
@@ -110,18 +259,18 @@ struct VideoEditorGIFSettingsPanel: View {
       state.updateExportSettings(settings)
     } label: {
       Text(preset.rawValue)
-        .font(.system(size: 9, weight: .medium))
+        .font(.system(size: 10, weight: .medium))
         .foregroundColor(isSelected ? .accentColor : .primary)
-        .frame(minWidth: 34)
-        .padding(.horizontal, 6)
-        .padding(.vertical, 4)
+        .frame(minWidth: 44)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
         .background(
-          RoundedRectangle(cornerRadius: 6, style: .continuous)
+          RoundedRectangle(cornerRadius: 8, style: .continuous)
             .fill(isSelected ? Color.accentColor.opacity(0.18) : Color.white.opacity(0.06))
         )
         .overlay(
-          RoundedRectangle(cornerRadius: 6, style: .continuous)
-            .stroke(isSelected ? Color.accentColor.opacity(0.3) : Color.white.opacity(0.08), lineWidth: 1)
+          RoundedRectangle(cornerRadius: 8, style: .continuous)
+            .stroke(isSelected ? Color.accentColor.opacity(0.32) : Color.white.opacity(0.08), lineWidth: 1)
         )
     }
     .buttonStyle(.plain)
@@ -136,21 +285,72 @@ struct VideoEditorGIFSettingsPanel: View {
     return Group {
       if reduction > 0 {
         Text(L10n.VideoEditor.smallerFileSizeHint(reduction))
-          .font(.system(size: 9))
-          .foregroundColor(.green.opacity(0.8))
+          .font(.system(size: 10))
+          .foregroundColor(.green.opacity(0.85))
       }
     }
   }
 
-  private var exportAspectRatioText: String? {
-    state.exportSettings.aspectRatioString(from: state.naturalSize)
+  private var gifInfoSection: some View {
+    VStack(alignment: .leading, spacing: 6) {
+      HStack(spacing: 8) {
+        if state.naturalSize.width > 0 {
+          metadataBadge(systemName: "photo", text: "\(Int(state.naturalSize.width)) × \(Int(state.naturalSize.height))")
+        }
+
+        if state.gifFrameCount > 0 {
+          metadataBadge(systemName: "square.stack.3d.down.right", text: L10n.VideoEditor.framesCount(state.gifFrameCount))
+        }
+
+        if state.gifDuration > 0 {
+          metadataBadge(systemName: "clock", text: String(format: "%.1fs", state.gifDuration))
+        }
+      }
+    }
+  }
+
+  private func metadataBadge(systemName: String, text: String) -> some View {
+    HStack(spacing: 6) {
+      Image(systemName: systemName)
+        .font(.system(size: 10, weight: .medium))
+        .foregroundColor(.secondary)
+
+      Text(text)
+        .font(.system(size: 10, weight: .medium))
+        .foregroundColor(.primary)
+        .lineLimit(1)
+        .monospacedDigit()
+    }
+    .padding(.horizontal, 10)
+    .padding(.vertical, 6)
+    .background(
+      Capsule(style: .continuous)
+        .fill(Color.white.opacity(0.05))
+    )
+    .overlay(
+      Capsule(style: .continuous)
+        .stroke(Color.white.opacity(0.08), lineWidth: 1)
+    )
+  }
+
+  private func resolutionBadge(_ text: String) -> some View {
+    Text(text)
+      .font(.system(size: 11, weight: .medium))
+      .foregroundColor(.secondary)
+      .monospacedDigit()
+      .padding(.horizontal, 10)
+      .padding(.vertical, 6)
+      .background(
+        Capsule(style: .continuous)
+          .fill(Color.white.opacity(0.06))
+      )
   }
 
   private var customDimensionFields: some View {
-    HStack(spacing: 4) {
+    HStack(spacing: 6) {
       TextField("", value: widthBinding, format: .number, prompt: Text(verbatim: "W"))
         .textFieldStyle(.roundedBorder)
-        .frame(width: 60)
+        .frame(width: 72)
         .controlSize(.small)
         .accessibilityLabel(L10n.Common.width)
 
@@ -160,53 +360,26 @@ struct VideoEditorGIFSettingsPanel: View {
         state.updateExportSettings(settings)
       } label: {
         Image(systemName: state.exportSettings.aspectRatioLocked ? "lock" : "lock.open")
-          .font(.system(size: 9))
+          .font(.system(size: 10))
           .foregroundColor(state.exportSettings.aspectRatioLocked ? .accentColor : .secondary)
+          .frame(width: 28, height: 28)
+          .background(Color.white.opacity(0.06))
+          .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
       }
       .buttonStyle(.plain)
 
       TextField("", value: heightBinding, format: .number, prompt: Text(verbatim: "H"))
         .textFieldStyle(.roundedBorder)
-        .frame(width: 60)
+        .frame(width: 72)
         .controlSize(.small)
         .accessibilityLabel(L10n.Common.height)
+
+      resolutionBadge(dimensionDisplayText)
     }
   }
-
-  // MARK: - Info Section
-
-  private var infoSection: some View {
-    VStack(alignment: .leading, spacing: 6) {
-      Text(L10n.VideoEditor.gifInfo)
-        .font(.system(size: 11, weight: .medium))
-        .foregroundColor(.secondary)
-
-      VStack(alignment: .leading, spacing: 2) {
-        if state.naturalSize.width > 0 {
-          Text("\(Int(state.naturalSize.width)) × \(Int(state.naturalSize.height))")
-            .font(.system(size: 10))
-            .foregroundColor(.primary)
-        }
-
-        if state.gifFrameCount > 0 {
-          Text(L10n.VideoEditor.framesCount(state.gifFrameCount))
-            .font(.system(size: 10))
-            .foregroundColor(.secondary)
-        }
-
-        if state.gifDuration > 0 {
-          Text(String(format: "%.1fs", state.gifDuration))
-            .font(.system(size: 10))
-            .foregroundColor(.secondary)
-        }
-      }
-    }
-  }
-
-  // MARK: - File Size Section
 
   private var fileSizeSection: some View {
-    VStack(alignment: .trailing, spacing: 4) {
+    VStack(alignment: .trailing, spacing: 3) {
       Text(L10n.Common.currentSize)
         .font(.system(size: 10, weight: .medium))
         .foregroundColor(.secondary)
@@ -217,7 +390,7 @@ struct VideoEditorGIFSettingsPanel: View {
 
       if state.exportSettings.dimensionPreset != .original,
          state.estimatedFileSize > 0 {
-        Text(L10n.Common.estimated)
+        Text(L10n.Common.estimatedSize)
           .font(.system(size: 10, weight: .medium))
           .foregroundColor(.secondary)
           .padding(.top, 4)
@@ -228,6 +401,25 @@ struct VideoEditorGIFSettingsPanel: View {
           .monospacedDigit()
       }
     }
+  }
+
+  private var dimensionSummaryText: String {
+    let size = state.exportSettings.exportSize(from: state.naturalSize)
+    guard size.width > 0, size.height > 0 else { return "—" }
+
+    if let aspectRatio = state.exportSettings.aspectRatioString(from: state.naturalSize) {
+      return "\(Int(size.width)) × \(Int(size.height)) (\(aspectRatio))"
+    }
+
+    return "\(Int(size.width)) × \(Int(size.height))"
+  }
+
+  private var dimensionDisplayText: String {
+    dimensionSummaryText
+  }
+
+  private var exportAspectRatioText: String? {
+    state.exportSettings.aspectRatioString(from: state.naturalSize)
   }
 
   // MARK: - Bindings
