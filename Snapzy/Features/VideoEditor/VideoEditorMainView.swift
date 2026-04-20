@@ -15,6 +15,8 @@ struct VideoEditorMainView: View {
   var onSave: (() -> Void)?
   var onCancel: (() -> Void)?
 
+  private let videoDetailsSidebarWidth: CGFloat = 280
+
   // Computed property for current frame preview
   private var currentFrameImage: NSImage? {
     guard !state.frameThumbnails.isEmpty else { return nil }
@@ -32,66 +34,11 @@ struct VideoEditorMainView: View {
 
       Divider()
 
-      // Content area with optional sidebars
-      HStack(spacing: 0) {
-        // Video details sidebar (left side)
-        if state.isVideoInfoSidebarVisible {
-          VideoDetailsSidebarView(state: state)
-            .frame(width: 280)
-            .frame(maxHeight: .infinity, alignment: .top)
-
-          Divider()
-        }
-
-        // Main editor content
-        VStack(spacing: 0) {
-          if state.isGIF {
-            // GIF preview — uses NSImageView with animation
-            AnimatedGIFView(url: state.sourceURL)
-              .frame(minHeight: 200)
-
-            // GIF export settings (dimension presets)
-            VideoEditorGIFSettingsPanel(state: state)
-              .windowContentHPadding()
-              .padding(.top, 8)
-              .padding(.bottom, WindowSpacingConfiguration.default.contentBottomPadding)
-          } else {
-            // Video player with zoom preview
-            ZoomableVideoPlayerSection(state: state)
-              .frame(minHeight: 200)
-
-            // Playback controls (video only)
-            VideoControlsView(state: state)
-              .windowContentHPadding()
-              .padding(.top, 8)
-
-            // Timeline with frame previews and trim handles (video only)
-            VideoTimelineView(state: state)
-              .windowContentHPadding()
-              .padding(.top, WindowSpacingConfiguration.default.contentTopPadding)
-
-            // Export settings panel (video only)
-            VideoExportSettingsPanel(state: state)
-              .windowContentHPadding()
-              .padding(.top, 8)
-              .padding(.bottom, WindowSpacingConfiguration.default.contentBottomPadding)
-          }
-
-          Spacer(minLength: 0)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-        // Right sidebar with tabs (Zoom + Background) — video only
-        if !state.isGIF && state.isRightSidebarVisible {
-          Divider()
-
-          VideoEditorRightSidebar(
-            state: state,
-            previewImage: currentFrameImage
-          )
-        }
+      if state.isGIF {
+        gifContent
+      } else {
+        videoEditorContent
       }
-      .animation(.easeInOut(duration: 0.2), value: state.isVideoInfoSidebarVisible)
 
       // Bottom bar with Cancel/Save
       VideoEditorBottomBar(
@@ -135,5 +82,76 @@ struct VideoEditorMainView: View {
       await state.loadMetadata()
       await state.extractFrames()
     }
+  }
+
+  private var gifContent: some View {
+    VStack(spacing: 0) {
+      AnimatedGIFView(url: state.sourceURL)
+        .frame(minHeight: 200)
+
+      VideoEditorGIFSettingsPanel(state: state)
+        .windowContentHPadding()
+        .padding(.top, 8)
+        .padding(.bottom, WindowSpacingConfiguration.default.contentBottomPadding)
+
+      Spacer(minLength: 0)
+    }
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
+  }
+
+  private var videoEditorContent: some View {
+    VStack(spacing: 0) {
+      videoWorkspaceRow
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+      VideoTimelineView(state: state)
+        .windowContentHPadding()
+        .padding(.top, WindowSpacingConfiguration.default.contentTopPadding)
+
+      VideoExportSettingsPanel(state: state)
+        .windowContentHPadding()
+        .padding(.top, 8)
+        .padding(.bottom, WindowSpacingConfiguration.default.contentBottomPadding)
+    }
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
+  }
+
+  private var videoWorkspaceRow: some View {
+    HStack(spacing: 0) {
+      if state.isVideoInfoSidebarVisible {
+        VideoDetailsSidebarView(state: state)
+          .frame(width: videoDetailsSidebarWidth)
+          .frame(maxHeight: .infinity, alignment: .top)
+
+        Divider()
+      }
+
+      videoPlayerColumn
+
+      if state.isRightSidebarVisible {
+        Divider()
+
+        VideoEditorRightSidebar(
+          state: state,
+          previewImage: currentFrameImage
+        )
+      }
+    }
+    .animation(.easeInOut(duration: 0.2), value: state.isVideoInfoSidebarVisible)
+    .animation(.easeInOut(duration: 0.2), value: state.isRightSidebarVisible)
+  }
+
+  private var videoPlayerColumn: some View {
+    VStack(spacing: 0) {
+      ZoomableVideoPlayerSection(state: state)
+        .frame(minHeight: 200)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+      VideoControlsView(state: state)
+        .padding(.horizontal, WindowSpacingConfiguration.default.contentHPadding)
+        .padding(.top, 8)
+        .padding(.bottom, 4)
+    }
+    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
   }
 }

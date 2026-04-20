@@ -390,6 +390,14 @@ final class VideoEditorState: ObservableObject {
     player.seek(to: clampedTime, toleranceBefore: .zero, toleranceAfter: .zero)
   }
 
+  func stepTimeline(by seconds: Double) {
+    let step = CMTime(seconds: seconds, preferredTimescale: 600)
+    let steppedTime = CMTimeAdd(currentTime, step)
+    let clampedTime = clampTime(steppedTime)
+    currentTime = clampedTime
+    player.seek(to: clampedTime, toleranceBefore: .zero, toleranceAfter: .zero)
+  }
+
   // MARK: - Scrubbing
 
   func startScrubbing() {
