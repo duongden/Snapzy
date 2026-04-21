@@ -6,6 +6,22 @@
     <description>Snapzy application updates</description>
     <language>en</language>
     <item>
+      <title>Version 1.8.2</title>
+      <sparkle:version>67</sparkle:version>
+      <sparkle:shortVersionString>1.8.2</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <pubDate>Tue, 21 Apr 2026 10:31:54 +0000</pubDate>
+      <description><![CDATA[
+        <style>:root { color-scheme: light dark; } body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 13px; line-height: 1.5; padding: 8px 16px; } h3 { font-size: 14px; margin: 12px 0 6px; } ul { padding-left: 20px; margin: 4px 0; } li { margin: 3px 0; }</style>
+        <h3>🐛 Bug Fixes</h3><ul><li>Implement keyboard input handling for area screenshot sessions in AreaSelectionController and AreaSelectionWindow for resolve issue #99</li><li>Resolve issue #100 by implement dynamic keyboard shortcut handling in AppStatusBarController</li><li>Enhance clipboard functionality for edited captures in annotation and video editor workflows</li></ul>
+      ]]></description>
+      <enclosure
+        url="https://github.com/duongductrong/Snapzy/releases/download/v1.8.2/Snapzy-v1.8.2.dmg"
+        sparkle:edSignature="zphnEZqcJQlcjSnOj4VQ0KNaCYy/WL6zFNXOU3RUk5ILz4OGnhvVAor/FoGA1LSaT6MgwVFSypE1DQHheHR0Ag=="
+        length="13313351"
+        type="application/octet-stream"/>
+    </item>
+    <item>
       <title>Version 1.8.1</title>
       <sparkle:version>66</sparkle:version>
       <sparkle:shortVersionString>1.8.1</sparkle:shortVersionString>
