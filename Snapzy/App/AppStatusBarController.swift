@@ -185,6 +185,7 @@ final class AppStatusBarController: ObservableObject {
     menu?.autoenablesItems = false
 
     guard let viewModel = viewModel else { return }
+    let shortcutManager = KeyboardShortcutManager.shared
 
     // Recording status indicator (when recording)
     if recorder.state == .recording || recorder.state == .paused {
@@ -218,9 +219,9 @@ final class AppStatusBarController: ObservableObject {
     let captureAreaItem = NSMenuItem(
       title: L10n.Actions.captureArea,
       action: #selector(captureAreaAction),
-      keyEquivalent: "4"
+      keyEquivalent: ""
     )
-    captureAreaItem.keyEquivalentModifierMask = [.command, .shift]
+    applyConfiguredShortcut(captureAreaItem, for: .area, using: shortcutManager)
     captureAreaItem.target = self
     captureAreaItem.image = NSImage(systemSymbolName: "crop", accessibilityDescription: nil)
     captureAreaItem.isEnabled = viewModel.hasPermission
@@ -229,9 +230,9 @@ final class AppStatusBarController: ObservableObject {
     let captureFullscreenItem = NSMenuItem(
       title: L10n.Actions.captureFullscreen,
       action: #selector(captureFullscreenAction),
-      keyEquivalent: "3"
+      keyEquivalent: ""
     )
-    captureFullscreenItem.keyEquivalentModifierMask = [.command, .shift]
+    applyConfiguredShortcut(captureFullscreenItem, for: .fullscreen, using: shortcutManager)
     captureFullscreenItem.target = self
     captureFullscreenItem.image = NSImage(
       systemSymbolName: "rectangle.dashed", accessibilityDescription: nil)
@@ -241,9 +242,9 @@ final class AppStatusBarController: ObservableObject {
     let scrollingCaptureItem = NSMenuItem(
       title: L10n.Actions.scrollingCapture,
       action: #selector(captureScrollingAction),
-      keyEquivalent: "6"
+      keyEquivalent: ""
     )
-    scrollingCaptureItem.keyEquivalentModifierMask = [.command, .shift]
+    applyConfiguredShortcut(scrollingCaptureItem, for: .scrollingCapture, using: shortcutManager)
     scrollingCaptureItem.target = self
     scrollingCaptureItem.image = NSImage(systemSymbolName: "arrow.up.and.down", accessibilityDescription: nil)
     scrollingCaptureItem.isEnabled = viewModel.hasPermission && !ScrollingCaptureCoordinator.shared.isActive
@@ -252,9 +253,9 @@ final class AppStatusBarController: ObservableObject {
     let captureOCRItem = NSMenuItem(
       title: L10n.Actions.captureTextOCR,
       action: #selector(captureOCRAction),
-      keyEquivalent: "2"
+      keyEquivalent: ""
     )
-    captureOCRItem.keyEquivalentModifierMask = [.command, .shift]
+    applyConfiguredShortcut(captureOCRItem, for: .ocr, using: shortcutManager)
     captureOCRItem.target = self
     captureOCRItem.image = NSImage(systemSymbolName: "text.viewfinder", accessibilityDescription: nil)
     captureOCRItem.isEnabled = viewModel.hasPermission
@@ -263,9 +264,9 @@ final class AppStatusBarController: ObservableObject {
     let captureObjectCutoutItem = NSMenuItem(
       title: GlobalShortcutKind.objectCutout.displayName,
       action: #selector(captureObjectCutoutAction),
-      keyEquivalent: "1"
+      keyEquivalent: ""
     )
-    captureObjectCutoutItem.keyEquivalentModifierMask = [.command, .shift]
+    applyConfiguredShortcut(captureObjectCutoutItem, for: .objectCutout, using: shortcutManager)
     captureObjectCutoutItem.target = self
     captureObjectCutoutItem.image = NSImage(systemSymbolName: "person.crop.rectangle", accessibilityDescription: nil)
     if #available(macOS 14.0, *) {
@@ -281,9 +282,9 @@ final class AppStatusBarController: ObservableObject {
     let recordItem = NSMenuItem(
       title: L10n.Menu.recordScreen,
       action: #selector(recordScreenAction),
-      keyEquivalent: "5"
+      keyEquivalent: ""
     )
-    recordItem.keyEquivalentModifierMask = [.command, .shift]
+    applyConfiguredShortcut(recordItem, for: .recording, using: shortcutManager)
     recordItem.target = self
     recordItem.image = NSImage(systemSymbolName: "record.circle", accessibilityDescription: nil)
     recordItem.isEnabled = viewModel.hasPermission && !recorder.isActive
@@ -295,9 +296,9 @@ final class AppStatusBarController: ObservableObject {
     let annotateItem = NSMenuItem(
       title: L10n.Actions.openAnnotate,
       action: #selector(openAnnotateAction),
-      keyEquivalent: "a"
+      keyEquivalent: ""
     )
-    annotateItem.keyEquivalentModifierMask = [.command, .shift]
+    applyConfiguredShortcut(annotateItem, for: .annotate, using: shortcutManager)
     annotateItem.target = self
     annotateItem.image = NSImage(
       systemSymbolName: "pencil.and.outline", accessibilityDescription: nil)
@@ -307,9 +308,9 @@ final class AppStatusBarController: ObservableObject {
     let editVideoItem = NSMenuItem(
       title: L10n.Menu.editVideo,
       action: #selector(editVideoAction),
-      keyEquivalent: "e"
+      keyEquivalent: ""
     )
-    editVideoItem.keyEquivalentModifierMask = [.command, .shift]
+    applyConfiguredShortcut(editVideoItem, for: .videoEditor, using: shortcutManager)
     editVideoItem.target = self
     editVideoItem.image = NSImage(systemSymbolName: "film", accessibilityDescription: nil)
     editVideoItem.isEnabled = true
@@ -318,9 +319,9 @@ final class AppStatusBarController: ObservableObject {
     let cloudUploadsItem = NSMenuItem(
       title: L10n.Actions.cloudUploads,
       action: #selector(openCloudUploadsAction),
-      keyEquivalent: "l"
+      keyEquivalent: ""
     )
-    cloudUploadsItem.keyEquivalentModifierMask = [.command, .shift]
+    applyConfiguredShortcut(cloudUploadsItem, for: .cloudUploads, using: shortcutManager)
     cloudUploadsItem.target = self
     cloudUploadsItem.image = NSImage(systemSymbolName: "icloud.and.arrow.up", accessibilityDescription: nil)
     cloudUploadsItem.isEnabled = CloudManager.shared.isConfigured
@@ -329,9 +330,9 @@ final class AppStatusBarController: ObservableObject {
     let shortcutListItem = NSMenuItem(
       title: L10n.Menu.keyboardShortcuts,
       action: #selector(showShortcutListAction),
-      keyEquivalent: "k"
+      keyEquivalent: ""
     )
-    shortcutListItem.keyEquivalentModifierMask = [.command, .shift]
+    applyConfiguredShortcut(shortcutListItem, for: .shortcutList, using: shortcutManager)
     shortcutListItem.target = self
     shortcutListItem.image = NSImage(systemSymbolName: "list.bullet.rectangle", accessibilityDescription: nil)
     shortcutListItem.isEnabled = true
@@ -535,6 +536,28 @@ final class AppStatusBarController: ObservableObject {
 
   @objc private func quitAction() {
     NSApp.terminate(nil)
+  }
+
+  private func applyConfiguredShortcut(
+    _ item: NSMenuItem,
+    for kind: GlobalShortcutKind,
+    using manager: KeyboardShortcutManager
+  ) {
+    guard manager.isShortcutEnabled(for: kind) else {
+      item.keyEquivalent = ""
+      item.keyEquivalentModifierMask = []
+      return
+    }
+
+    let config = manager.shortcut(for: kind)
+    guard let keyEquivalent = config.menuKeyEquivalent else {
+      item.keyEquivalent = ""
+      item.keyEquivalentModifierMask = []
+      return
+    }
+
+    item.keyEquivalent = keyEquivalent
+    item.keyEquivalentModifierMask = config.menuModifierFlags
   }
 
   private func schedulePreferencesWindowTracking(excludingWindowNumbers existingWindowNumbers: Set<Int>) {

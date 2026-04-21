@@ -223,6 +223,141 @@ struct ShortcutConfig: Equatable, Codable {
   }
 }
 
+extension ShortcutConfig {
+  var menuKeyEquivalent: String? {
+    switch Int(keyCode) {
+    case kVK_Space:
+      return " "
+    case kVK_Return, kVK_ANSI_KeypadEnter:
+      return "\r"
+    case kVK_Tab:
+      return "\t"
+    case kVK_Delete:
+      return Self.unicodeScalarString(Int(NSDeleteCharacter))
+    case kVK_Escape:
+      return "\u{1B}"
+    case kVK_LeftArrow:
+      return Self.unicodeScalarString(Int(NSLeftArrowFunctionKey))
+    case kVK_RightArrow:
+      return Self.unicodeScalarString(Int(NSRightArrowFunctionKey))
+    case kVK_UpArrow:
+      return Self.unicodeScalarString(Int(NSUpArrowFunctionKey))
+    case kVK_DownArrow:
+      return Self.unicodeScalarString(Int(NSDownArrowFunctionKey))
+    case kVK_F1:
+      return Self.unicodeScalarString(Int(NSF1FunctionKey))
+    case kVK_F2:
+      return Self.unicodeScalarString(Int(NSF2FunctionKey))
+    case kVK_F3:
+      return Self.unicodeScalarString(Int(NSF3FunctionKey))
+    case kVK_F4:
+      return Self.unicodeScalarString(Int(NSF4FunctionKey))
+    case kVK_F5:
+      return Self.unicodeScalarString(Int(NSF5FunctionKey))
+    case kVK_F6:
+      return Self.unicodeScalarString(Int(NSF6FunctionKey))
+    case kVK_F7:
+      return Self.unicodeScalarString(Int(NSF7FunctionKey))
+    case kVK_F8:
+      return Self.unicodeScalarString(Int(NSF8FunctionKey))
+    case kVK_F9:
+      return Self.unicodeScalarString(Int(NSF9FunctionKey))
+    case kVK_F10:
+      return Self.unicodeScalarString(Int(NSF10FunctionKey))
+    case kVK_F11:
+      return Self.unicodeScalarString(Int(NSF11FunctionKey))
+    case kVK_F12:
+      return Self.unicodeScalarString(Int(NSF12FunctionKey))
+    case kVK_ForwardDelete:
+      return Self.unicodeScalarString(Int(NSDeleteFunctionKey))
+    case kVK_Home:
+      return Self.unicodeScalarString(Int(NSHomeFunctionKey))
+    case kVK_End:
+      return Self.unicodeScalarString(Int(NSEndFunctionKey))
+    case kVK_PageUp:
+      return Self.unicodeScalarString(Int(NSPageUpFunctionKey))
+    case kVK_PageDown:
+      return Self.unicodeScalarString(Int(NSPageDownFunctionKey))
+    default:
+      return Self.currentLayoutPrintableKeyEquivalent(for: keyCode)
+        ?? Self.fallbackPrintableKeyEquivalent(for: keyCode)
+    }
+  }
+
+  var menuModifierFlags: NSEvent.ModifierFlags {
+    var flags: NSEvent.ModifierFlags = []
+    if modifiers & UInt32(cmdKey) != 0 { flags.insert(.command) }
+    if modifiers & UInt32(shiftKey) != 0 { flags.insert(.shift) }
+    if modifiers & UInt32(optionKey) != 0 { flags.insert(.option) }
+    if modifiers & UInt32(controlKey) != 0 { flags.insert(.control) }
+    return flags
+  }
+
+  private static func currentLayoutPrintableKeyEquivalent(for keyCode: UInt32) -> String? {
+    resolvePrintableKeyEquivalent(
+      from: TISCopyCurrentKeyboardLayoutInputSource().takeRetainedValue(),
+      keyCode: keyCode
+    ) ?? resolvePrintableKeyEquivalent(
+      from: TISCopyCurrentASCIICapableKeyboardLayoutInputSource().takeRetainedValue(),
+      keyCode: keyCode
+    )
+  }
+
+  private static func resolvePrintableKeyEquivalent(
+    from inputSource: TISInputSource,
+    keyCode: UInt32
+  ) -> String? {
+    guard let layoutDataPointer = TISGetInputSourceProperty(
+      inputSource,
+      kTISPropertyUnicodeKeyLayoutData
+    ) else { return nil }
+
+    let layoutData = unsafeBitCast(layoutDataPointer, to: CFData.self)
+    guard let keyboardLayoutBytes = CFDataGetBytePtr(layoutData) else { return nil }
+
+    var deadKeyState: UInt32 = 0
+    let maxLength = 4
+    var actualLength = 0
+    var unicodeChars = [UniChar](repeating: 0, count: Int(maxLength))
+
+    let status = keyboardLayoutBytes.withMemoryRebound(
+      to: UCKeyboardLayout.self,
+      capacity: 1
+    ) { keyboardLayout in
+      UCKeyTranslate(
+        keyboardLayout,
+        UInt16(keyCode),
+        UInt16(kUCKeyActionDisplay),
+        0,
+        UInt32(LMGetKbdType()),
+        OptionBits(kUCKeyTranslateNoDeadKeysMask),
+        &deadKeyState,
+        maxLength,
+        &actualLength,
+        &unicodeChars
+      )
+    }
+
+    guard status == noErr, actualLength > 0 else { return nil }
+
+    let keyEquivalent = String(utf16CodeUnits: unicodeChars, count: Int(actualLength))
+      .trimmingCharacters(in: .controlCharacters)
+    guard let printable = keyEquivalent.first else { return nil }
+    return String(printable).lowercased()
+  }
+
+  private static func fallbackPrintableKeyEquivalent(for keyCode: UInt32) -> String? {
+    let display = keyCodeToString(keyCode)
+    guard display != "?", display.count == 1 else { return nil }
+    return display.lowercased()
+  }
+
+  private static func unicodeScalarString(_ codePoint: Int) -> String? {
+    guard let scalar = UnicodeScalar(codePoint) else { return nil }
+    return String(Character(scalar))
+  }
+}
+
 enum GlobalShortcutKind: String, CaseIterable, Codable {
   case fullscreen
   case area
