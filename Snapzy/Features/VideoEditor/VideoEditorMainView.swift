@@ -90,13 +90,15 @@ struct VideoEditorMainView: View {
         .frame(minHeight: 200)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .layoutPriority(1)
+        .padding(.top, WindowSpacingConfiguration.default.contentTopPadding)
+        .padding(.bottom, 12)
 
       Divider()
 
       VideoEditorGIFSettingsPanel(state: state)
         .windowContentHPadding()
-        .padding(.top, 6)
-        .padding(.bottom, 8)
+        .padding(.top, 8)
+        .padding(.bottom, WindowSpacingConfiguration.default.contentBottomPadding)
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
   }

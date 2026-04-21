@@ -67,7 +67,7 @@ private enum VideoEditorGIFInspectorTab: CaseIterable, Identifiable {
 struct VideoEditorGIFSettingsPanel: View {
   @ObservedObject var state: VideoEditorState
 
-  @State private var expandedTab: VideoEditorGIFInspectorTab? = .dimensions
+  @State private var expandedTab: VideoEditorGIFInspectorTab?
 
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
