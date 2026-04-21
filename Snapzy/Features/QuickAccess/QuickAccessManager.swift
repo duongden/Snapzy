@@ -490,6 +490,12 @@ final class QuickAccessManager: ObservableObject {
     // Move file from temp to export location
     Task { @MainActor in
       if let savedURL = tempCaptureManager.saveToExportLocation(tempURL: tempURL) {
+        let captureType: CaptureType = item.isVideo ? .recording : .screenshot
+        PostCaptureActionHandler.shared.copyEditedCaptureToClipboardIfEnabled(
+          for: captureType,
+          url: savedURL
+        )
+
         let fileAccess = fileAccessManager.beginAccessingURL(savedURL)
         defer { fileAccess.stop() }
         NSWorkspace.shared.selectFile(savedURL.path, inFileViewerRootedAtPath: "")

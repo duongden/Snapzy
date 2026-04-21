@@ -380,6 +380,11 @@ final class VideoEditorWindowController: NSWindowController, NSWindowDelegate {
     state?.isExporting = false
     state?.markAsSaved()
 
+    PostCaptureActionHandler.shared.copyEditedCaptureToClipboardIfEnabled(
+      for: .recording,
+      url: destinationURL
+    )
+
     cleanupTempSourceFile(at: sourceURL)
     if let quickAccessItemID {
       QuickAccessManager.shared.dismissCard(id: quickAccessItemID)
@@ -483,6 +488,13 @@ final class VideoEditorWindowController: NSWindowController, NSWindowDelegate {
 
         state.isExporting = false
         state.markAsSaved()
+        if let quickAccessItemID {
+          await QuickAccessManager.shared.refreshItemThumbnail(id: quickAccessItemID)
+        }
+        await PostCaptureActionHandler.shared.copyEditedCaptureToClipboardIfEnabled(
+          for: .recording,
+          url: originalAccess.url
+        )
         forceClose()
       } catch {
         DiagnosticLogger.shared.logError(.export, error, "GIF replace original failed")
@@ -564,6 +576,13 @@ final class VideoEditorWindowController: NSWindowController, NSWindowDelegate {
         }
         state.isExporting = false
         state.markAsSaved()
+        if let quickAccessItemID {
+          await QuickAccessManager.shared.refreshItemThumbnail(id: quickAccessItemID)
+        }
+        await PostCaptureActionHandler.shared.copyEditedCaptureToClipboardIfEnabled(
+          for: .recording,
+          url: state.originalURL
+        )
         forceClose()
       } catch {
         DiagnosticLogger.shared.logError(.export, error, "Video replace original failed")

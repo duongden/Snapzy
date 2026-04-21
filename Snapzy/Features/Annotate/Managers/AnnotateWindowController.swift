@@ -298,6 +298,7 @@ final class AnnotateWindowController: NSWindowController, NSWindowDelegate {
   private func executeSaveAndClose() {
     if state.sourceURL != nil {
       // Render once, update thumbnail instantly, close, save in background
+      let sourceURL = state.sourceURL
       state.markAsSaved()
       saveSessionCache()
       let renderedImage = AnnotateExporter.renderFinalImage(state: state)
@@ -308,7 +309,12 @@ final class AnnotateWindowController: NSWindowController, NSWindowDelegate {
       let capturedState = state
       forceClose()
       Task.detached(priority: .userInitiated) {
-        await AnnotateExporter.saveToFile(image: renderedImage, state: capturedState)
+        guard await AnnotateExporter.saveToFile(image: renderedImage, state: capturedState),
+              let sourceURL else { return }
+        await PostCaptureActionHandler.shared.copyEditedCaptureToClipboardIfEnabled(
+          for: .screenshot,
+          url: sourceURL
+        )
       }
     } else {
       AnnotateExporter.saveAs(state: state, closeWindow: true)
@@ -503,6 +509,7 @@ final class AnnotateWindowController: NSWindowController, NSWindowDelegate {
       }
 
       // Render the annotated image once
+      let sourceURL = state.sourceURL
       let renderedImage = AnnotateExporter.renderFinalImage(state: state)
 
       // Update QA thumbnail instantly (synchronous, no file I/O)
@@ -519,7 +526,12 @@ final class AnnotateWindowController: NSWindowController, NSWindowDelegate {
 
       // Save to disk in background
       Task.detached(priority: .userInitiated) {
-        await AnnotateExporter.saveToFile(image: renderedImage, state: capturedState)
+        guard await AnnotateExporter.saveToFile(image: renderedImage, state: capturedState),
+              let sourceURL else { return }
+        await PostCaptureActionHandler.shared.copyEditedCaptureToClipboardIfEnabled(
+          for: .screenshot,
+          url: sourceURL
+        )
       }
     } else {
       performSaveAs()
@@ -709,6 +721,10 @@ final class AnnotateWindowController: NSWindowController, NSWindowDelegate {
         if let renderedImage = renderedImage, let itemId = itemId {
           QuickAccessManager.shared.updateItemThumbnail(id: itemId, image: renderedImage)
         }
+        await PostCaptureActionHandler.shared.copyEditedCaptureToClipboardIfEnabled(
+          for: .screenshot,
+          url: sourceURL
+        )
         self.forceClose()
       }
     }

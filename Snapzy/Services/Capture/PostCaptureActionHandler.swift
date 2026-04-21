@@ -36,6 +36,17 @@ final class PostCaptureActionHandler {
     await executeActions(for: .recording, url: url, skipQuickAccess: skipQuickAccess)
   }
 
+  /// Re-run clipboard automation after an in-place edit save succeeds.
+  func copyEditedCaptureToClipboardIfEnabled(for captureType: CaptureType, url: URL) {
+    guard preferencesManager.isActionEnabled(.copyFile, for: captureType) else { return }
+
+    copyToClipboard(url: url, isVideo: captureType == .recording)
+
+    let label = captureType == .screenshot ? "screenshot" : "recording"
+    logger.debug("Clipboard re-copy executed for edited \(url.lastPathComponent)")
+    DiagnosticLogger.shared.log(.info, .action, "Clipboard re-copy: \(label) \(url.lastPathComponent)")
+  }
+
   // MARK: - Private
 
   private func executeActions(for captureType: CaptureType, url: URL, skipQuickAccess: Bool = false) async {
