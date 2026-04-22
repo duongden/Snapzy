@@ -9,9 +9,15 @@ import AppKit
 import Foundation
 
 /// Screen position for the floating history panel
-enum HistoryPanelPosition: String, CaseIterable, Codable {
+enum HistoryPanelPosition: String, Codable {
   case topCenter
   case bottomCenter
+  case center
+
+  static let allCases: [HistoryPanelPosition] = [
+    .topCenter,
+    .bottomCenter,
+  ]
 
   /// Calculate origin point for panel placement
   func calculateOrigin(for size: CGSize, on screen: NSScreen, padding: CGFloat = 20) -> CGPoint {
@@ -23,6 +29,8 @@ enum HistoryPanelPosition: String, CaseIterable, Codable {
       return CGPoint(x: x, y: frame.maxY - size.height - padding)
     case .bottomCenter:
       return CGPoint(x: x, y: frame.minY + padding)
+    case .center:
+      return CGPoint(x: x, y: frame.midY - size.height / 2)
     }
   }
 
@@ -31,6 +39,7 @@ enum HistoryPanelPosition: String, CaseIterable, Codable {
     switch self {
     case .topCenter: return L10n.HistoryPanelPosition.topCenter
     case .bottomCenter: return L10n.HistoryPanelPosition.bottomCenter
+    case .center: return "Center"
     }
   }
 }

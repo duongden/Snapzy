@@ -93,6 +93,7 @@ struct HistoryBackdropView: View {
   var cornerRadius: CGFloat = 0
   var compact = false
 
+  @ObservedObject private var themeManager = ThemeManager.shared
   @Environment(\.colorScheme) private var colorScheme
 
   var body: some View {
@@ -104,22 +105,13 @@ struct HistoryBackdropView: View {
         glow(color: Color.white.opacity(colorScheme == .dark ? 0.06 : 0.38), width: compact ? 44 : 220, height: compact ? 44 : 220, x: compact ? -14 : -170, y: compact ? -10 : -120)
         glow(color: Color.black.opacity(colorScheme == .dark ? 0.08 : 0.03), width: compact ? 50 : 240, height: compact ? 50 : 240, x: compact ? 18 : 180, y: compact ? 14 : 130)
       case .solid:
-        Color(nsColor: .windowBackgroundColor)
-        Rectangle().fill(solidTint)
+        Color(nsColor: WindowSurfacePalette.backgroundColor(for: themeManager.preferredAppearance))
       }
 
-      Rectangle()
-        .fill(
-          LinearGradient(
-            colors: [
-              Color.white.opacity(colorScheme == .dark ? 0.05 : 0.24),
-              Color.clear,
-              Color.black.opacity(colorScheme == .dark ? 0.1 : 0.03),
-            ],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-          )
-        )
+      if style == .hud {
+        Rectangle()
+          .fill(surfaceTint)
+      }
 
       if compact {
         compactPreviewOverlay
@@ -146,19 +138,13 @@ struct HistoryBackdropView: View {
     )
   }
 
-  private var solidTint: LinearGradient {
+  private var surfaceTint: LinearGradient {
     LinearGradient(
-      colors: colorScheme == .dark
-        ? [
-          Color.white.opacity(0.02),
-          Color.white.opacity(0.01),
-          Color.black.opacity(0.06),
-        ]
-        : [
-          Color.white.opacity(0.32),
-          Color.white.opacity(0.12),
-          Color.black.opacity(0.03),
-        ],
+      colors: [
+        Color.white.opacity(colorScheme == .dark ? 0.05 : 0.24),
+        Color.clear,
+        Color.black.opacity(colorScheme == .dark ? 0.1 : 0.03),
+      ],
       startPoint: .topLeading,
       endPoint: .bottomTrailing
     )

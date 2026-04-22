@@ -10,10 +10,6 @@ import Foundation
 
 /// Non-activating floating panel for capture history
 final class HistoryFloatingPanel: NSPanel {
-  static var cornerRadius: CGFloat {
-    HistoryFloatingLayout.cornerRadius(for: HistoryFloatingLayout.storedScale())
-  }
-
   var onDidResignKey: (() -> Void)?
 
   init(contentRect: NSRect) {

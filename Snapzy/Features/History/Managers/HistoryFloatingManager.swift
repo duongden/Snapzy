@@ -8,10 +8,7 @@
 import AppKit
 import Combine
 import Foundation
-import os.log
 import SwiftUI
-
-private let logger = Logger(subsystem: "Snapzy", category: "HistoryFloatingManager")
 
 /// Manages the floating history panel settings and display state
 @MainActor
@@ -24,6 +21,7 @@ final class HistoryFloatingManager: ObservableObject {
   @Published var position: HistoryPanelPosition = .topCenter {
     didSet {
       UserDefaults.standard.set(position.rawValue, forKey: Keys.position)
+      guard presentationMode == .compact else { return }
       panelController.updatePosition(position)
     }
   }
@@ -50,7 +48,6 @@ final class HistoryFloatingManager: ObservableObject {
   @Published var maxDisplayedItems: Int = 10 {
     didSet {
       UserDefaults.standard.set(maxDisplayedItems, forKey: Keys.maxDisplayedItems)
-      refreshPanel()
     }
   }
 
@@ -72,10 +69,15 @@ final class HistoryFloatingManager: ObservableObject {
     }
   }
 
+  @Published private(set) var presentationMode: HistoryFloatingPresentationMode = .compact
+  @Published var expandedFilter: CaptureHistoryType? = nil
+  @Published var expandedTimeFilter: HistoryFloatingTimeFilter = .all
+  @Published var searchText: String = ""
+
   // MARK: - Private
 
   private let panelController = HistoryFloatingPanelController()
-  private var cancellable: AnyCancellable?
+  private lazy var panelContentView = HistoryFloatingContentView(manager: self)
   private var localEscapeMonitor: Any?
   private var globalEscapeMonitor: Any?
 
@@ -94,7 +96,6 @@ final class HistoryFloatingManager: ObservableObject {
       self?.hide()
     }
     loadSettings()
-    observeStoreChanges()
   }
 
   private func loadSettings() {
@@ -115,14 +116,7 @@ final class HistoryFloatingManager: ObservableObject {
     maxDisplayedItems = UserDefaults.standard.object(forKey: Keys.maxDisplayedItems) as? Int ?? 10
     autoClearDays = UserDefaults.standard.object(forKey: Keys.autoClearDays) as? Int ?? 0
     panelScale = HistoryFloatingLayout.storedScale()
-  }
-
-  private func observeStoreChanges() {
-    cancellable = CaptureHistoryStore.shared.objectWillChange
-      .receive(on: RunLoop.main)
-      .sink { [weak self] in
-        self?.refreshPanel()
-      }
+    expandedFilter = defaultFilter
   }
 
   // MARK: - Public Methods
@@ -132,20 +126,14 @@ final class HistoryFloatingManager: ObservableObject {
     if panelController.isPresenting {
       hide()
     } else {
-      show()
+      isEnabled ? showCompact() : showExpanded()
     }
   }
 
   /// Show the floating history panel
   func show() {
-    guard isEnabled else {
-      HistoryWindowController.shared.showWindow()
-      return
-    }
-
-    let contentView = HistoryFloatingContentView(manager: self)
-    panelController.show(contentView, size: preferredPanelSize, position: position)
-    setupEscapeMonitors()
+    guard isEnabled else { return }
+    showCompact()
   }
 
   /// Hide the floating history panel
@@ -154,12 +142,31 @@ final class HistoryFloatingManager: ObservableObject {
     panelController.hide()
   }
 
+  func showCompact() {
+    guard isEnabled else { return }
+    presentationMode = .compact
+    presentCurrentMode()
+  }
+
+  func showExpanded(initialFilter: CaptureHistoryType? = nil) {
+    resetExpandedState(initialFilter: initialFilter ?? expandedFilter ?? defaultFilter)
+    presentationMode = .expanded
+    presentCurrentMode()
+  }
+
+  func collapse() {
+    guard isEnabled else {
+      hide()
+      return
+    }
+    presentationMode = .compact
+    presentCurrentMode()
+  }
+
   /// Refresh panel content if visible
   func refreshPanel() {
     guard panelController.isVisible else { return }
-    let contentView = HistoryFloatingContentView(manager: self)
-    panelController.updateContent(contentView)
-    panelController.updateSize(preferredPanelSize)
+    presentCurrentMode()
   }
 
   /// Check if panel is currently visible
@@ -172,7 +179,39 @@ final class HistoryFloatingManager: ObservableObject {
   }
 
   private var preferredPanelSize: CGSize {
-    HistoryFloatingLayout.panelSize(for: panelScale)
+    HistoryFloatingLayout.panelSize(
+      for: panelScale,
+      mode: presentationMode,
+      on: ScreenUtility.activeScreen()
+    )
+  }
+
+  private var preferredPosition: HistoryPanelPosition {
+    position
+  }
+
+  private var preferredCornerRadius: CGFloat {
+    HistoryFloatingLayout.cornerRadius(
+      for: panelScale,
+      mode: presentationMode,
+      on: ScreenUtility.activeScreen()
+    )
+  }
+
+  private func presentCurrentMode() {
+    panelController.show(
+      panelContentView,
+      size: preferredPanelSize,
+      position: preferredPosition,
+      cornerRadius: preferredCornerRadius
+    )
+    setupEscapeMonitors()
+  }
+
+  private func resetExpandedState(initialFilter: CaptureHistoryType? = nil) {
+    expandedFilter = initialFilter ?? defaultFilter
+    expandedTimeFilter = .all
+    searchText = ""
   }
 
   private func setupEscapeMonitors() {
@@ -205,11 +244,67 @@ final class HistoryFloatingManager: ObservableObject {
   }
 }
 
+enum HistoryFloatingPresentationMode: Equatable {
+  case compact
+  case expanded
+}
+
+enum HistoryFloatingTimeFilter: String, CaseIterable, Identifiable, Equatable {
+  case all
+  case last24Hours
+  case last7Days
+  case last30Days
+
+  var id: String { rawValue }
+
+  var title: String {
+    switch self {
+    case .all: return "Any Time"
+    case .last24Hours: return "24H"
+    case .last7Days: return "7D"
+    case .last30Days: return "30D"
+    }
+  }
+
+  func includes(_ date: Date, relativeTo now: Date = Date()) -> Bool {
+    switch self {
+    case .all:
+      return true
+    case .last24Hours:
+      return date >= now.addingTimeInterval(-86_400)
+    case .last7Days:
+      return date >= now.addingTimeInterval(-604_800)
+    case .last30Days:
+      return date >= now.addingTimeInterval(-2_592_000)
+    }
+  }
+}
+
 enum HistoryFloatingLayout {
-  static let basePanelSize = CGSize(width: 920, height: 316)
-  static let baseCornerRadius: CGFloat = 30
+  static let compactBasePanelSize = CGSize(width: 920, height: 316)
+  static let expandedBasePanelSize = CGSize(width: 1_040, height: 680)
+  static let compactBaseCornerRadius: CGFloat = 30
+  static let expandedBaseCornerRadius: CGFloat = 32
   static let defaultScale = 1.0
   static let scaleRange: ClosedRange<Double> = 0.8...1.4
+
+  static func basePanelSize(for mode: HistoryFloatingPresentationMode) -> CGSize {
+    switch mode {
+    case .compact:
+      return compactBasePanelSize
+    case .expanded:
+      return expandedBasePanelSize
+    }
+  }
+
+  static func baseCornerRadius(for mode: HistoryFloatingPresentationMode) -> CGFloat {
+    switch mode {
+    case .compact:
+      return compactBaseCornerRadius
+    case .expanded:
+      return expandedBaseCornerRadius
+    }
+  }
 
   static func clampedScale(_ value: Double) -> Double {
     min(max(value, scaleRange.lowerBound), scaleRange.upperBound)
@@ -219,15 +314,39 @@ enum HistoryFloatingLayout {
     clampedScale(userDefaults.object(forKey: PreferencesKeys.historyFloatingScale) as? Double ?? defaultScale)
   }
 
-  static func panelSize(for scale: Double) -> CGSize {
-    let clamped = CGFloat(clampedScale(scale))
+  static func effectiveScale(
+    for scale: Double,
+    mode: HistoryFloatingPresentationMode,
+    on screen: NSScreen = ScreenUtility.activeScreen()
+  ) -> CGFloat {
+    let requestedScale = CGFloat(clampedScale(scale))
+    let baseSize = basePanelSize(for: mode)
+    let safeFrame = screen.visibleFrame.insetBy(
+      dx: mode == .expanded ? 42 : 24,
+      dy: mode == .expanded ? 42 : 24
+    )
+    let fittingScale = min(safeFrame.width / baseSize.width, safeFrame.height / baseSize.height)
+    return max(0.58, min(requestedScale, fittingScale))
+  }
+
+  static func panelSize(
+    for scale: Double,
+    mode: HistoryFloatingPresentationMode,
+    on screen: NSScreen = ScreenUtility.activeScreen()
+  ) -> CGSize {
+    let resolvedScale = effectiveScale(for: scale, mode: mode, on: screen)
+    let baseSize = basePanelSize(for: mode)
     return CGSize(
-      width: basePanelSize.width * clamped,
-      height: basePanelSize.height * clamped
+      width: baseSize.width * resolvedScale,
+      height: baseSize.height * resolvedScale
     )
   }
 
-  static func cornerRadius(for scale: Double) -> CGFloat {
-    baseCornerRadius * CGFloat(clampedScale(scale))
+  static func cornerRadius(
+    for scale: Double,
+    mode: HistoryFloatingPresentationMode,
+    on screen: NSScreen = ScreenUtility.activeScreen()
+  ) -> CGFloat {
+    baseCornerRadius(for: mode) * effectiveScale(for: scale, mode: mode, on: screen)
   }
 }

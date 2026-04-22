@@ -17,6 +17,7 @@ struct HistoryCardView: View {
   @State private var thumbnailImage: NSImage?
   @State private var isHovering = false
   @State private var fileExists = true
+  @State private var isVisible = false
 
   var body: some View {
     VStack(spacing: 10) {
@@ -28,7 +29,7 @@ struct HistoryCardView: View {
       }
 
       Text(relativeTimeString(from: record.capturedAt))
-        .font(.system(size: 14, weight: isSelected ? .semibold : .medium))
+        .font(.system(size: 12.5, weight: isSelected ? .semibold : .medium))
         .foregroundColor(timeLabelColor)
         .frame(maxWidth: .infinity, alignment: .center)
     }
@@ -47,9 +48,17 @@ struct HistoryCardView: View {
         openDefaultEditor()
       }
     )
-    .task(id: record.thumbnailPath ?? record.id.uuidString) {
-      await loadThumbnail()
+    .onAppear {
+      isVisible = true
       checkFileExistence()
+    }
+    .onDisappear {
+      isVisible = false
+      thumbnailImage = nil
+    }
+    .task(id: thumbnailTaskID, priority: .utility) {
+      guard isVisible else { return }
+      await loadThumbnail()
     }
   }
 
@@ -59,7 +68,7 @@ struct HistoryCardView: View {
         cardShape
           .fill(cardBackground)
 
-        if let image = thumbnailImage {
+        if isVisible, let image = thumbnailImage {
           Image(nsImage: image)
             .resizable()
             .scaledToFill()
@@ -113,10 +122,10 @@ struct HistoryCardView: View {
   private var restoreButton: some View {
     Button(action: openDefaultEditor) {
       Label(L10n.Common.restore, systemImage: "arrow.uturn.backward")
-        .font(.system(size: 12, weight: .semibold))
+        .font(.system(size: 11, weight: .semibold))
         .foregroundColor(.white)
-        .padding(.horizontal, 14)
-        .padding(.vertical, 7)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
         .background(
           Capsule()
             .fill(
@@ -203,22 +212,14 @@ struct HistoryCardView: View {
     record.captureType.systemIconName
   }
 
+  @MainActor
   private func loadThumbnail() async {
-    let scopedAccess = SandboxFileAccessManager.shared.beginAccessingURL(record.fileURL)
-    defer { scopedAccess.stop() }
+    thumbnailImage = await HistoryThumbnailGenerator.shared.loadThumbnailImage(for: record)
+  }
 
-    if let cachedURL = HistoryThumbnailGenerator.shared.thumbnailURL(for: record),
-      let image = NSImage(contentsOf: cachedURL)
-    {
-      thumbnailImage = image
-      return
-    }
-
-    if let url = await HistoryThumbnailGenerator.shared.generate(for: record),
-      let image = NSImage(contentsOf: url)
-    {
-      thumbnailImage = image
-    }
+  private var thumbnailTaskID: String {
+    let id = record.thumbnailPath ?? record.id.uuidString
+    return isVisible ? id : "hidden-\(record.id.uuidString)"
   }
 
   private func checkFileExistence() {

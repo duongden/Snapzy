@@ -26,9 +26,11 @@ final class HistoryFloatingPanelController {
     let content: AnyView
     let size: CGSize
     let position: HistoryPanelPosition
+    let cornerRadius: CGFloat
   }
 
   private var panel: HistoryFloatingPanel?
+  private weak var containerView: HistoryFloatingContainerView?
   private var position: HistoryPanelPosition = .topCenter
   private let padding: CGFloat = 20
   private var state: VisibilityState = .hidden
@@ -39,25 +41,20 @@ final class HistoryFloatingPanelController {
   }
 
   /// Show SwiftUI content in floating panel with a soft fade + slide animation.
-  func show<Content: View>(_ content: Content, size: CGSize, position: HistoryPanelPosition) {
+  func show<Content: View>(
+    _ content: Content,
+    size: CGSize,
+    position: HistoryPanelPosition,
+    cornerRadius: CGFloat
+  ) {
     requestShow(
-      Presentation(content: AnyView(content), size: size, position: position)
+      Presentation(
+        content: AnyView(content),
+        size: size,
+        position: position,
+        cornerRadius: cornerRadius
+      )
     )
-  }
-
-  /// Update panel content with new SwiftUI view
-  func updateContent<Content: View>(_ content: Content) {
-    guard let panel = panel else { return }
-    installContent(AnyView(content), on: panel, size: panel.frame.size)
-  }
-
-  /// Resize panel and reposition
-  func updateSize(_ size: CGSize) {
-    guard let panel = panel, state != .hiding else { return }
-    let screen = ScreenUtility.activeScreen()
-    let origin = position.calculateOrigin(for: size, on: screen, padding: padding)
-    let targetFrame = NSRect(origin: origin, size: size)
-    panel.setFrame(targetFrame, display: true, animate: false)
   }
 
   /// Update panel position
@@ -118,7 +115,12 @@ final class HistoryFloatingPanelController {
     panel.onDidResignKey = { [weak self] in
       self?.handlePanelDidResignKey()
     }
-    installContent(presentation.content, on: panel, size: presentation.size)
+    installContent(
+      presentation.content,
+      on: panel,
+      size: presentation.size,
+      cornerRadius: presentation.cornerRadius
+    )
 
     self.panel = panel
     state = .showing
@@ -207,13 +209,15 @@ final class HistoryFloatingPanelController {
   private func applyPresentation(_ presentation: Presentation, animated: Bool) {
     guard let panel else { return }
     position = presentation.position
-    installContent(presentation.content, on: panel, size: presentation.size)
+    updatePanelChrome(on: panel, cornerRadius: presentation.cornerRadius)
 
     let targetFrame = frame(for: presentation.size, position: presentation.position)
     if animated {
       NSAnimationContext.runAnimationGroup { context in
-        context.duration = 0.2
-        context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+        context.duration = 0.18
+        context.timingFunction = CAMediaTimingFunction(
+          controlPoints: 0.2, 0.9, 0.3, 1.0
+        )
         panel.animator().setFrame(targetFrame, display: true)
       }
     } else {
@@ -221,7 +225,12 @@ final class HistoryFloatingPanelController {
     }
   }
 
-  private func installContent(_ content: AnyView, on panel: HistoryFloatingPanel, size: CGSize) {
+  private func installContent(
+    _ content: AnyView,
+    on panel: HistoryFloatingPanel,
+    size: CGSize,
+    cornerRadius: CGFloat
+  ) {
     let hostingView = NSHostingView(rootView: content)
     hostingView.translatesAutoresizingMaskIntoConstraints = false
     hostingView.wantsLayer = true
@@ -230,6 +239,7 @@ final class HistoryFloatingPanelController {
     let containerView = HistoryFloatingContainerView()
     containerView.frame = NSRect(origin: .zero, size: size)
     containerView.autoresizingMask = [.width, .height]
+    containerView.cornerRadius = cornerRadius
     containerView.addSubview(hostingView)
 
     NSLayoutConstraint.activate([
@@ -240,7 +250,14 @@ final class HistoryFloatingPanelController {
     ])
 
     panel.contentView = containerView
-    panel.applyCornerRadius(HistoryFloatingPanel.cornerRadius)
+    self.containerView = containerView
+    updatePanelChrome(on: panel, cornerRadius: cornerRadius)
+  }
+
+  private func updatePanelChrome(on panel: HistoryFloatingPanel, cornerRadius: CGFloat) {
+    panel.appearance = ThemeManager.shared.nsAppearance
+    containerView?.cornerRadius = cornerRadius
+    panel.applyCornerRadius(cornerRadius)
     panel.invalidateShadow()
   }
 
@@ -251,7 +268,15 @@ final class HistoryFloatingPanelController {
   }
 
   private func transitionFrame(for targetFrame: NSRect, isShowing: Bool) -> NSRect {
-    let deltaY: CGFloat = position == .topCenter ? 18 : -18
+    let deltaY: CGFloat
+    switch position {
+    case .topCenter:
+      deltaY = 18
+    case .bottomCenter:
+      deltaY = -18
+    case .center:
+      deltaY = -10
+    }
     let direction = isShowing ? deltaY : -deltaY
     var frame = targetFrame
     frame.origin.y += direction
@@ -281,8 +306,14 @@ final class HistoryFloatingPanelController {
   }
 }
 
+@MainActor
 private final class HistoryFloatingContainerView: NSVisualEffectView {
   private var defaultsObserver: NSObjectProtocol?
+  var cornerRadius: CGFloat = NSWindow.defaultCornerRadius {
+    didSet {
+      applyStyle()
+    }
+  }
 
   override init(frame frameRect: NSRect) {
     super.init(frame: frameRect)
@@ -314,23 +345,29 @@ private final class HistoryFloatingContainerView: NSVisualEffectView {
       object: nil,
       queue: .main
     ) { [weak self] _ in
-      self?.applyStyle()
+      Task { @MainActor [weak self] in
+        self?.applyStyle()
+      }
     }
     applyStyle()
   }
 
   private func applyStyle() {
     let style = HistoryBackgroundStyle.currentStoredStyle()
-    layer?.cornerRadius = HistoryFloatingPanel.cornerRadius
+    appearance = ThemeManager.shared.nsAppearance
+    window?.appearance = ThemeManager.shared.nsAppearance
+    layer?.cornerRadius = cornerRadius
     layer?.cornerCurve = .continuous
     layer?.masksToBounds = true
 
     switch style {
     case .hud:
+      blendingMode = .behindWindow
       material = .hudWindow
       layer?.backgroundColor = resolvedHUDBackgroundColor.cgColor
     case .solid:
-      material = .underWindowBackground
+      blendingMode = .withinWindow
+      material = .contentBackground
       layer?.backgroundColor = resolvedSolidBackgroundColor.cgColor
     }
   }
@@ -355,21 +392,6 @@ private final class HistoryFloatingContainerView: NSVisualEffectView {
   }
 
   private var resolvedSolidBackgroundColor: NSColor {
-    switch effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) {
-    case .darkAqua:
-      return NSColor(
-        srgbRed: 0.09,
-        green: 0.10,
-        blue: 0.14,
-        alpha: 0.94
-      )
-    default:
-      return NSColor(
-        srgbRed: 0.95,
-        green: 0.96,
-        blue: 0.98,
-        alpha: 0.96
-      )
-    }
+    WindowSurfacePalette.backgroundColor(for: effectiveAppearance)
   }
 }

@@ -45,16 +45,7 @@ final class VideoEditorWindow: NSWindow {
   func applyTheme() {
     let themeManager = ThemeManager.shared
     appearance = themeManager.nsAppearance
-
-    // Dynamic background based on appearance
-    if themeManager.preferredAppearance == .light {
-      backgroundColor = NSColor(white: 0.95, alpha: 1)
-    } else if themeManager.preferredAppearance == .dark {
-      backgroundColor = NSColor(white: 0.12, alpha: 1)
-    } else {
-      // System: use semantic color
-      backgroundColor = NSColor.windowBackgroundColor
-    }
+    backgroundColor = WindowSurfacePalette.backgroundColor(for: themeManager.preferredAppearance)
   }
 
   override var canBecomeKey: Bool { true }

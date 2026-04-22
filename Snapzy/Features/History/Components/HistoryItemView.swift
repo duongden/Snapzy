@@ -15,6 +15,7 @@ struct HistoryItemView: View {
   @State private var thumbnailImage: NSImage?
   @State private var isHovering = false
   @State private var fileExists: Bool = true
+  @State private var isVisible = false
 
   var body: some View {
     VStack(spacing: 6) {
@@ -24,7 +25,7 @@ struct HistoryItemView: View {
           RoundedRectangle(cornerRadius: 8)
             .fill(Color.secondary.opacity(0.1))
 
-          if let image = thumbnailImage {
+          if isVisible, let image = thumbnailImage {
             Image(nsImage: image)
               .resizable()
               .scaledToFill()
@@ -108,9 +109,17 @@ struct HistoryItemView: View {
           isHovering = hovering
         }
       }
-      .task(id: record.thumbnailPath ?? record.id.uuidString) {
-        await loadThumbnail()
+      .onAppear {
+        isVisible = true
         checkFileExistence()
+      }
+      .onDisappear {
+        isVisible = false
+        thumbnailImage = nil
+      }
+      .task(id: thumbnailTaskID, priority: .utility) {
+        guard isVisible else { return }
+        await loadThumbnail()
       }
       // Filename
       Text(record.fileName)
@@ -145,22 +154,14 @@ struct HistoryItemView: View {
     record.captureType.systemIconName
   }
 
+  @MainActor
   private func loadThumbnail() async {
-    // Check cache first (with sandbox access)
-    let scopedAccess = SandboxFileAccessManager.shared.beginAccessingURL(record.fileURL)
-    defer { scopedAccess.stop() }
+    thumbnailImage = await HistoryThumbnailGenerator.shared.loadThumbnailImage(for: record)
+  }
 
-    if let cachedURL = HistoryThumbnailGenerator.shared.thumbnailURL(for: record),
-      let image = NSImage(contentsOf: cachedURL) {
-      thumbnailImage = image
-      return
-    }
-
-    // Generate lazily
-    if let url = await HistoryThumbnailGenerator.shared.generate(for: record),
-      let image = NSImage(contentsOf: url) {
-      thumbnailImage = image
-    }
+  private var thumbnailTaskID: String {
+    let id = record.thumbnailPath ?? record.id.uuidString
+    return isVisible ? id : "hidden-\(record.id.uuidString)"
   }
 
   private func checkFileExistence() {

@@ -9,6 +9,32 @@ import AppKit
 import Combine
 import SwiftUI
 
+enum WindowSurfacePalette {
+  static let lightBase = NSColor(white: 0.95, alpha: 1)
+  static let darkBase = NSColor(white: 0.12, alpha: 1)
+
+  @MainActor
+  static func backgroundColor(for appearanceMode: AppearanceMode) -> NSColor {
+    switch appearanceMode {
+    case .light:
+      return lightBase
+    case .dark:
+      return darkBase
+    case .system:
+      return NSColor.windowBackgroundColor
+    }
+  }
+
+  static func backgroundColor(for appearance: NSAppearance) -> NSColor {
+    switch appearance.bestMatch(from: [.darkAqua, .aqua]) {
+    case .darkAqua:
+      return darkBase
+    default:
+      return lightBase
+    }
+  }
+}
+
 /// Manages app-wide appearance/theme state
 @MainActor
 final class ThemeManager: ObservableObject {

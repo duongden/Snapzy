@@ -31,7 +31,9 @@ struct HistoryGridView: View {
           }
         }
       }
-      .padding()
+      .padding(.horizontal, 18)
+      .padding(.top, 8)
+      .padding(.bottom, 16)
     }
   }
 
