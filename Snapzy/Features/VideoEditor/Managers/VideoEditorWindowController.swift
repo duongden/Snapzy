@@ -380,6 +380,11 @@ final class VideoEditorWindowController: NSWindowController, NSWindowDelegate {
     state?.isExporting = false
     state?.markAsSaved()
 
+    CaptureHistoryStore.shared.updateFilePath(
+      from: sourceURL.path,
+      to: destinationURL.path
+    )
+
     PostCaptureActionHandler.shared.copyEditedCaptureToClipboardIfEnabled(
       for: .recording,
       url: destinationURL
