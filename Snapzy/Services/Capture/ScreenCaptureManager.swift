@@ -18,7 +18,17 @@ import ScreenCaptureKit
 private let logger = Logger(subsystem: "Snapzy", category: "ScreenCaptureManager")
 typealias ShareableContentPrefetchTask = Task<SCShareableContent, Error>
 
+private enum ShareableContentCacheMode: String {
+  case standard = "standard"
+  case desktopInclusive = "desktop-inclusive"
+
+  var includeDesktopWindows: Bool {
+    self == .desktopInclusive
+  }
+}
+
 private struct ShareableContentCacheEntry {
+  let mode: ShareableContentCacheMode
   let task: ShareableContentPrefetchTask
 }
 
@@ -87,6 +97,7 @@ final class ScreenCaptureManager: ObservableObject {
     captureCompletedSubject.eraseToAnyPublisher()
   }
   private var standardShareableContentCache: ShareableContentCacheEntry?
+  private var desktopInclusiveShareableContentCache: ShareableContentCacheEntry?
   private var screenParametersObserver: NSObjectProtocol?
 
   private init() {
@@ -159,17 +170,22 @@ final class ScreenCaptureManager: ObservableObject {
 
   /// Start loading shareable content before the user finishes a selection so
   /// the actual screenshot can happen immediately on completion.
-  func prefetchShareableContent(forceRefresh: Bool = false) -> ShareableContentPrefetchTask? {
+  func prefetchShareableContent(
+    includeDesktopWindows: Bool = false,
+    forceRefresh: Bool = false
+  ) -> ShareableContentPrefetchTask? {
     guard hasPermission else { return nil }
 
-    if !forceRefresh, let cached = standardShareableContentCache {
+    let cacheMode = shareableContentCacheMode(includeDesktopWindows: includeDesktopWindows)
+    if !forceRefresh, let cached = shareableContentCacheEntry(for: cacheMode) {
       return cached.task
     }
 
-    let task = Task(priority: .userInitiated) {
-      try await SCShareableContent.current
-    }
-    standardShareableContentCache = ShareableContentCacheEntry(task: task)
+    let task = makeShareableContentPrefetchTask(includeDesktopWindows: includeDesktopWindows)
+    setShareableContentCacheEntry(
+      ShareableContentCacheEntry(mode: cacheMode, task: task),
+      for: cacheMode
+    )
     return task
   }
 
@@ -1022,37 +1038,46 @@ final class ScreenCaptureManager: ObservableObject {
     prefetchedContentTask: ShareableContentPrefetchTask?,
     includeDesktopWindows: Bool = false
   ) async throws -> SCShareableContent {
-    if includeDesktopWindows {
-      // Desktop icon/widget exclusion requires desktop windows/apps to be present in the shareable content snapshot.
-      return try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
-    }
+    let cacheMode = shareableContentCacheMode(includeDesktopWindows: includeDesktopWindows)
+    let loadStartedAt = Date()
 
     if let prefetchedContentTask {
       do {
-        return try await prefetchedContentTask.value
+        let content = try await prefetchedContentTask.value
+        logShareableContentLoad(mode: cacheMode, source: "prefetched", startedAt: loadStartedAt)
+        return content
       } catch {
-        invalidateShareableContentCache(ifTaskMatches: prefetchedContentTask)
+        invalidateShareableContentCache(mode: cacheMode)
         logger.debug("Prefetched shareable content failed; refetching current content")
       }
     }
 
-    if let cachedTask = prefetchShareableContent() {
+    if let cachedTask = prefetchShareableContent(includeDesktopWindows: includeDesktopWindows) {
       do {
-        return try await cachedTask.value
+        let content = try await cachedTask.value
+        logShareableContentLoad(mode: cacheMode, source: "cached", startedAt: loadStartedAt)
+        return content
       } catch {
-        invalidateShareableContentCache(ifTaskMatches: cachedTask)
+        invalidateShareableContentCache(mode: cacheMode)
         logger.debug("Cached shareable content failed; forcing refresh")
       }
     }
 
-    guard let refreshedTask = prefetchShareableContent(forceRefresh: true) else {
-      return try await SCShareableContent.current
+    guard let refreshedTask = prefetchShareableContent(
+      includeDesktopWindows: includeDesktopWindows,
+      forceRefresh: true
+    ) else {
+      let content = try await fetchShareableContent(includeDesktopWindows: includeDesktopWindows)
+      logShareableContentLoad(mode: cacheMode, source: "direct", startedAt: loadStartedAt)
+      return content
     }
 
     do {
-      return try await refreshedTask.value
+      let content = try await refreshedTask.value
+      logShareableContentLoad(mode: cacheMode, source: "refreshed", startedAt: loadStartedAt)
+      return content
     } catch {
-      invalidateShareableContentCache(ifTaskMatches: refreshedTask)
+      invalidateShareableContentCache(mode: cacheMode)
       throw error
     }
   }
@@ -1093,10 +1118,77 @@ final class ScreenCaptureManager: ObservableObject {
     permissionStatus = .granted
     hasPermission = true
     _ = prefetchShareableContent()
+    if DesktopIconManager.shared.isIconHidingEnabled || DesktopIconManager.shared.isWidgetHidingEnabled {
+      _ = prefetchShareableContent(includeDesktopWindows: true)
+    }
   }
 
-  private func invalidateShareableContentCache(ifTaskMatches _: ShareableContentPrefetchTask? = nil) {
-    standardShareableContentCache = nil
+  private func shareableContentCacheMode(includeDesktopWindows: Bool) -> ShareableContentCacheMode {
+    includeDesktopWindows ? .desktopInclusive : .standard
+  }
+
+  private func shareableContentCacheEntry(for mode: ShareableContentCacheMode) -> ShareableContentCacheEntry? {
+    switch mode {
+    case .standard:
+      standardShareableContentCache
+    case .desktopInclusive:
+      desktopInclusiveShareableContentCache
+    }
+  }
+
+  private func setShareableContentCacheEntry(
+    _ entry: ShareableContentCacheEntry?,
+    for mode: ShareableContentCacheMode
+  ) {
+    switch mode {
+    case .standard:
+      standardShareableContentCache = entry
+    case .desktopInclusive:
+      desktopInclusiveShareableContentCache = entry
+    }
+  }
+
+  private func fetchShareableContent(includeDesktopWindows: Bool) async throws -> SCShareableContent {
+    if includeDesktopWindows {
+      return try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+    }
+    return try await SCShareableContent.current
+  }
+
+  private func makeShareableContentPrefetchTask(includeDesktopWindows: Bool) -> ShareableContentPrefetchTask {
+    Task(priority: .userInitiated) {
+      try await self.fetchShareableContent(includeDesktopWindows: includeDesktopWindows)
+    }
+  }
+
+  private func logShareableContentLoad(
+    mode: ShareableContentCacheMode,
+    source: String,
+    startedAt: Date
+  ) {
+    let durationMs = Int(Date().timeIntervalSince(startedAt) * 1000)
+    DiagnosticLogger.shared.log(
+      .debug,
+      .capture,
+      "Shareable content loaded",
+      context: [
+        "mode": mode.rawValue,
+        "source": source,
+        "duration_ms": "\(durationMs)",
+      ]
+    )
+  }
+
+  private func invalidateShareableContentCache(mode: ShareableContentCacheMode? = nil) {
+    switch mode {
+    case .standard:
+      standardShareableContentCache = nil
+    case .desktopInclusive:
+      desktopInclusiveShareableContentCache = nil
+    case nil:
+      standardShareableContentCache = nil
+      desktopInclusiveShareableContentCache = nil
+    }
   }
 
   /// Compatibility wrapper: uses SCScreenshotManager on macOS 14+, falls back to SCStream single-frame capture on macOS 13.

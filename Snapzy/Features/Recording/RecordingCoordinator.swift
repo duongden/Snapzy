@@ -617,7 +617,11 @@ final class RecordingCoordinator: ObservableObject {
     toolbarWindow?.orderOut(nil)
 
     let captureManager = ScreenCaptureManager.shared
-    let prefetchedContentTask = captureManager.prefetchShareableContent()
+    let excludeDesktopIcons = DesktopIconManager.shared.isIconHidingEnabled
+    let excludeDesktopWidgets = DesktopIconManager.shared.isWidgetHidingEnabled
+    let prefetchedContentTask = captureManager.prefetchShareableContent(
+      includeDesktopWindows: excludeDesktopIcons || excludeDesktopWidgets
+    )
 
     // Resolve save directory based on auto-save toggle
     let actualSaveDirectory = tempCaptureManager.resolveSaveDirectory(
@@ -632,8 +636,8 @@ final class RecordingCoordinator: ObservableObject {
         rect: rect,
         saveDirectory: actualSaveDirectory,
         showCursor: showsCursorInScreenshots,
-        excludeDesktopIcons: DesktopIconManager.shared.isIconHidingEnabled,
-        excludeDesktopWidgets: DesktopIconManager.shared.isWidgetHidingEnabled,
+        excludeDesktopIcons: excludeDesktopIcons,
+        excludeDesktopWidgets: excludeDesktopWidgets,
         excludeOwnApplication: !includeOwnAppInScreenshots,
         prefetchedContentTask: prefetchedContentTask
       )

@@ -270,7 +270,11 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
 
       isCapturing = true
       DiagnosticLogger.shared.log(.info, .capture, "Fullscreen capture flow started", context: ["format": resolvedFormat.fileExtension])
-      let prefetchedContentTask = captureManager.prefetchShareableContent()
+      let excludeDesktopIcons = DesktopIconManager.shared.isIconHidingEnabled
+      let excludeDesktopWidgets = DesktopIconManager.shared.isWidgetHidingEnabled
+      let prefetchedContentTask = captureManager.prefetchShareableContent(
+        includeDesktopWindows: excludeDesktopIcons || excludeDesktopWidgets
+      )
       await Task.yield()
 
       // Resolve save directory based on auto-save toggle
@@ -283,8 +287,8 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
         saveDirectory: actualSaveDirectory,
         format: resolvedFormat,
         showCursor: showsCursorInScreenshots,
-        excludeDesktopIcons: DesktopIconManager.shared.isIconHidingEnabled,
-        excludeDesktopWidgets: DesktopIconManager.shared.isWidgetHidingEnabled,
+        excludeDesktopIcons: excludeDesktopIcons,
+        excludeDesktopWidgets: excludeDesktopWidgets,
         excludeOwnApplication: !includesOwnAppInScreenshots,
         prefetchedContentTask: prefetchedContentTask
       )
@@ -322,7 +326,9 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
     let excludeDesktopIcons = DesktopIconManager.shared.isIconHidingEnabled
     let excludeDesktopWidgets = DesktopIconManager.shared.isWidgetHidingEnabled
     let excludeOwnApplication = !includesOwnAppInScreenshots
-    let prefetchedContentTask = captureManager.prefetchShareableContent()
+    let prefetchedContentTask = captureManager.prefetchShareableContent(
+      includeDesktopWindows: excludeDesktopIcons || excludeDesktopWidgets
+    )
     let shouldHideOwnWindows = excludeOwnApplication
 
     // Hide only normal-level app windows (not overlay panels) to avoid hiding pooled overlay windows
@@ -352,7 +358,9 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
             frozenSession = FrozenAreaCaptureSession.fromSnapshot(fastSnapshot)
             captureMode = "coregraphics"
           } else {
-            let shareableContentTask = prefetchedContentTask ?? self.captureManager.prefetchShareableContent()
+            let shareableContentTask = prefetchedContentTask ?? self.captureManager.prefetchShareableContent(
+              includeDesktopWindows: excludeDesktopIcons || excludeDesktopWidgets
+            )
             frozenSession = try await FrozenAreaCaptureSession.prepare(
               displayIDs: [targetDisplayID],
               showCursor: showCursor,
@@ -538,7 +546,11 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
 
     isAreaSelectionActive = true
     DiagnosticLogger.shared.log(.info, .capture, "Scrolling capture flow started", context: ["format": resolvedFormat.fileExtension])
-    let prefetchedContentTask = captureManager.prefetchShareableContent()
+    let excludeDesktopIcons = DesktopIconManager.shared.isIconHidingEnabled
+    let excludeDesktopWidgets = DesktopIconManager.shared.isWidgetHidingEnabled
+    let prefetchedContentTask = captureManager.prefetchShareableContent(
+      includeDesktopWindows: excludeDesktopIcons || excludeDesktopWidgets
+    )
 
     let didHideOwnWindows = hideVisibleNormalWindowsIfNeeded(true)
 
@@ -665,7 +677,11 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
     // Set flag BEFORE delay to close the race window
     isAreaSelectionActive = true
     DiagnosticLogger.shared.log(.info, .ocr, "OCR capture flow started")
-    let prefetchedContentTask = captureManager.prefetchShareableContent()
+    let excludeDesktopIcons = DesktopIconManager.shared.isIconHidingEnabled
+    let excludeDesktopWidgets = DesktopIconManager.shared.isWidgetHidingEnabled
+    let prefetchedContentTask = captureManager.prefetchShareableContent(
+      includeDesktopWindows: excludeDesktopIcons || excludeDesktopWidgets
+    )
 
     // Hide only normal-level app windows (not overlay panels)
     let didHideOwnWindows = hideVisibleNormalWindowsIfNeeded(!includesOwnAppInScreenshots)
@@ -701,8 +717,8 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
             // Capture the screen region
             guard let image = try await self.captureManager.captureAreaAsImage(
               rect: selectedRect,
-              excludeDesktopIcons: DesktopIconManager.shared.isIconHidingEnabled,
-              excludeDesktopWidgets: DesktopIconManager.shared.isWidgetHidingEnabled,
+              excludeDesktopIcons: excludeDesktopIcons,
+              excludeDesktopWidgets: excludeDesktopWidgets,
               excludeOwnApplication: !self.includesOwnAppInScreenshots,
               prefetchedContentTask: prefetchedContentTask
             ) else {
@@ -769,7 +785,11 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
 
     isAreaSelectionActive = true
     DiagnosticLogger.shared.log(.info, .capture, "Object cutout flow started")
-    let prefetchedContentTask = captureManager.prefetchShareableContent()
+    let excludeDesktopIcons = DesktopIconManager.shared.isIconHidingEnabled
+    let excludeDesktopWidgets = DesktopIconManager.shared.isWidgetHidingEnabled
+    let prefetchedContentTask = captureManager.prefetchShareableContent(
+      includeDesktopWindows: excludeDesktopIcons || excludeDesktopWidgets
+    )
 
     // Hide only normal-level app windows (not overlay panels)
     let didHideOwnWindows = hideVisibleNormalWindowsIfNeeded(!includesOwnAppInScreenshots)
@@ -805,8 +825,8 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
           do {
             guard let capturedImage = try await self.captureManager.captureAreaAsImage(
               rect: selectedRect,
-              excludeDesktopIcons: DesktopIconManager.shared.isIconHidingEnabled,
-              excludeDesktopWidgets: DesktopIconManager.shared.isWidgetHidingEnabled,
+              excludeDesktopIcons: excludeDesktopIcons,
+              excludeDesktopWidgets: excludeDesktopWidgets,
               excludeOwnApplication: !self.includesOwnAppInScreenshots,
               prefetchedContentTask: prefetchedContentTask
             ) else {
