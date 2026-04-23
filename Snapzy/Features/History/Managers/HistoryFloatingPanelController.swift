@@ -89,7 +89,9 @@ final class HistoryFloatingPanelController {
 
   func focusPanel() {
     guard let panel else { return }
-    NSApp.activate(ignoringOtherApps: true)
+    // Avoid re-activating the app for this non-activating panel; doing so can
+    // churn focus and destabilize the expanded history scroll position.
+    guard !panel.isKeyWindow else { return }
     panel.makeKeyAndOrderFront(nil)
   }
 

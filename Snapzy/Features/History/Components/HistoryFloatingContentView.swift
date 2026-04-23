@@ -17,6 +17,8 @@ struct HistoryFloatingContentView: View {
   @State private var selectedCompactFilter: CaptureHistoryType? = nil
   @State private var usesExplicitCompactFilterSelection = false
   @State private var selectedId: UUID? = nil
+  @State private var compactScrollOffset: CGFloat = 0
+  @State private var compactSelectionRevealTrigger = 0
   @State private var isExpandedGridReady = false
   @State private var expandedGridWarmupTask: Task<Void, Never>?
 
@@ -191,29 +193,15 @@ struct HistoryFloatingContentView: View {
   }
 
   private var compactScrollContent: some View {
-    GeometryReader { geometry in
-      ScrollView(.horizontal, showsIndicators: false) {
-        HStack(spacing: 26) {
-          ForEach(compactRecords) { record in
-            HistoryCardView(
-              record: record,
-              isSelected: selectedId == record.id,
-              onTap: {
-                manager.focusPanel()
-                selectedId = record.id
-              }
-            )
-            .frame(width: 196)
-            .contextMenu {
-              HistoryContextMenu(record: record)
-            }
-          }
-        }
-        .frame(minWidth: geometry.size.width - 4, alignment: .center)
-        .padding(.horizontal, 4)
-        .padding(.vertical, 6)
+    HistoryCompactCarouselView(
+      records: compactRecords,
+      selectedId: selectedId,
+      selectionRevealTrigger: compactSelectionRevealTrigger,
+      scrollOffset: $compactScrollOffset,
+      onSelect: { record in
+        selectRecord(record)
       }
-    }
+    )
   }
 
   private var compactEmptyState: some View {
@@ -369,8 +357,7 @@ struct HistoryFloatingContentView: View {
             isSelected: selectedId == record.id,
             backgroundStyle: backgroundStyle,
             onTap: {
-              manager.focusPanel()
-              selectedId = record.id
+              selectRecord(record)
             }
           )
           .contextMenu {
@@ -625,9 +612,18 @@ struct HistoryFloatingContentView: View {
   }
 
   private func selectCompactFilter(_ filter: CaptureHistoryType?) {
+    let nextSelectionId = filteredRecords(
+      typeFilter: filter,
+      searchText: "",
+      timeFilter: .all,
+      limit: manager.maxDisplayedItems
+    ).first?.id
+
     withAnimation(.spring(response: 0.22, dampingFraction: 0.9)) {
       usesExplicitCompactFilterSelection = true
       selectedCompactFilter = filter
+      selectedId = nextSelectionId
+      compactScrollOffset = 0
     }
   }
 
@@ -639,8 +635,16 @@ struct HistoryFloatingContentView: View {
 
     guard let selectedId, activeRecords.contains(where: { $0.id == selectedId }) else {
       self.selectedId = activeRecords.first?.id
+      if manager.presentationMode == .compact, self.selectedId != nil {
+        compactSelectionRevealTrigger += 1
+      }
       return
     }
+  }
+
+  private func selectRecord(_ record: CaptureHistoryRecord) {
+    selectedId = record.id
+    manager.focusPanel()
   }
 
   private func openFullHistory() {
