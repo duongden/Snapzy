@@ -38,18 +38,6 @@ struct AnnotateSidebarView: View {
         // Ratio section
         // ratioSection
 
-        // Text styling section (shown when text annotation is selected)
-        if state.selectedTextAnnotation != nil {
-          Divider().background(Color(nsColor: .separatorColor))
-          TextStylingSection(state: state)
-        }
-
-        // Blur type section (shown when blur tool is active)
-        if state.selectedTool == .blur {
-          Divider().background(Color(nsColor: .separatorColor))
-          BlurTypeSection(state: state)
-        }
-
         // Mockup section (shown when mockup mode is active)
         if state.editorMode == .mockup {
           Divider().background(Color(nsColor: .separatorColor))

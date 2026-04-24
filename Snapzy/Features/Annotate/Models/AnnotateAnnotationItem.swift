@@ -403,6 +403,23 @@ struct AnnotationProperties: Equatable {
 // MARK: - Hit Testing
 
 extension AnnotationItem {
+  var selectionBounds: CGRect {
+    let baseBounds: CGRect
+    switch type {
+    case .arrow(let geometry):
+      baseBounds = geometry.bounds()
+    case .line(let start, let end):
+      baseBounds = Self.bounds(containing: [start, end]) ?? bounds
+    case .path(let points), .highlight(let points):
+      baseBounds = Self.bounds(containing: points) ?? bounds
+    default:
+      baseBounds = bounds
+    }
+
+    let padding = max(6, properties.strokeWidth / 2)
+    return baseBounds.standardized.insetBy(dx: -padding, dy: -padding)
+  }
+
   /// Check if point hits this annotation with appropriate tolerance
   func containsPoint(_ point: CGPoint, baseTolerance: CGFloat = 6) -> Bool {
     let tolerance = baseTolerance + properties.strokeWidth / 2
@@ -435,6 +452,24 @@ extension AnnotationItem {
   }
 
   // MARK: - Geometry Helpers
+
+  private static func bounds(containing points: [CGPoint]) -> CGRect? {
+    guard let first = points.first else { return nil }
+
+    var minX = first.x
+    var maxX = first.x
+    var minY = first.y
+    var maxY = first.y
+
+    for point in points.dropFirst() {
+      minX = min(minX, point.x)
+      maxX = max(maxX, point.x)
+      minY = min(minY, point.y)
+      maxY = max(maxY, point.y)
+    }
+
+    return CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY).standardized
+  }
 
   private func pointInEllipse(_ point: CGPoint, in rect: CGRect) -> Bool {
     let cx = rect.midX

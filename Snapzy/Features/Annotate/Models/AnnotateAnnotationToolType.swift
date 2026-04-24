@@ -83,15 +83,20 @@ enum AnnotationToolType: String, CaseIterable, Identifiable {
 
   var supportsQuickPropertiesBar: Bool {
     switch self {
-    case .rectangle, .filledRectangle, .oval, .arrow, .line, .text, .highlighter, .counter, .pencil:
+    case .rectangle, .filledRectangle, .oval, .arrow, .line, .text, .highlighter, .blur, .counter, .pencil:
       return true
-    case .selection, .crop, .blur, .mockup:
+    case .selection, .crop, .mockup:
       return false
     }
   }
 
   var supportsQuickStrokeColor: Bool {
-    supportsQuickPropertiesBar
+    switch self {
+    case .rectangle, .filledRectangle, .oval, .arrow, .line, .text, .highlighter, .counter, .pencil:
+      return true
+    case .selection, .crop, .blur, .mockup:
+      return false
+    }
   }
 
   var supportsQuickFillColor: Bool {

@@ -19,20 +19,7 @@ enum AnnotationFactory {
     state: AnnotateState
   ) -> AnnotationItem? {
 
-    var properties = AnnotationProperties(
-      strokeColor: state.strokeColor,
-      fillColor: state.fillColor,
-      strokeWidth: state.strokeWidth
-    )
-
-    // For filled rectangle, auto-apply stroke color as fill if user hasn't set a fill
-    if tool == .filledRectangle && state.fillColor == .clear {
-      properties.fillColor = state.strokeColor.opacity(1)
-    }
-
-    if tool == .rectangle || tool == .filledRectangle {
-      properties.cornerRadius = state.rectangleCornerRadius
-    }
+    let properties = state.annotationCreationProperties(for: tool)
 
     let type: AnnotationType?
 

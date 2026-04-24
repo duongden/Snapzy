@@ -75,6 +75,7 @@ final class AnnotateState: ObservableObject {
       if oldValue == .crop, selectedTool != .crop {
         restoreSidebarAfterCropInteractionIfNeeded()
       }
+      syncActiveToolProperties()
     }
   }
   @Published var strokeWidth: CGFloat = 3
@@ -83,6 +84,7 @@ final class AnnotateState: ObservableObject {
   @Published var rectangleCornerRadius: CGFloat = 0
   @Published var blurType: BlurType = .pixelated
   @Published var arrowStyle: ArrowStyle = .straight
+  @Published private var annotationToolProperties: [AnnotationToolType: AnnotationProperties] = [:]
 
   // MARK: - Editor Mode
 
@@ -772,7 +774,14 @@ final class AnnotateState: ObservableObject {
   /// Cached decoded CGImage for faster repeated canvas/export draws.
   private var embeddedImageCGImageCache: [UUID: CGImage] = [:]
   private var lastImportWarningSignature: String?
-  @Published var selectedAnnotationId: UUID?
+  private var isSynchronizingSelection = false
+  @Published var selectedAnnotationId: UUID? {
+    didSet {
+      guard !isSynchronizingSelection else { return }
+      selectedAnnotationIds = selectedAnnotationId.map { Set([$0]) } ?? []
+    }
+  }
+  @Published private(set) var selectedAnnotationIds: Set<UUID> = []
   @Published var editingTextAnnotationId: UUID?
 
   // MARK: - Counter Tool State (derived from annotations, not stored)
@@ -1442,10 +1451,8 @@ final class AnnotateState: ObservableObject {
     pruneUnusedEmbeddedAssets()
     updateImportWarningIfNeeded()
 
-    if let selectedAnnotationId,
-       !annotations.contains(where: { $0.id == selectedAnnotationId }) {
-      self.selectedAnnotationId = nil
-    }
+    let validAnnotationIds = Set(annotations.map(\.id))
+    setSelectedAnnotationIds(selectedAnnotationIds.intersection(validAnnotationIds))
 
     if let editingTextAnnotationId,
        !annotations.contains(where: { $0.id == editingTextAnnotationId }) {
@@ -1620,6 +1627,18 @@ final class AnnotateState: ObservableObject {
 
   // MARK: - Annotation Selection
 
+  var selectedAnnotations: [AnnotationItem] {
+    annotations.filter { selectedAnnotationIds.contains($0.id) }
+  }
+
+  var hasSelectedAnnotations: Bool {
+    !selectedAnnotationIds.isEmpty
+  }
+
+  func isAnnotationSelected(_ id: UUID) -> Bool {
+    selectedAnnotationIds.contains(id)
+  }
+
   func selectAnnotation(at point: CGPoint) -> AnnotationItem? {
     // Find annotation at point (in reverse order to select topmost)
     for annotation in annotations.reversed() {
@@ -1629,12 +1648,40 @@ final class AnnotateState: ObservableObject {
 
       // Precise hit test
       if annotation.containsPoint(point) {
-        selectedAnnotationId = annotation.id
+        setSelectedAnnotationIds([annotation.id])
         return annotation
       }
     }
-    selectedAnnotationId = nil
+    deselectAnnotation()
     return nil
+  }
+
+  @discardableResult
+  func selectAnnotations(in rect: CGRect) -> [AnnotationItem] {
+    let selectionRect = rect.standardized
+    guard selectionRect.width > 0, selectionRect.height > 0 else {
+      deselectAnnotation()
+      return []
+    }
+
+    let selected = annotations.filter { annotation in
+      let annotationBounds = annotation.selectionBounds
+      return selectionRect.intersects(annotationBounds)
+        || selectionRect.contains(annotationBounds)
+    }
+    setSelectedAnnotationIds(Set(selected.map(\.id)))
+    return selected
+  }
+
+  func setSelectedAnnotationIds(_ ids: Set<UUID>) {
+    let validIds = Set(annotations.map(\.id))
+    let filteredIds = ids.intersection(validIds)
+    let primaryId = filteredIds.count == 1 ? filteredIds.first : nil
+
+    isSynchronizingSelection = true
+    selectedAnnotationIds = filteredIds
+    selectedAnnotationId = primaryId
+    isSynchronizingSelection = false
   }
 
   func updateAnnotationBounds(id: UUID, bounds: CGRect) {
@@ -1690,6 +1737,13 @@ final class AnnotateState: ObservableObject {
     let updated = geometry.withStyle(style)
     annotations[index].type = .arrow(updated)
     annotations[index].bounds = updated.bounds()
+  }
+
+  func updateBlurType(id: UUID, blurType: BlurType) {
+    guard let index = annotations.firstIndex(where: { $0.id == id }),
+          case .blur = annotations[index].type else { return }
+
+    annotations[index].type = .blur(blurType)
   }
 
   /// Update annotation properties (strokeWidth, fontSize, colors)
@@ -1756,8 +1810,7 @@ final class AnnotateState: ObservableObject {
 
   /// Get selected annotation if it's a text type
   var selectedTextAnnotation: AnnotationItem? {
-    guard let id = selectedAnnotationId,
-          let annotation = annotations.first(where: { $0.id == id }),
+    guard let annotation = selectedAnnotation,
           case .text = annotation.type else {
       return nil
     }
@@ -1766,7 +1819,8 @@ final class AnnotateState: ObservableObject {
 
   /// Get selected annotation (any type)
   var selectedAnnotation: AnnotationItem? {
-    guard let id = selectedAnnotationId else { return nil }
+    guard selectedAnnotationIds.count == 1,
+          let id = selectedAnnotationIds.first else { return nil }
     return annotations.first { $0.id == id }
   }
 
@@ -1778,8 +1832,22 @@ final class AnnotateState: ObservableObject {
     return annotation
   }
 
+  private var selectedArrowAnnotations: [AnnotationItem] {
+    selectedAnnotations.filter { annotation in
+      if case .arrow = annotation.type { return true }
+      return false
+    }
+  }
+
+  private var selectedBlurAnnotations: [AnnotationItem] {
+    selectedAnnotations.filter { annotation in
+      if case .blur = annotation.type { return true }
+      return false
+    }
+  }
+
   var activeArrowStyle: ArrowStyle {
-    if let annotation = selectedArrowAnnotation,
+    if let annotation = selectedArrowAnnotations.first,
        case .arrow(let geometry) = annotation.type {
       return geometry.style
     }
@@ -1787,11 +1855,153 @@ final class AnnotateState: ObservableObject {
   }
 
   func setActiveArrowStyle(_ style: ArrowStyle) {
-    if let annotation = selectedArrowAnnotation {
-      updateArrowStyle(id: annotation.id, style: style)
+    let arrowAnnotations = selectedArrowAnnotations
+    if !arrowAnnotations.isEmpty {
+      arrowAnnotations.forEach { updateArrowStyle(id: $0.id, style: style) }
     } else {
       arrowStyle = style
     }
+  }
+
+  var activeBlurType: BlurType {
+    if let annotation = selectedBlurAnnotations.first,
+       case .blur(let type) = annotation.type {
+      return type
+    }
+    return blurType
+  }
+
+  func setActiveBlurType(_ type: BlurType) {
+    let blurAnnotations = selectedBlurAnnotations
+    if !blurAnnotations.isEmpty {
+      blurAnnotations.forEach { updateBlurType(id: $0.id, blurType: type) }
+    } else {
+      blurType = type
+    }
+  }
+
+  private func defaultAnnotationProperties(for tool: AnnotationToolType?) -> AnnotationProperties {
+    guard let tool else { return AnnotationProperties() }
+    return annotationToolProperties[tool] ?? AnnotationProperties()
+  }
+
+  func annotationCreationProperties(for tool: AnnotationToolType) -> AnnotationProperties {
+    var properties = defaultAnnotationProperties(for: tool)
+    if tool == .filledRectangle && properties.fillColor == .clear {
+      properties.fillColor = properties.strokeColor.opacity(1)
+    }
+    return properties
+  }
+
+  private func updateDefaultAnnotationProperties(
+    for tool: AnnotationToolType,
+    strokeWidth: CGFloat? = nil,
+    strokeColor: Color? = nil,
+    fillColor: Color? = nil,
+    cornerRadius: CGFloat? = nil,
+    fontSize: CGFloat? = nil,
+    fontName: String? = nil
+  ) {
+    var properties = defaultAnnotationProperties(for: tool)
+
+    if let strokeWidth = strokeWidth {
+      properties.strokeWidth = strokeWidth
+    }
+    if let strokeColor = strokeColor {
+      properties.strokeColor = strokeColor
+    }
+    if let fillColor = fillColor {
+      properties.fillColor = fillColor
+    }
+    if let cornerRadius = cornerRadius {
+      properties.cornerRadius = max(0, cornerRadius)
+    }
+    if let fontSize = fontSize {
+      properties.fontSize = min(max(fontSize, 12), 72)
+    }
+    if let fontName = fontName {
+      properties.fontName = fontName
+    }
+
+    annotationToolProperties[tool] = properties
+    if selectedTool == tool {
+      applyToolPropertiesToLegacyState(properties, for: tool)
+    }
+  }
+
+  private func syncActiveToolProperties() {
+    guard selectedTool.supportsQuickPropertiesBar else { return }
+    applyToolPropertiesToLegacyState(defaultAnnotationProperties(for: selectedTool), for: selectedTool)
+  }
+
+  private func applyToolPropertiesToLegacyState(
+    _ properties: AnnotationProperties,
+    for tool: AnnotationToolType
+  ) {
+    strokeColor = properties.strokeColor
+    fillColor = properties.fillColor
+    strokeWidth = properties.strokeWidth
+    if tool.supportsQuickCornerRadius {
+      rectangleCornerRadius = properties.cornerRadius
+    }
+  }
+
+  private var quickPropertiesSelectionAnnotations: [AnnotationItem] {
+    guard editorMode == .annotate,
+          selectedTool != .crop else { return [] }
+    return selectedAnnotations
+  }
+
+  private var quickPropertiesSelectionTargets: [AnnotationItem] {
+    let selected = quickPropertiesSelectionAnnotations
+    guard !selected.isEmpty else { return [] }
+    if selected.count == 1 {
+      guard selected[0].type.supportsQuickPropertiesBar else { return [] }
+    }
+    return selected
+  }
+
+  private var quickPropertiesCommonSelectedTool: AnnotationToolType? {
+    let selected = quickPropertiesSelectionAnnotations
+    guard !selected.isEmpty else { return nil }
+    let tools = Set(selected.map { $0.type.toolType })
+    guard tools.count == 1 else { return nil }
+    return tools.first
+  }
+
+  private func quickSelectionAnySupport(_ predicate: (AnnotationType) -> Bool) -> Bool {
+    let selected = quickPropertiesSelectionTargets
+    guard !selected.isEmpty else { return false }
+    return selected.contains { predicate($0.type) }
+  }
+
+  private func quickSelectionTargets(matching predicate: (AnnotationType) -> Bool) -> [AnnotationItem] {
+    quickPropertiesSelectionTargets.filter { predicate($0.type) }
+  }
+
+  private func updateQuickSelectionProperties(
+    strokeWidth: CGFloat? = nil,
+    strokeColor: Color? = nil,
+    fillColor: Color? = nil,
+    cornerRadius: CGFloat? = nil,
+    fontSize: CGFloat? = nil,
+    matching predicate: ((AnnotationType) -> Bool)? = nil
+  ) -> Bool {
+    let selected = quickPropertiesSelectionTargets.filter { annotation in
+      predicate?(annotation.type) ?? true
+    }
+    guard !selected.isEmpty else { return false }
+    for annotation in selected {
+      updateAnnotationProperties(
+        id: annotation.id,
+        strokeWidth: strokeWidth,
+        fontSize: fontSize,
+        strokeColor: strokeColor,
+        fillColor: fillColor,
+        cornerRadius: cornerRadius
+      )
+    }
+    return true
   }
 
   var quickPropertiesSupportsArrowStyle: Bool {
@@ -1800,9 +2010,12 @@ final class AnnotateState: ObservableObject {
       return false
     }
 
-    if let annotation = quickPropertiesAnnotation,
-       case .arrow = annotation.type {
-      return true
+    let selected = quickPropertiesSelectionAnnotations
+    if !selected.isEmpty {
+      return selected.contains {
+        if case .arrow = $0.type { return true }
+        return false
+      }
     }
 
     return quickPropertiesTool == .arrow
@@ -1819,10 +2032,113 @@ final class AnnotateState: ObservableObject {
     )
   }
 
-  var quickPropertiesAnnotation: AnnotationItem? {
+  var quickPropertiesSupportsTextFontSize: Bool {
     guard editorMode == .annotate,
-          selectedTool != .crop,
-          let annotation = selectedAnnotation,
+          selectedTool != .crop else {
+      return false
+    }
+
+    let selected = quickPropertiesSelectionAnnotations
+    if !selected.isEmpty {
+      return selected.contains {
+        if case .text = $0.type { return true }
+        return false
+      }
+    }
+
+    return quickPropertiesTool == .text
+  }
+
+  var quickPropertiesSupportsTextBackground: Bool {
+    quickPropertiesSupportsTextFontSize
+  }
+
+  var quickTextFontSizeBinding: Binding<CGFloat> {
+    Binding(
+      get: { [weak self] in
+        guard let self else { return 16 }
+        return self.quickSelectionTargets(matching: {
+          if case .text = $0 { return true }
+          return false
+        }).first?.properties.fontSize
+          ?? self.defaultAnnotationProperties(for: self.quickPropertiesTool).fontSize
+      },
+      set: { [weak self] newSize in
+        guard let self else { return }
+        let clampedSize = min(max(newSize, 12), 72)
+        if !self.updateQuickSelectionProperties(
+          fontSize: clampedSize,
+          matching: {
+            if case .text = $0 { return true }
+            return false
+          }
+        ) {
+          if let tool = self.quickPropertiesTool {
+            self.updateDefaultAnnotationProperties(for: tool, fontSize: clampedSize)
+          }
+        }
+      }
+    )
+  }
+
+  var quickTextBackgroundBinding: Binding<Color> {
+    Binding(
+      get: { [weak self] in
+        guard let self else { return .clear }
+        return self.quickSelectionTargets(matching: {
+          if case .text = $0 { return true }
+          return false
+        }).first?.properties.fillColor
+          ?? self.defaultAnnotationProperties(for: self.quickPropertiesTool).fillColor
+      },
+      set: { [weak self] newColor in
+        guard let self else { return }
+        if !self.updateQuickSelectionProperties(
+          fillColor: newColor,
+          matching: {
+            if case .text = $0 { return true }
+            return false
+          }
+        ) {
+          if let tool = self.quickPropertiesTool {
+            self.updateDefaultAnnotationProperties(for: tool, fillColor: newColor)
+          }
+        }
+      }
+    )
+  }
+
+  var quickPropertiesSupportsBlurType: Bool {
+    guard editorMode == .annotate,
+          selectedTool != .crop else {
+      return false
+    }
+
+    let selected = quickPropertiesSelectionAnnotations
+    if !selected.isEmpty {
+      return selected.contains {
+        if case .blur = $0.type { return true }
+        return false
+      }
+    }
+
+    return quickPropertiesTool == .blur
+  }
+
+  var quickBlurTypeBinding: Binding<BlurType> {
+    Binding(
+      get: { [weak self] in
+        self?.activeBlurType ?? .pixelated
+      },
+      set: { [weak self] newType in
+        self?.setActiveBlurType(newType)
+      }
+    )
+  }
+
+  var quickPropertiesAnnotation: AnnotationItem? {
+    guard let annotation = quickPropertiesSelectionAnnotations.first,
+          quickPropertiesSelectionAnnotations.count == 1,
           annotation.type.supportsQuickPropertiesBar else {
       return nil
     }
@@ -1830,7 +2146,7 @@ final class AnnotateState: ObservableObject {
   }
 
   var quickPropertiesMode: QuickPropertiesMode {
-    if quickPropertiesAnnotation != nil {
+    if !quickPropertiesSelectionAnnotations.isEmpty {
       return .selectedItem
     }
     if quickPropertiesTool != nil {
@@ -1844,6 +2160,14 @@ final class AnnotateState: ObservableObject {
       return annotation.type.toolType
     }
 
+    if quickPropertiesSelectionAnnotations.count == 1 {
+      return quickPropertiesSelectionAnnotations[0].type.toolType
+    }
+
+    if quickPropertiesSelectionAnnotations.count > 1 {
+      return quickPropertiesCommonSelectedTool ?? .selection
+    }
+
     guard editorMode == .annotate,
           selectedTool != .crop,
           selectedTool.supportsQuickPropertiesBar else {
@@ -1852,16 +2176,42 @@ final class AnnotateState: ObservableObject {
     return selectedTool
   }
 
+  var quickPropertiesSelectedAnnotationCount: Int {
+    quickPropertiesSelectionAnnotations.count
+  }
+
+  var quickPropertiesShowsSelectionStyle: Bool {
+    guard editorMode == .annotate,
+          selectedTool != .crop else {
+      return false
+    }
+
+    if quickPropertiesSelectionAnnotations.isEmpty {
+      return selectedTool == .selection
+    }
+
+    return quickPropertiesSelectionAnnotations.allSatisfy { annotation in
+      annotation.type.toolType == .selection || !annotation.type.supportsQuickPropertiesBar
+    }
+  }
+
   var showsQuickPropertiesBar: Bool {
     quickPropertiesMode != .hidden
   }
 
   var quickPropertiesContextTitle: String {
-    guard let tool = quickPropertiesTool else { return "" }
     switch quickPropertiesMode {
     case .selectedItem:
+      if quickPropertiesSelectionAnnotations.count > 1 {
+        return L10n.AnnotateContext.selected("\(quickPropertiesSelectionAnnotations.count)")
+      }
+      let tool = quickPropertiesCommonSelectedTool ?? quickPropertiesTool
+      guard let tool, tool != .selection else {
+        return L10n.AnnotateContext.selected(L10n.AnnotateUI.annotation)
+      }
       return L10n.AnnotateContext.selected(tool.displayName)
     case .toolDefaults:
+      guard let tool = quickPropertiesTool else { return "" }
       return L10n.AnnotateContext.defaults(tool.displayName)
     case .hidden:
       return ""
@@ -1869,42 +2219,51 @@ final class AnnotateState: ObservableObject {
   }
 
   var quickPropertiesSupportsStrokeColor: Bool {
-    if let annotation = quickPropertiesAnnotation {
-      return annotation.type.supportsQuickStrokeColor
+    if !quickPropertiesSelectionAnnotations.isEmpty {
+      return quickSelectionAnySupport { $0.supportsQuickStrokeColor }
     }
     return quickPropertiesTool?.supportsQuickStrokeColor ?? false
   }
 
   var quickPropertiesSupportsFill: Bool {
-    if let annotation = quickPropertiesAnnotation {
-      return annotation.type.supportsQuickFillColor
+    if !quickPropertiesSelectionAnnotations.isEmpty {
+      return quickSelectionAnySupport { $0.supportsQuickFillColor }
     }
     return quickPropertiesTool?.supportsQuickFillColor ?? false
   }
 
   var quickPropertiesSupportsStrokeWidth: Bool {
-    if let annotation = quickPropertiesAnnotation {
-      return annotation.type.supportsQuickStrokeWidth
+    if !quickPropertiesSelectionAnnotations.isEmpty {
+      return quickSelectionAnySupport { $0.supportsQuickStrokeWidth }
     }
     return quickPropertiesTool?.supportsQuickStrokeWidth ?? false
   }
 
   var quickPropertiesSupportsCornerRadius: Bool {
-    quickPropertiesTool?.supportsQuickCornerRadius ?? false
+    if !quickPropertiesSelectionAnnotations.isEmpty {
+      return quickSelectionAnySupport { $0.toolType.supportsQuickCornerRadius }
+    }
+    return quickPropertiesTool?.supportsQuickCornerRadius ?? false
   }
 
   var quickStrokeColorBinding: Binding<Color> {
     Binding(
       get: { [weak self] in
         guard let self else { return .red }
-        return self.quickPropertiesAnnotation?.properties.strokeColor ?? self.strokeColor
+        return self.quickSelectionTargets(matching: { $0.supportsQuickStrokeColor }).first?.properties.strokeColor
+          ?? self.defaultAnnotationProperties(for: self.quickPropertiesTool).strokeColor
       },
       set: { [weak self] newColor in
         guard let self else { return }
-        if let selectedId = self.quickPropertiesAnnotation?.id {
-          self.updateAnnotationProperties(id: selectedId, strokeColor: newColor)
-        } else {
-          self.strokeColor = newColor
+        if !self.updateQuickSelectionProperties(
+          strokeColor: newColor,
+          matching: { $0.supportsQuickStrokeColor }
+        ) {
+          if let tool = self.quickPropertiesTool {
+            self.updateDefaultAnnotationProperties(for: tool, strokeColor: newColor)
+          } else {
+            self.strokeColor = newColor
+          }
         }
       }
     )
@@ -1914,14 +2273,20 @@ final class AnnotateState: ObservableObject {
     Binding(
       get: { [weak self] in
         guard let self else { return .clear }
-        return self.quickPropertiesAnnotation?.properties.fillColor ?? self.fillColor
+        return self.quickSelectionTargets(matching: { $0.supportsQuickFillColor }).first?.properties.fillColor
+          ?? self.defaultAnnotationProperties(for: self.quickPropertiesTool).fillColor
       },
       set: { [weak self] newColor in
         guard let self else { return }
-        if let selectedId = self.quickPropertiesAnnotation?.id {
-          self.updateAnnotationProperties(id: selectedId, fillColor: newColor)
-        } else {
-          self.fillColor = newColor
+        if !self.updateQuickSelectionProperties(
+          fillColor: newColor,
+          matching: { $0.supportsQuickFillColor }
+        ) {
+          if let tool = self.quickPropertiesTool {
+            self.updateDefaultAnnotationProperties(for: tool, fillColor: newColor)
+          } else {
+            self.fillColor = newColor
+          }
         }
       }
     )
@@ -1931,14 +2296,20 @@ final class AnnotateState: ObservableObject {
     Binding(
       get: { [weak self] in
         guard let self else { return 3 }
-        return self.quickPropertiesAnnotation?.properties.strokeWidth ?? self.strokeWidth
+        return self.quickSelectionTargets(matching: { $0.supportsQuickStrokeWidth }).first?.properties.strokeWidth
+          ?? self.defaultAnnotationProperties(for: self.quickPropertiesTool).strokeWidth
       },
       set: { [weak self] newWidth in
         guard let self else { return }
-        if let selectedId = self.quickPropertiesAnnotation?.id {
-          self.updateAnnotationProperties(id: selectedId, strokeWidth: newWidth)
-        } else {
-          self.strokeWidth = newWidth
+        if !self.updateQuickSelectionProperties(
+          strokeWidth: newWidth,
+          matching: { $0.supportsQuickStrokeWidth }
+        ) {
+          if let tool = self.quickPropertiesTool {
+            self.updateDefaultAnnotationProperties(for: tool, strokeWidth: newWidth)
+          } else {
+            self.strokeWidth = newWidth
+          }
         }
       }
     )
@@ -1948,15 +2319,21 @@ final class AnnotateState: ObservableObject {
     Binding(
       get: { [weak self] in
         guard let self else { return 0 }
-        return self.quickPropertiesAnnotation?.properties.cornerRadius ?? self.rectangleCornerRadius
+        return self.quickSelectionTargets(matching: { $0.toolType.supportsQuickCornerRadius }).first?.properties.cornerRadius
+          ?? self.defaultAnnotationProperties(for: self.quickPropertiesTool).cornerRadius
       },
       set: { [weak self] newRadius in
         guard let self else { return }
         let clampedRadius = max(0, newRadius)
-        if let selectedId = self.quickPropertiesAnnotation?.id {
-          self.updateAnnotationProperties(id: selectedId, cornerRadius: clampedRadius)
-        } else {
-          self.rectangleCornerRadius = clampedRadius
+        if !self.updateQuickSelectionProperties(
+          cornerRadius: clampedRadius,
+          matching: { $0.toolType.supportsQuickCornerRadius }
+        ) {
+          if let tool = self.quickPropertiesTool {
+            self.updateDefaultAnnotationProperties(for: tool, cornerRadius: clampedRadius)
+          } else {
+            self.rectangleCornerRadius = clampedRadius
+          }
         }
       }
     )
@@ -1973,17 +2350,16 @@ final class AnnotateState: ObservableObject {
   }
 
   func deleteSelectedAnnotation() {
-    guard let selectedId = selectedAnnotationId else { return }
-    let annotation = annotations.first { $0.id == selectedId }
+    let selectedIds = selectedAnnotationIds
+    guard !selectedIds.isEmpty else { return }
     DiagnosticLogger.shared.log(.debug, .annotate, "Delete annotation", context: [
-      "id": selectedId.uuidString,
-      "type": annotation.map { "\($0.type)" } ?? "unknown"
+      "count": "\(selectedIds.count)"
     ])
     saveState()
-    annotations.removeAll { $0.id == selectedId }
+    annotations.removeAll { selectedIds.contains($0.id) }
     pruneUnusedEmbeddedAssets()
     updateImportWarningIfNeeded()
-    selectedAnnotationId = nil
+    deselectAnnotation()
   }
 
   /// Commit the current text editing and exit edit mode
@@ -2007,36 +2383,38 @@ final class AnnotateState: ObservableObject {
 
   /// Deselect current annotation
   func deselectAnnotation() {
-    selectedAnnotationId = nil
+    setSelectedAnnotationIds([])
     editingTextAnnotationId = nil
   }
 
   /// Nudge selected annotation by delta
   func nudgeSelectedAnnotation(dx: CGFloat, dy: CGFloat) {
-    guard let selectedId = selectedAnnotationId,
-          let index = annotations.firstIndex(where: { $0.id == selectedId }) else { return }
+    let selectedIds = selectedAnnotationIds
+    guard !selectedIds.isEmpty else { return }
 
     saveState()
-    annotations[index].bounds.origin.x += dx
-    annotations[index].bounds.origin.y += dy
+    for index in annotations.indices where selectedIds.contains(annotations[index].id) {
+      annotations[index].bounds.origin.x += dx
+      annotations[index].bounds.origin.y += dy
 
-    // Also update embedded points for arrows/lines/paths
-    switch annotations[index].type {
-    case .arrow(let geometry):
-      let updated = geometry.translatedBy(dx: dx, dy: dy)
-      annotations[index].type = .arrow(updated)
-      annotations[index].bounds = updated.bounds()
-    case .line(let start, let end):
-      annotations[index].type = .line(
-        start: CGPoint(x: start.x + dx, y: start.y + dy),
-        end: CGPoint(x: end.x + dx, y: end.y + dy)
-      )
-    case .path(let points):
-      annotations[index].type = .path(points.map { CGPoint(x: $0.x + dx, y: $0.y + dy) })
-    case .highlight(let points):
-      annotations[index].type = .highlight(points.map { CGPoint(x: $0.x + dx, y: $0.y + dy) })
-    default:
-      break
+      // Also update embedded points for arrows/lines/paths
+      switch annotations[index].type {
+      case .arrow(let geometry):
+        let updated = geometry.translatedBy(dx: dx, dy: dy)
+        annotations[index].type = .arrow(updated)
+        annotations[index].bounds = updated.bounds()
+      case .line(let start, let end):
+        annotations[index].type = .line(
+          start: CGPoint(x: start.x + dx, y: start.y + dy),
+          end: CGPoint(x: end.x + dx, y: end.y + dy)
+        )
+      case .path(let points):
+        annotations[index].type = .path(points.map { CGPoint(x: $0.x + dx, y: $0.y + dy) })
+      case .highlight(let points):
+        annotations[index].type = .highlight(points.map { CGPoint(x: $0.x + dx, y: $0.y + dy) })
+      default:
+        break
+      }
     }
   }
 

@@ -44,11 +44,16 @@ final class DrawingCanvasNSView: NSView {
   // Selection and manipulation state
   private var isDraggingAnnotation = false
   private var draggingAnnotationId: UUID?  // Local tracking to avoid async race
+  private var draggingAnnotationIds: Set<UUID> = []
   private var isResizingAnnotation = false
   private var resizingAnnotationId: UUID?  // Local tracking to avoid async race
   private var activeResizeHandle: ResizeHandle?
   private var dragOffset: CGPoint = .zero
   private var originalBounds: CGRect = .zero
+  private var originalBoundsByAnnotationId: [UUID: CGRect] = [:]
+  private var isSelectingArea = false
+  private var selectionAreaStart: CGPoint?
+  private var selectionAreaCurrent: CGPoint?
 
   // Crop interaction state
   private var isCropDragging = false
@@ -97,7 +102,7 @@ final class DrawingCanvasNSView: NSView {
 
     switch event.keyCode {
     case 51, 117: // Delete, Forward Delete
-      if state.selectedAnnotationId != nil && state.editingTextAnnotationId == nil {
+      if state.hasSelectedAnnotations && state.editingTextAnnotationId == nil {
         Task { @MainActor in
           state.deleteSelectedAnnotation()
         }
@@ -129,7 +134,7 @@ final class DrawingCanvasNSView: NSView {
       }
 
     case 126: // Arrow Up
-      if state.selectedAnnotationId != nil && state.editingTextAnnotationId == nil {
+      if state.hasSelectedAnnotations && state.editingTextAnnotationId == nil {
         Task { @MainActor in
           state.nudgeSelectedAnnotation(dx: 0, dy: nudgeAmount)
         }
@@ -137,7 +142,7 @@ final class DrawingCanvasNSView: NSView {
       }
 
     case 125: // Arrow Down
-      if state.selectedAnnotationId != nil && state.editingTextAnnotationId == nil {
+      if state.hasSelectedAnnotations && state.editingTextAnnotationId == nil {
         Task { @MainActor in
           state.nudgeSelectedAnnotation(dx: 0, dy: -nudgeAmount)
         }
@@ -145,7 +150,7 @@ final class DrawingCanvasNSView: NSView {
       }
 
     case 123: // Arrow Left
-      if state.selectedAnnotationId != nil && state.editingTextAnnotationId == nil {
+      if state.hasSelectedAnnotations && state.editingTextAnnotationId == nil {
         Task { @MainActor in
           state.nudgeSelectedAnnotation(dx: -nudgeAmount, dy: 0)
         }
@@ -153,7 +158,7 @@ final class DrawingCanvasNSView: NSView {
       }
 
     case 124: // Arrow Right
-      if state.selectedAnnotationId != nil && state.editingTextAnnotationId == nil {
+      if state.hasSelectedAnnotations && state.editingTextAnnotationId == nil {
         Task { @MainActor in
           state.nudgeSelectedAnnotation(dx: nudgeAmount, dy: 0)
         }
@@ -183,7 +188,7 @@ final class DrawingCanvasNSView: NSView {
             state.commitTextEditing()
           }
           // Deselect active annotation when switching tools
-          state.selectedAnnotationId = nil
+          state.deselectAnnotation()
           // Special handling for crop tool (must initialize crop rect)
           if matchedTool == .crop {
             state.beginCropInteraction()
@@ -352,26 +357,18 @@ final class DrawingCanvasNSView: NSView {
 
     // Selection uses image coordinates
     if state.selectedTool == .selection {
-      if let annotation = state.selectAnnotation(at: imagePoint) {
-        // Reflect clicked annotation's tool type in toolbar
-        Task { @MainActor in
-          state.selectedTool = annotation.type.toolType
+      if let annotation = hitTestAnnotation(at: imagePoint) {
+        if !state.isAnnotationSelected(annotation.id) {
+          _ = state.selectAnnotation(at: imagePoint)
+          // Reflect clicked annotation's tool type in toolbar
+          Task { @MainActor in
+            state.selectedTool = annotation.type.toolType
+          }
         }
-        isDraggingAnnotation = true
-        draggingAnnotationId = annotation.id
-        dragOffset = CGPoint(
-          x: imagePoint.x - annotation.bounds.origin.x,
-          y: imagePoint.y - annotation.bounds.origin.y
-        )
-        originalBounds = annotation.bounds
-        NSCursor.closedHand.set()
-        needsDisplay = true
+        beginAnnotationDrag(anchor: annotation, at: imagePoint)
         return
       } else {
-        // Clicked empty space in selection mode - just deselect
-        Task { @MainActor in
-          state.deselectAnnotation()
-        }
+        beginAreaSelection(at: imagePoint)
         needsDisplay = true
         return
       }
@@ -381,20 +378,12 @@ final class DrawingCanvasNSView: NSView {
     // even in non-selection tool modes (acts like selection for that item)
     if state.selectedTool != .crop, let annotation = hitTestAnnotation(at: imagePoint) {
       // Set local tracking synchronously to avoid race condition with mouseDragged
-      isDraggingAnnotation = true
-      draggingAnnotationId = annotation.id
-      dragOffset = CGPoint(
-        x: imagePoint.x - annotation.bounds.origin.x,
-        y: imagePoint.y - annotation.bounds.origin.y
-      )
-      originalBounds = annotation.bounds
+      beginAnnotationDrag(anchor: annotation, at: imagePoint)
       // Update state asynchronously (for UI reflection)
       Task { @MainActor in
         state.selectedAnnotationId = annotation.id
         state.selectedTool = annotation.type.toolType
       }
-      NSCursor.closedHand.set()
-      needsDisplay = true
       return
     }
 
@@ -413,6 +402,72 @@ final class DrawingCanvasNSView: NSView {
       isDrawing = false
     default:
       break
+    }
+  }
+
+  private func beginAnnotationDrag(anchor annotation: AnnotationItem, at imagePoint: CGPoint) {
+    let activeIds: Set<UUID>
+    if state.isAnnotationSelected(annotation.id), !state.selectedAnnotationIds.isEmpty {
+      activeIds = state.selectedAnnotationIds
+    } else {
+      activeIds = [annotation.id]
+    }
+
+    isDraggingAnnotation = true
+    draggingAnnotationId = annotation.id
+    draggingAnnotationIds = activeIds
+    dragOffset = CGPoint(
+      x: imagePoint.x - annotation.bounds.origin.x,
+      y: imagePoint.y - annotation.bounds.origin.y
+    )
+    originalBounds = annotation.bounds
+    originalBoundsByAnnotationId = Dictionary(
+      uniqueKeysWithValues: state.annotations
+        .filter { activeIds.contains($0.id) }
+        .map { ($0.id, $0.bounds) }
+    )
+    NSCursor.closedHand.set()
+    needsDisplay = true
+  }
+
+  private func beginAreaSelection(at imagePoint: CGPoint) {
+    state.deselectAnnotation()
+    isSelectingArea = true
+    selectionAreaStart = imagePoint
+    selectionAreaCurrent = imagePoint
+    NSCursor.crosshair.set()
+  }
+
+  private func finishAreaSelection() {
+    defer {
+      isSelectingArea = false
+      selectionAreaStart = nil
+      selectionAreaCurrent = nil
+    }
+
+    guard let start = selectionAreaStart,
+          let current = selectionAreaCurrent else {
+      state.deselectAnnotation()
+      return
+    }
+
+    let selectionRect = CGRect(
+      x: min(start.x, current.x),
+      y: min(start.y, current.y),
+      width: abs(current.x - start.x),
+      height: abs(current.y - start.y)
+    )
+
+    guard selectionRect.width >= 3 || selectionRect.height >= 3 else {
+      state.deselectAnnotation()
+      return
+    }
+
+    let selected = state.selectAnnotations(in: selectionRect)
+    if selected.count == 1, let annotation = selected.first {
+      state.selectedTool = annotation.type.toolType
+    } else if selected.count > 1 {
+      state.selectedTool = .selection
     }
   }
 
@@ -451,15 +506,33 @@ final class DrawingCanvasNSView: NSView {
       return
     }
 
+    if isSelectingArea {
+      selectionAreaCurrent = imagePoint
+      needsDisplay = true
+      return
+    }
+
     // Handle dragging annotation (in image coordinates)
-    if isDraggingAnnotation, let dragId = draggingAnnotationId {
-      let newOrigin = CGPoint(
-        x: imagePoint.x - dragOffset.x,
-        y: imagePoint.y - dragOffset.y
-      )
-      let newBounds = CGRect(origin: newOrigin, size: originalBounds.size)
+    if isDraggingAnnotation {
+      let activeIds = draggingAnnotationIds.isEmpty
+        ? Set(draggingAnnotationId.map { [$0] } ?? [])
+        : draggingAnnotationIds
+      guard let start = dragStart, !activeIds.isEmpty else { return }
+      let dx = imagePoint.x - start.x
+      let dy = imagePoint.y - start.y
+      invalidateInteractiveBlurCaches(for: activeIds)
       Task { @MainActor in
-        state.updateAnnotationBounds(id: dragId, bounds: newBounds)
+        for id in activeIds {
+          guard let originalBounds = originalBoundsByAnnotationId[id] else { continue }
+          let newBounds = CGRect(
+            origin: CGPoint(
+              x: originalBounds.origin.x + dx,
+              y: originalBounds.origin.y + dy
+            ),
+            size: originalBounds.size
+          )
+          state.updateAnnotationBounds(id: id, bounds: newBounds)
+        }
       }
       needsDisplay = true
       return
@@ -514,18 +587,31 @@ final class DrawingCanvasNSView: NSView {
       return
     }
 
+    if isSelectingArea {
+      finishAreaSelection()
+      updateCursor(for: event)
+      needsDisplay = true
+      return
+    }
+
     // Finish dragging
     if isDraggingAnnotation {
-      if let dragId = draggingAnnotationId,
-         let annotation = state.annotations.first(where: { $0.id == dragId }),
-         case .blur = annotation.type {
-        blurCacheManager.invalidate(id: dragId)
+      let activeIds = draggingAnnotationIds.isEmpty
+        ? Set(draggingAnnotationId.map { [$0] } ?? [])
+        : draggingAnnotationIds
+      for id in activeIds {
+        if let annotation = state.annotations.first(where: { $0.id == id }),
+           case .blur = annotation.type {
+          blurCacheManager.invalidate(id: id)
+        }
       }
       Task { @MainActor in
         state.saveState()
       }
       isDraggingAnnotation = false
       draggingAnnotationId = nil
+      draggingAnnotationIds = []
+      originalBoundsByAnnotationId = [:]
       updateCursor(for: event)
       needsDisplay = true
       return
@@ -601,17 +687,10 @@ final class DrawingCanvasNSView: NSView {
   }
 
   private func createTextAnnotation(at point: CGPoint) {
-    let fontSize: CGFloat = 16
-    let properties = AnnotationProperties(
-      strokeColor: state.strokeColor,
-      fillColor: .clear,
-      strokeWidth: state.strokeWidth,
-      fontSize: fontSize,
-      fontName: "SF Pro"
-    )
+    let properties = state.annotationCreationProperties(for: .text)
     let initialBounds = AnnotateTextLayout.bounds(
       text: "",
-      font: AnnotateTextLayout.font(size: fontSize, fontName: properties.fontName),
+      font: AnnotateTextLayout.font(size: properties.fontSize, fontName: properties.fontName),
       origin: .zero,
       constrainedWidth: AnnotateTextLayout.defaultInitialWidth
     )
@@ -663,9 +742,13 @@ final class DrawingCanvasNSView: NSView {
     for annotation in state.annotations {
       renderer.draw(annotation)
 
-      // Draw selection handles if selected
-      if annotation.id == state.selectedAnnotationId {
-        drawSelectionHandles(for: annotation.bounds, in: context)
+      // Draw selection affordance if selected. Multi-selection shows outlines only.
+      if state.isAnnotationSelected(annotation.id) {
+        drawSelectionHandles(
+          for: annotation.bounds,
+          in: context,
+          showsHandles: state.selectedAnnotationIds.count == 1
+        )
       }
     }
 
@@ -680,18 +763,21 @@ final class DrawingCanvasNSView: NSView {
           blurType: state.blurType
         )
       } else {
+        let previewProperties = state.annotationCreationProperties(for: state.selectedTool)
         renderer.drawCurrentStroke(
           tool: state.selectedTool,
           start: start,
           currentPath: currentPath,
-          strokeColor: state.strokeColor,
-          strokeWidth: state.strokeWidth,
-          fillColor: state.fillColor,
+          strokeColor: previewProperties.strokeColor,
+          strokeWidth: previewProperties.strokeWidth,
+          fillColor: previewProperties.fillColor,
           arrowStyle: state.arrowStyle,
-          rectangleCornerRadius: state.rectangleCornerRadius
+          rectangleCornerRadius: previewProperties.cornerRadius
         )
       }
     }
+
+    drawAreaSelectionPreview(in: context)
 
     context.restoreGState()
   }
@@ -732,13 +818,23 @@ final class DrawingCanvasNSView: NSView {
     return id
   }
 
-  private func drawSelectionHandles(for bounds: CGRect, in context: CGContext) {
+  private func invalidateInteractiveBlurCaches(for ids: Set<UUID>) {
+    for id in ids {
+      guard let annotation = state.annotations.first(where: { $0.id == id }),
+            case .blur = annotation.type else { continue }
+      blurCacheManager.invalidate(id: id)
+    }
+  }
+
+  private func drawSelectionHandles(for bounds: CGRect, in context: CGContext, showsHandles: Bool) {
     // Draw selection border
     context.setStrokeColor(NSColor.systemBlue.cgColor)
     context.setLineWidth(1)
     context.setLineDash(phase: 0, lengths: [4, 4])
     context.stroke(bounds)
     context.setLineDash(phase: 0, lengths: [])
+
+    guard showsHandles else { return }
 
     // Draw corner handles
     let corners = [
@@ -759,6 +855,28 @@ final class DrawingCanvasNSView: NSView {
     }
   }
 
+  private func drawAreaSelectionPreview(in context: CGContext) {
+    guard isSelectingArea,
+          let start = selectionAreaStart,
+          let current = selectionAreaCurrent else { return }
+
+    let rect = CGRect(
+      x: min(start.x, current.x),
+      y: min(start.y, current.y),
+      width: abs(current.x - start.x),
+      height: abs(current.y - start.y)
+    ).standardized
+    guard rect.width > 0 || rect.height > 0 else { return }
+
+    context.setFillColor(NSColor.systemBlue.withAlphaComponent(0.12).cgColor)
+    context.fill(rect)
+    context.setStrokeColor(NSColor.systemBlue.cgColor)
+    context.setLineWidth(1)
+    context.setLineDash(phase: 0, lengths: [5, 3])
+    context.stroke(rect)
+    context.setLineDash(phase: 0, lengths: [])
+  }
+
   // MARK: - Cursor Management
 
   override func mouseMoved(with event: NSEvent) {
@@ -769,8 +887,9 @@ final class DrawingCanvasNSView: NSView {
     let displayPoint = convert(event.locationInWindow, from: nil)
     let imagePoint = displayToImage(displayPoint)
 
-    // Check resize handles first
-    if let selectedId = state.selectedAnnotationId,
+    // Check resize handles first for single selection.
+    if state.selectedAnnotationIds.count == 1,
+       let selectedId = state.selectedAnnotationIds.first,
        let annotation = state.annotations.first(where: { $0.id == selectedId }) {
       let displayBounds = imageToDisplay(annotation.bounds)
       if let handle = hitTestHandle(at: displayPoint, for: displayBounds) {
@@ -783,6 +902,11 @@ final class DrawingCanvasNSView: NSView {
         NSCursor.openHand.set()
         return
       }
+    }
+
+    if state.selectedAnnotations.contains(where: { $0.containsPoint(imagePoint) }) {
+      NSCursor.openHand.set()
+      return
     }
 
     // Show hand cursor when hovering over any annotation (for move/resize in any tool mode)

@@ -11,6 +11,7 @@ import SwiftUI
 struct AnnotateMainView: View {
   @StateObject var state: AnnotateState
   @ObservedObject private var themeManager = ThemeManager.shared
+  private let quickPropertiesBarHeight: CGFloat = 48
 
   var body: some View {
     VStack(spacing: 0) {
@@ -19,13 +20,11 @@ struct AnnotateMainView: View {
         AnnotateToolbarView(state: state)
           .padding(.top, 0) // Add top padding for traffic lights
 
-        if state.showsQuickPropertiesBar {
-          Divider()
-            .background(Color(nsColor: .separatorColor))
+        Divider()
+          .background(Color(nsColor: .separatorColor))
 
-          AnnotateQuickPropertiesBar(state: state)
-            .transition(.move(edge: .top).combined(with: .opacity))
-        }
+        AnnotateQuickPropertiesBar(state: state)
+          .frame(height: quickPropertiesBarHeight)
 
         Divider()
           .background(Color(nsColor: .separatorColor))
@@ -55,6 +54,6 @@ struct AnnotateMainView: View {
     }
     .preferredColorScheme(themeManager.systemAppearance)
     .ignoresSafeArea(.all, edges: .top) // Extend background behind title bar
-    .animation(.easeInOut(duration: 0.18), value: state.showsQuickPropertiesBar)
+    .animation(.easeInOut(duration: 0.14), value: state.showsQuickPropertiesBar)
   }
 }
