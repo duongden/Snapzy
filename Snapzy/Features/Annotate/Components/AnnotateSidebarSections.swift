@@ -37,7 +37,6 @@ struct SidebarGradientSection: View {
 struct SidebarWallpaperSection: View {
   let state: AnnotateState
   @StateObject private var wallpaperManager = SystemWallpaperManager.shared
-  @State private var customWallpapers: [URL] = []
 
   var body: some View {
     VStack(alignment: .leading, spacing: Spacing.sm) {
@@ -55,18 +54,15 @@ struct SidebarWallpaperSection: View {
         }
 
         // Custom wallpapers from disk
-        ForEach(customWallpapers, id: \.self) { url in
+        ForEach(wallpaperManager.customWallpapers) { item in
           CustomWallpaperButton(
-            url: url,
-            isSelected: isUrlSelected(url),
+            url: item.fullImageURL,
+            isSelected: isUrlSelected(item.fullImageURL),
             action: {
-              if state.padding <= 0 {
-                state.padding = 24
-              }
-              state.backgroundStyle = .wallpaper(url)
+              selectCustomWallpaper(item)
             },
             onRemove: {
-              removeCustomWallpaper(url)
+              removeCustomWallpaper(item)
             })
         }
 
@@ -119,18 +115,22 @@ struct SidebarWallpaperSection: View {
     panel.allowsMultipleSelection = false
 
     if panel.runModal() == .OK, let url = panel.url {
-      if !customWallpapers.contains(url) {
-        customWallpapers.append(url)
+      if let item = wallpaperManager.addCustomWallpaper(url) {
+        selectCustomWallpaper(item)
       }
-      if state.padding <= 0 {
-        state.padding = 24
-      }
-      state.backgroundStyle = .wallpaper(url)
     }
   }
 
-  private func removeCustomWallpaper(_ url: URL) {
-    customWallpapers.removeAll { $0 == url }
+  private func selectCustomWallpaper(_ item: SystemWallpaperManager.WallpaperItem) {
+    if state.padding <= 0 {
+      state.padding = 24
+    }
+    state.backgroundStyle = .wallpaper(item.fullImageURL)
+  }
+
+  private func removeCustomWallpaper(_ item: SystemWallpaperManager.WallpaperItem) {
+    let url = item.fullImageURL
+    wallpaperManager.removeCustomWallpaper(item)
 
     if case .wallpaper(let selectedUrl) = state.backgroundStyle, selectedUrl == url {
       state.resetCanvasEffectsToNone()

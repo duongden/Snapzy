@@ -13,6 +13,7 @@ class SystemWallpaperManager: ObservableObject {
   static let shared = SystemWallpaperManager()
 
   @Published var defaultWallpapers: [WallpaperItem] = []
+  @Published var customWallpapers: [WallpaperItem] = []
   @Published var isLoading = false
   @Published var accessDenied = false
 
@@ -35,6 +36,8 @@ class SystemWallpaperManager: ObservableObject {
     "Wallpapers",
     "Resources/Wallpapers",
   ]
+  private let customWallpaperBookmarkKey = PreferencesKeys.customWallpaperBookmarks
+  private var customWallpaperBookmarkEntries: [CustomWallpaperBookmarkEntry] = []
 
   private let bundledDefaultWallpapers: [BundledWallpaperResource] = [
     BundledWallpaperResource(fileName: "default-abstract-blue.jpg", displayName: "Abstract Blue"),
@@ -64,6 +67,10 @@ class SystemWallpaperManager: ObservableObject {
     }
   }
 
+  private struct CustomWallpaperBookmarkEntry: Codable, Equatable {
+    let bookmarkData: Data
+  }
+
   struct WallpaperItem: Identifiable, Hashable {
     var id: URL { fullImageURL }
     let fullImageURL: URL
@@ -87,6 +94,165 @@ class SystemWallpaperManager: ObservableObject {
     // Preview cache: fewer items but larger (2048px images ~4MB each)
     previewCache.countLimit = 20
     previewCache.totalCostLimit = 100 * 1024 * 1024  // 100MB max
+
+    loadCustomWallpapers()
+  }
+
+  // MARK: - Custom Wallpaper Persistence
+
+  @discardableResult
+  func addCustomWallpaper(_ url: URL) -> WallpaperItem? {
+    let normalizedURL = url.standardizedFileURL
+
+    if let existing = customWallpapers.first(where: { $0.fullImageURL.standardizedFileURL == normalizedURL }) {
+      return existing
+    }
+
+    let didStartAccessing = url.startAccessingSecurityScopedResource()
+    defer {
+      if didStartAccessing {
+        url.stopAccessingSecurityScopedResource()
+      }
+    }
+
+    guard FileManager.default.fileExists(atPath: normalizedURL.path) else {
+      return nil
+    }
+
+    do {
+      let bookmarkData = try url.bookmarkData(
+        options: .withSecurityScope,
+        includingResourceValuesForKeys: nil,
+        relativeTo: nil
+      )
+      var isStale = false
+      let scopedURL = (try? URL(
+        resolvingBookmarkData: bookmarkData,
+        options: [.withSecurityScope],
+        relativeTo: nil,
+        bookmarkDataIsStale: &isStale
+      ).standardizedFileURL) ?? normalizedURL
+      let item = WallpaperItem(
+        fullImageURL: scopedURL,
+        thumbnailURL: nil,
+        name: wallpaperName(for: scopedURL)
+      )
+
+      customWallpaperBookmarkEntries.append(CustomWallpaperBookmarkEntry(bookmarkData: bookmarkData))
+      customWallpapers.append(item)
+      saveCustomWallpaperBookmarks()
+      preloadThumbnails(for: [item])
+      return item
+    } catch {
+      return nil
+    }
+  }
+
+  func removeCustomWallpaper(_ item: WallpaperItem) {
+    guard let index = customWallpapers.firstIndex(of: item) else {
+      return
+    }
+
+    let url = item.fullImageURL
+    customWallpapers.remove(at: index)
+    if customWallpaperBookmarkEntries.indices.contains(index) {
+      customWallpaperBookmarkEntries.remove(at: index)
+    }
+
+    thumbnailCache.removeObject(forKey: url as NSURL)
+    previewCache.removeObject(forKey: url as NSURL)
+    saveCustomWallpaperBookmarks()
+  }
+
+  private func loadCustomWallpapers() {
+    guard let data = UserDefaults.standard.data(forKey: customWallpaperBookmarkKey),
+          let decodedEntries = try? JSONDecoder().decode([CustomWallpaperBookmarkEntry].self, from: data) else {
+      return
+    }
+
+    var resolvedEntries: [CustomWallpaperBookmarkEntry] = []
+    var resolvedWallpapers: [WallpaperItem] = []
+    var seenURLs = Set<URL>()
+
+    for entry in decodedEntries {
+      var isStale = false
+
+      guard let resolvedURL = try? URL(
+        resolvingBookmarkData: entry.bookmarkData,
+        options: [.withSecurityScope],
+        relativeTo: nil,
+        bookmarkDataIsStale: &isStale
+      ).standardizedFileURL else {
+        continue
+      }
+
+      guard seenURLs.insert(resolvedURL).inserted else {
+        continue
+      }
+
+      let fileExists = withSecurityScopedAccess(to: resolvedURL) {
+        FileManager.default.fileExists(atPath: resolvedURL.path)
+      }
+
+      guard fileExists else {
+        continue
+      }
+
+      var bookmarkEntry = entry
+      if isStale,
+         let refreshedBookmarkData = try? withSecurityScopedAccess(to: resolvedURL, {
+           try resolvedURL.bookmarkData(
+            options: .withSecurityScope,
+            includingResourceValuesForKeys: nil,
+            relativeTo: nil
+           )
+         }) {
+        bookmarkEntry = CustomWallpaperBookmarkEntry(bookmarkData: refreshedBookmarkData)
+      }
+
+      resolvedEntries.append(bookmarkEntry)
+      resolvedWallpapers.append(
+        WallpaperItem(
+          fullImageURL: resolvedURL,
+          thumbnailURL: nil,
+          name: wallpaperName(for: resolvedURL)
+        )
+      )
+    }
+
+    customWallpaperBookmarkEntries = resolvedEntries
+    customWallpapers = resolvedWallpapers
+
+    if resolvedEntries != decodedEntries {
+      saveCustomWallpaperBookmarks()
+    }
+
+    preloadThumbnails(for: resolvedWallpapers)
+  }
+
+  private func saveCustomWallpaperBookmarks() {
+    guard !customWallpaperBookmarkEntries.isEmpty else {
+      UserDefaults.standard.removeObject(forKey: customWallpaperBookmarkKey)
+      return
+    }
+
+    if let data = try? JSONEncoder().encode(customWallpaperBookmarkEntries) {
+      UserDefaults.standard.set(data, forKey: customWallpaperBookmarkKey)
+    }
+  }
+
+  private func wallpaperName(for url: URL) -> String {
+    url.deletingPathExtension().lastPathComponent
+  }
+
+  private func withSecurityScopedAccess<T>(to url: URL, _ operation: () throws -> T) rethrows -> T {
+    let didStartAccessing = url.startAccessingSecurityScopedResource()
+    defer {
+      if didStartAccessing {
+        url.stopAccessingSecurityScopedResource()
+      }
+    }
+    return try operation()
   }
 
   // MARK: - Cached Thumbnail Access
@@ -154,36 +320,38 @@ class SystemWallpaperManager: ObservableObject {
   ///   - url: Source image URL
   ///   - maxSize: Maximum pixel dimension for the output
   private func createDownsampledImage(from url: URL, maxSize: CGFloat) -> NSImage? {
-    let options: [CFString: Any] = [
-      kCGImageSourceShouldCache: false
-    ]
+    return withSecurityScopedAccess(to: url) {
+      let options: [CFString: Any] = [
+        kCGImageSourceShouldCache: false
+      ]
 
-    guard let imageSource = CGImageSourceCreateWithURL(url as CFURL, options as CFDictionary) else {
-      return nil
+      guard let imageSource = CGImageSourceCreateWithURL(url as CFURL, options as CFDictionary) else {
+        return nil
+      }
+
+      // Get source image dimensions to avoid requesting thumbnail larger than source
+      // This prevents "kCGImageSourceThumbnailMaxPixelSize is larger than image-dimension" warnings
+      var effectiveMaxSize = maxSize
+      if let properties = CGImageSourceCopyPropertiesAtIndex(imageSource, 0, nil) as? [CFString: Any],
+         let width = properties[kCGImagePropertyPixelWidth] as? CGFloat,
+         let height = properties[kCGImagePropertyPixelHeight] as? CGFloat {
+        let sourceMaxDimension = max(width, height)
+        effectiveMaxSize = min(maxSize, sourceMaxDimension)
+      }
+
+      let downsampleOptions: [CFString: Any] = [
+        kCGImageSourceCreateThumbnailFromImageAlways: true,
+        kCGImageSourceShouldCacheImmediately: true,
+        kCGImageSourceCreateThumbnailWithTransform: true,
+        kCGImageSourceThumbnailMaxPixelSize: effectiveMaxSize
+      ]
+
+      guard let cgImage = CGImageSourceCreateThumbnailAtIndex(imageSource, 0, downsampleOptions as CFDictionary) else {
+        return nil
+      }
+
+      return NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
     }
-
-    // Get source image dimensions to avoid requesting thumbnail larger than source
-    // This prevents "kCGImageSourceThumbnailMaxPixelSize is larger than image-dimension" warnings
-    var effectiveMaxSize = maxSize
-    if let properties = CGImageSourceCopyPropertiesAtIndex(imageSource, 0, nil) as? [CFString: Any],
-       let width = properties[kCGImagePropertyPixelWidth] as? CGFloat,
-       let height = properties[kCGImagePropertyPixelHeight] as? CGFloat {
-      let sourceMaxDimension = max(width, height)
-      effectiveMaxSize = min(maxSize, sourceMaxDimension)
-    }
-
-    let downsampleOptions: [CFString: Any] = [
-      kCGImageSourceCreateThumbnailFromImageAlways: true,
-      kCGImageSourceShouldCacheImmediately: true,
-      kCGImageSourceCreateThumbnailWithTransform: true,
-      kCGImageSourceThumbnailMaxPixelSize: effectiveMaxSize
-    ]
-
-    guard let cgImage = CGImageSourceCreateThumbnailAtIndex(imageSource, 0, downsampleOptions as CFDictionary) else {
-      return nil
-    }
-
-    return NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
   }
 
   // MARK: - Preview Image Loading (Canvas Display)

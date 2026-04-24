@@ -514,7 +514,7 @@ class ZoomVideoCompositorClass: NSObject, AVVideoCompositing {
       }
 
       // Load and cache the wallpaper
-      guard let image = CIImage(contentsOf: url) else {
+      guard let image = loadWallpaperImage(from: url) else {
         return CIImage(color: .black).cropped(to: rect)
       }
       let scaled = scaleToFill(image: image, targetSize: size)
@@ -535,7 +535,7 @@ class ZoomVideoCompositorClass: NSObject, AVVideoCompositing {
       }
 
       // Load and cache the blurred wallpaper
-      guard let image = CIImage(contentsOf: url) else {
+      guard let image = loadWallpaperImage(from: url) else {
         return CIImage(color: .black).cropped(to: rect)
       }
       let scaled = scaleToFill(image: image, targetSize: size)
@@ -548,6 +548,16 @@ class ZoomVideoCompositorClass: NSObject, AVVideoCompositing {
 
       return blurred
     }
+  }
+
+  private func loadWallpaperImage(from url: URL) -> CIImage? {
+    let didStartAccessing = url.startAccessingSecurityScopedResource()
+    defer {
+      if didStartAccessing {
+        url.stopAccessingSecurityScopedResource()
+      }
+    }
+    return CIImage(contentsOf: url)
   }
 
   private func scaleToFill(image: CIImage, targetSize: CGSize) -> CIImage {

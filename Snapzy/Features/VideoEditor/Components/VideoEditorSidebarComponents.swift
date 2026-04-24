@@ -207,31 +207,51 @@ struct VideoDefaultWallpaperButton: View {
 struct VideoCustomWallpaperButton: View {
   let url: URL
   let isSelected: Bool
+  let onRemove: () -> Void
   let action: () -> Void
 
   @State private var thumbnail: NSImage?
+  @State private var isHovering = false
 
   var body: some View {
-    Button(action: action) {
-      Group {
-        if let thumbnail = thumbnail {
-          Image(nsImage: thumbnail)
-            .resizable()
-            .aspectRatio(1, contentMode: .fill)
-        } else {
-          Rectangle()
-            .fill(Color.gray.opacity(0.15))
-            .overlay(
-              ProgressView()
-                .scaleEffect(0.5)
-            )
+    ZStack(alignment: .topLeading) {
+      Button(action: action) {
+        Group {
+          if let thumbnail = thumbnail {
+            Image(nsImage: thumbnail)
+              .resizable()
+              .aspectRatio(1, contentMode: .fill)
+          } else {
+            Rectangle()
+              .fill(Color.gray.opacity(0.15))
+              .overlay(
+                ProgressView()
+                  .scaleEffect(0.5)
+              )
+          }
         }
+        .clipped()
+        .cornerRadius(Size.radiusMd)
+        .sidebarItemStyle(isSelected: isSelected)
       }
-      .clipped()
-      .cornerRadius(Size.radiusMd)
-      .sidebarItemStyle(isSelected: isSelected)
+      .buttonStyle(.plain)
+
+      if isHovering {
+        Button(action: onRemove) {
+          Image(systemName: "xmark.circle.fill")
+            .font(.system(size: 14, weight: .semibold))
+            .symbolRenderingMode(.palette)
+            .foregroundStyle(.white, .black.opacity(0.65))
+            .shadow(color: .black.opacity(0.5), radius: 2, x: 0, y: 1)
+        }
+        .buttonStyle(.plain)
+        .help(L10n.AnnotateUI.removeCustomWallpaper)
+        .offset(x: -4, y: -4)
+        .transition(.opacity.combined(with: .scale(scale: 0.8)))
+      }
     }
-    .buttonStyle(.plain)
+    .animation(.easeInOut(duration: 0.15), value: isHovering)
+    .onHover { isHovering = $0 }
     .onAppear {
       loadThumbnail()
     }
@@ -263,17 +283,10 @@ struct VideoAddWallpaperButton: View {
 
   var body: some View {
     Button(action: action) {
-      RoundedRectangle(cornerRadius: Size.radiusMd)
-        .fill(SidebarColors.itemDefault)
-        .overlay(
-          Image(systemName: "plus")
-            .font(.system(size: 16, weight: .medium))
-            .foregroundColor(SidebarColors.labelSecondary)
-        )
-        .overlay(
-          RoundedRectangle(cornerRadius: Size.radiusMd)
-            .stroke(SidebarColors.borderDefault, lineWidth: Size.strokeDefault)
-        )
+      Image(systemName: "plus")
+        .font(.system(size: 16, weight: .medium))
+        .foregroundColor(SidebarColors.labelSecondary)
+        .actionButtonStyle()
     }
     .buttonStyle(.plain)
   }

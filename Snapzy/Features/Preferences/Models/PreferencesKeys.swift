@@ -24,6 +24,7 @@ enum PreferencesKeys {
   static let hideDesktopIcons = "hideDesktopIcons"
   static let hideDesktopWidgets = "hideDesktopWidgets"
   static let wallpaperDirectoryBookmark = "wallpaper.directoryBookmark"
+  static let customWallpaperBookmarks = "wallpaper.customBookmarks"
 
   // Appearance
   static let appearanceMode = "appearanceMode"

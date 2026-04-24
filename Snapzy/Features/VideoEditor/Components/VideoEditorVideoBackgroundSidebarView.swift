@@ -13,7 +13,6 @@ import UniformTypeIdentifiers
 struct VideoBackgroundSidebarView: View {
   @ObservedObject var state: VideoEditorState
   @StateObject private var wallpaperManager = SystemWallpaperManager.shared
-  @State private var customWallpapers: [URL] = []
 
   var body: some View {
     ScrollView(.vertical, showsIndicators: true) {
@@ -98,12 +97,15 @@ struct VideoBackgroundSidebarView: View {
         }
 
         // Custom wallpapers
-        ForEach(customWallpapers, id: \.self) { url in
+        ForEach(wallpaperManager.customWallpapers) { item in
           VideoCustomWallpaperButton(
-            url: url,
-            isSelected: isWallpaperUrlSelected(url)
+            url: item.fullImageURL,
+            isSelected: isWallpaperUrlSelected(item.fullImageURL),
+            onRemove: {
+              removeCustomWallpaper(item)
+            }
           ) {
-            selectCustomWallpaper(url)
+            selectCustomWallpaper(item)
           }
         }
 
@@ -152,11 +154,11 @@ struct VideoBackgroundSidebarView: View {
     state.backgroundStyle = .wallpaper(item.fullImageURL)
   }
 
-  private func selectCustomWallpaper(_ url: URL) {
+  private func selectCustomWallpaper(_ item: SystemWallpaperManager.WallpaperItem) {
     if state.backgroundPadding <= 0 {
       state.backgroundPadding = 24
     }
-    state.backgroundStyle = .wallpaper(url)
+    state.backgroundStyle = .wallpaper(item.fullImageURL)
   }
 
   private func addCustomWallpaper() {
@@ -165,8 +167,19 @@ struct VideoBackgroundSidebarView: View {
     panel.allowsMultipleSelection = false
 
     if panel.runModal() == .OK, let url = panel.url {
-      customWallpapers.append(url)
-      selectCustomWallpaper(url)
+      if let item = wallpaperManager.addCustomWallpaper(url) {
+        selectCustomWallpaper(item)
+      }
+    }
+  }
+
+  private func removeCustomWallpaper(_ item: SystemWallpaperManager.WallpaperItem) {
+    let url = item.fullImageURL
+    wallpaperManager.removeCustomWallpaper(item)
+
+    if case .wallpaper(let selectedUrl) = state.backgroundStyle, selectedUrl == url {
+      state.backgroundStyle = .none
+      state.backgroundPadding = 0
     }
   }
 
