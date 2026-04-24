@@ -12,7 +12,7 @@ import UniformTypeIdentifiers
 /// Sidebar content for video background and padding customization
 struct VideoBackgroundSidebarView: View {
   @ObservedObject var state: VideoEditorState
-  @StateObject private var systemManager = SystemWallpaperManager.shared
+  @StateObject private var wallpaperManager = SystemWallpaperManager.shared
   @State private var customWallpapers: [URL] = []
 
   var body: some View {
@@ -87,13 +87,13 @@ struct VideoBackgroundSidebarView: View {
       VideoSidebarSectionHeader(title: L10n.Common.wallpapers)
 
       LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: GridConfig.gap), count: GridConfig.backgroundColumns), spacing: GridConfig.gap) {
-        // System wallpapers
-        ForEach(systemManager.systemWallpapers) { item in
-          VideoSystemWallpaperButton(
+        // Bundled default wallpapers
+        ForEach(wallpaperManager.defaultWallpapers) { item in
+          VideoDefaultWallpaperButton(
             item: item,
-            isSelected: isSystemWallpaperSelected(item)
+            isSelected: isDefaultWallpaperSelected(item)
           ) {
-            selectSystemWallpaper(item)
+            selectDefaultWallpaper(item)
           }
         }
 
@@ -114,7 +114,7 @@ struct VideoBackgroundSidebarView: View {
       }
 
       // Loading indicator
-      if systemManager.isLoading {
+      if wallpaperManager.isLoading {
         HStack {
           ProgressView()
             .scaleEffect(0.6)
@@ -125,13 +125,13 @@ struct VideoBackgroundSidebarView: View {
       }
     }
     .task {
-      await systemManager.loadSystemWallpapers()
+      await wallpaperManager.loadDefaultWallpapers()
     }
   }
 
   // MARK: - Wallpaper Helpers
 
-  private func isSystemWallpaperSelected(_ item: SystemWallpaperManager.WallpaperItem) -> Bool {
+  private func isDefaultWallpaperSelected(_ item: SystemWallpaperManager.WallpaperItem) -> Bool {
     if case .wallpaper(let url) = state.backgroundStyle {
       return url == item.fullImageURL
     }
@@ -145,7 +145,7 @@ struct VideoBackgroundSidebarView: View {
     return false
   }
 
-  private func selectSystemWallpaper(_ item: SystemWallpaperManager.WallpaperItem) {
+  private func selectDefaultWallpaper(_ item: SystemWallpaperManager.WallpaperItem) {
     if state.backgroundPadding <= 0 {
       state.backgroundPadding = 24
     }

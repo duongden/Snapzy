@@ -2,7 +2,7 @@
 //  SystemWallpaperManager.swift
 //  Snapzy
 //
-//  Service to enumerate and manage macOS system wallpapers
+//  Service to load bundled default wallpapers and cache wallpaper previews
 //
 
 import AppKit
@@ -12,7 +12,7 @@ import Foundation
 class SystemWallpaperManager: ObservableObject {
   static let shared = SystemWallpaperManager()
 
-  @Published var systemWallpapers: [WallpaperItem] = []
+  @Published var defaultWallpapers: [WallpaperItem] = []
   @Published var isLoading = false
   @Published var accessDenied = false
 
@@ -21,8 +21,8 @@ class SystemWallpaperManager: ObservableObject {
   private let thumbnailCache = NSCache<NSURL, NSImage>()
   private let thumbnailSize: CGFloat = 96  // 48pt grid item @2x retina
   private var loadingURLs = Set<URL>()
+  private var pendingThumbnailCompletions: [URL: [(NSImage?) -> Void]] = [:]
   private let cacheQueue = DispatchQueue(label: "wallpaper.thumbnail.cache", qos: .userInitiated)
-  private let defaultSystemWallpaperLimit = 3
 
   // MARK: - Preview Cache (Canvas Display Optimization)
 
@@ -31,13 +31,38 @@ class SystemWallpaperManager: ObservableObject {
   /// Preview size from config (default 2048px for retina 1024pt)
   private var previewSize: CGFloat { WallpaperQualityConfig.maxResolution }
 
-  private let systemWallpaperPaths = [
-    "/System/Library/Desktop Pictures",
-    "/Library/Desktop Pictures",
+  private let bundledWallpaperSubdirectories = [
+    "Wallpapers",
+    "Resources/Wallpapers",
   ]
 
-  private let supportedExtensions = ["heic", "jpg", "jpeg", "png"]
-  private let wallpaperBookmarkKey = PreferencesKeys.wallpaperDirectoryBookmark
+  private let bundledDefaultWallpapers: [BundledWallpaperResource] = [
+    BundledWallpaperResource(fileName: "default-abstract-blue.jpg", displayName: "Abstract Blue"),
+    BundledWallpaperResource(fileName: "default-abstract-amber.jpg", displayName: "Abstract Amber"),
+    BundledWallpaperResource(fileName: "default-abstract-cyan.jpg", displayName: "Abstract Cyan"),
+    BundledWallpaperResource(fileName: "default-abstract-magenta.jpg", displayName: "Abstract Magenta"),
+    BundledWallpaperResource(fileName: "default-abstract-violet.jpg", displayName: "Abstract Violet"),
+    BundledWallpaperResource(fileName: "default-helios-dark.jpg", displayName: "Helios Dark"),
+    BundledWallpaperResource(fileName: "default-macbook-pro-blue.jpg", displayName: "MacBook Pro Blue"),
+    BundledWallpaperResource(fileName: "default-macbook-pro-m3.jpg", displayName: "MacBook Pro M3"),
+    BundledWallpaperResource(fileName: "default-macintosh-dark.jpg", displayName: "Macintosh Dark"),
+    BundledWallpaperResource(fileName: "default-macintosh-light.jpg", displayName: "Macintosh Light"),
+    BundledWallpaperResource(fileName: "default-tahoe-dark.jpg", displayName: "Tahoe Dark"),
+    BundledWallpaperResource(fileName: "default-tahoe-light.jpg", displayName: "Tahoe Light"),
+  ]
+
+  private struct BundledWallpaperResource {
+    let fileName: String
+    let displayName: String
+
+    var resourceName: String {
+      (fileName as NSString).deletingPathExtension
+    }
+
+    var fileExtension: String {
+      (fileName as NSString).pathExtension
+    }
+  }
 
   struct WallpaperItem: Identifiable, Hashable {
     var id: URL { fullImageURL }
@@ -81,13 +106,20 @@ class SystemWallpaperManager: ObservableObject {
       return
     }
 
-    // Prevent duplicate loads
+    // Prevent duplicate loads while preserving every caller's callback.
+    var shouldStartLoad = false
     cacheQueue.sync {
-      guard !loadingURLs.contains(url) else {
-        completion(nil)
-        return
+      if loadingURLs.contains(url) {
+        pendingThumbnailCompletions[url, default: []].append(completion)
+      } else {
+        loadingURLs.insert(url)
+        pendingThumbnailCompletions[url] = [completion]
+        shouldStartLoad = true
       }
-      loadingURLs.insert(url)
+    }
+
+    guard shouldStartLoad else {
+      return
     }
 
     // Load and downsample on background thread
@@ -100,12 +132,14 @@ class SystemWallpaperManager: ObservableObject {
         self.thumbnailCache.setObject(thumbnail, forKey: url as NSURL)
       }
 
-      self.cacheQueue.sync {
+      let completions: [(NSImage?) -> Void] = self.cacheQueue.sync {
+        let completions = self.pendingThumbnailCompletions.removeValue(forKey: url) ?? []
         _ = self.loadingURLs.remove(url)
+        return completions
       }
 
       DispatchQueue.main.async {
-        completion(thumbnail)
+        completions.forEach { $0(thumbnail) }
       }
     }
   }
@@ -181,258 +215,74 @@ class SystemWallpaperManager: ObservableObject {
 
   /// Preload visible thumbnails (call when view appears)
   func preloadThumbnails(for items: [WallpaperItem]) {
-    for item in items.prefix(6) {  // Keep preloading lightweight to avoid sidebar jank
+    for item in items.prefix(12) {  // Keep preloading lightweight while covering bundled defaults
       loadThumbnail(for: item) { _ in }
     }
   }
 
   @MainActor
-  func loadSystemWallpapers() async {
+  func loadDefaultWallpapers() async {
     guard !isLoading else { return }
-    guard systemWallpapers.isEmpty else { return }  // Only load once
+    guard defaultWallpapers.isEmpty else { return }  // Only load once
     isLoading = true
     accessDenied = false
 
-    var wallpapers = await Task.detached(priority: .userInitiated) {
-      self.enumerateAllDirectories()
-    }.value
-
-    if wallpapers.isEmpty, let persistedDirectory = loadPersistedWallpaperDirectoryURL() {
-      let didStartAccess = persistedDirectory.startAccessingSecurityScopedResource()
-      wallpapers = enumerateUserSelectedDirectory(persistedDirectory)
-      if didStartAccess {
-        persistedDirectory.stopAccessingSecurityScopedResource()
-      }
-    }
-
-    if wallpapers.isEmpty && !hasAccessibleDirectory() && loadPersistedWallpaperDirectoryURL() == nil {
-      accessDenied = true
-    }
-
-    let limitedWallpapers = Array(wallpapers.prefix(defaultSystemWallpaperLimit))
-    systemWallpapers = limitedWallpapers
+    let wallpapers = enumerateBundledDefaultWallpapers()
+    defaultWallpapers = wallpapers
+    accessDenied = wallpapers.isEmpty
     isLoading = false
 
     // Preload first batch of thumbnails
-    preloadThumbnails(for: limitedWallpapers)
-  }
-
-  /// Load currently active desktop wallpaper(s) from display settings.
-  /// By default this returns the wallpaper for the preferred/active screen only.
-  /// Set includeAllScreens to true to return unique wallpapers across all screens.
-  @MainActor
-  func loadCurrentDesktopWallpapers(
-    preferredDisplayID: CGDirectDisplayID? = nil,
-    includeAllScreens: Bool = false
-  ) async -> [WallpaperItem] {
-    guard !isLoading else { return [] }
-    isLoading = true
-    accessDenied = false
-    defer { isLoading = false }
-
-    let wallpapers = enumerateCurrentDesktopWallpapers(
-      preferredDisplayID: preferredDisplayID,
-      includeAllScreens: includeAllScreens
-    )
-    accessDenied = wallpapers.isEmpty
-
-    // Preload visible thumbnails for fast first paint in the sidebar.
     preloadThumbnails(for: wallpapers)
-    return wallpapers
   }
 
-  private func hasAccessibleDirectory() -> Bool {
-    systemWallpaperPaths.contains { canAccessDirectory($0) }
+  private func enumerateBundledDefaultWallpapers() -> [WallpaperItem] {
+    bundledDefaultWallpapers.compactMap { resource in
+      guard let url = resolveBundledWallpaperURL(resource) else {
+        return nil
+      }
+
+      return WallpaperItem(
+        fullImageURL: url,
+        thumbnailURL: nil,
+        name: resource.displayName
+      )
+    }
   }
 
-  private func canAccessDirectory(_ path: String) -> Bool {
-    FileManager.default.isReadableFile(atPath: path)
-  }
-
-  private func enumerateAllDirectories() -> [WallpaperItem] {
-    var items: [WallpaperItem] = []
+  private func resolveBundledWallpaperURL(_ resource: BundledWallpaperResource) -> URL? {
     let fm = FileManager.default
 
-    for basePath in systemWallpaperPaths {
-      guard canAccessDirectory(basePath) else { continue }
+    for subdirectory in bundledWallpaperSubdirectories {
+      if let url = Bundle.main.url(
+        forResource: resource.resourceName,
+        withExtension: resource.fileExtension,
+        subdirectory: subdirectory
+      ) {
+        return url
+      }
 
-      let baseURL = URL(fileURLWithPath: basePath)
-      guard
-        let contents = try? fm.contentsOfDirectory(
-          at: baseURL,
-          includingPropertiesForKeys: [.isRegularFileKey],
-          options: [.skipsHiddenFiles]
-        )
-      else { continue }
-
-      for url in contents {
-        let ext = url.pathExtension.lowercased()
-        guard supportedExtensions.contains(ext) else { continue }
-
-        let name = url.deletingPathExtension().lastPathComponent
-        let thumbnail = thumbnailURL(for: url, basePath: basePath)
-
-        items.append(
-          WallpaperItem(
-            fullImageURL: url,
-            thumbnailURL: thumbnail,
-            name: name
-          ))
+      if let url = Bundle.main.resourceURL?
+        .appendingPathComponent(subdirectory)
+        .appendingPathComponent(resource.fileName),
+        fm.fileExists(atPath: url.path) {
+        return url
       }
     }
 
-    return items.sorted { $0.name < $1.name }
-  }
-
-  private func enumerateCurrentDesktopWallpapers(
-    preferredDisplayID: CGDirectDisplayID?,
-    includeAllScreens: Bool
-  ) -> [WallpaperItem] {
-    var items: [WallpaperItem] = []
-    var seenURLs = Set<URL>()
-
-    let resolvedPreferredScreen =
-      preferredDisplayID.flatMap(findScreen(by:))
-      ?? NSApp.keyWindow?.screen
-      ?? NSApp.mainWindow?.screen
-      ?? NSScreen.main
-      ?? NSScreen.screens.first
-
-    let screens: [NSScreen]
-    if includeAllScreens {
-      screens = NSScreen.screens.isEmpty ? [resolvedPreferredScreen].compactMap { $0 } : NSScreen.screens
-    } else {
-      screens = [resolvedPreferredScreen].compactMap { $0 }
-    }
-
-    for screen in screens {
-      guard let wallpaperURL = NSWorkspace.shared.desktopImageURL(for: screen) else { continue }
-      let resolvedURL = wallpaperURL.standardizedFileURL
-      guard seenURLs.insert(resolvedURL).inserted else { continue }
-
-      items.append(
-        WallpaperItem(
-          fullImageURL: resolvedURL,
-          thumbnailURL: nil,
-          name: resolvedURL.deletingPathExtension().lastPathComponent
-        ))
-    }
-
-    return items.sorted { $0.name < $1.name }
-  }
-
-  private func findScreen(by displayID: CGDirectDisplayID) -> NSScreen? {
-    NSScreen.screens.first { screen in
-      guard let screenNumber = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber
-      else { return false }
-      return CGDirectDisplayID(screenNumber.uint32Value) == displayID
-    }
-  }
-
-  private func thumbnailURL(for wallpaper: URL, basePath: String) -> URL? {
-    let thumbnailDir = URL(fileURLWithPath: basePath)
-      .appendingPathComponent(".thumbnails")
-    let thumbnailFile =
-      thumbnailDir
-      .appendingPathComponent(wallpaper.deletingPathExtension().lastPathComponent)
-      .appendingPathExtension("heic")
-
-    return FileManager.default.fileExists(atPath: thumbnailFile.path)
-      ? thumbnailFile
-      : nil
-  }
-
-  /// Fallback: Request user to manually grant access via NSOpenPanel
-  @MainActor
-  func requestUserAccess() async -> [URL]? {
-    let panel = NSOpenPanel()
-    panel.message = L10n.FileAccess.desktopPicturesAccessMessage
-    panel.prompt = L10n.FileAccess.grantAccessPrompt
-    panel.canChooseFiles = false
-    panel.canChooseDirectories = true
-    panel.allowsMultipleSelection = false
-    panel.directoryURL = URL(fileURLWithPath: "/System/Library/Desktop Pictures")
-
-    let response = await panel.begin()
-    guard response == .OK, let url = panel.url else { return nil }
-
-    saveWallpaperBookmark(for: url)
-
-    // Enumerate user-selected directory
-    let items = enumerateUserSelectedDirectory(url)
-    let limitedItems = Array(items.prefix(defaultSystemWallpaperLimit))
-    if !limitedItems.isEmpty {
-      systemWallpapers = limitedItems
-      accessDenied = false
-    }
-    return items.isEmpty ? nil : [url]
-  }
-
-  private func enumerateUserSelectedDirectory(_ directoryURL: URL) -> [WallpaperItem] {
-    var items: [WallpaperItem] = []
-    let fm = FileManager.default
-
-    guard
-      let contents = try? fm.contentsOfDirectory(
-        at: directoryURL,
-        includingPropertiesForKeys: [.isRegularFileKey],
-        options: [.skipsHiddenFiles]
-      )
-    else { return [] }
-
-    for url in contents {
-      let ext = url.pathExtension.lowercased()
-      guard supportedExtensions.contains(ext) else { continue }
-
-      let name = url.deletingPathExtension().lastPathComponent
-      let thumbnail = thumbnailURL(for: url, basePath: directoryURL.path)
-
-      items.append(
-        WallpaperItem(
-          fullImageURL: url,
-          thumbnailURL: thumbnail,
-          name: name
-        ))
-    }
-
-    return items.sorted { $0.name < $1.name }
-  }
-
-  private func saveWallpaperBookmark(for directoryURL: URL) {
-    do {
-      let bookmarkData = try directoryURL.bookmarkData(
-        options: .withSecurityScope,
-        includingResourceValuesForKeys: nil,
-        relativeTo: nil
-      )
-      UserDefaults.standard.set(bookmarkData, forKey: wallpaperBookmarkKey)
-    } catch {
-      UserDefaults.standard.removeObject(forKey: wallpaperBookmarkKey)
-    }
-  }
-
-  private func loadPersistedWallpaperDirectoryURL() -> URL? {
-    guard let bookmarkData = UserDefaults.standard.data(forKey: wallpaperBookmarkKey) else {
-      return nil
-    }
-
-    var isStale = false
-    do {
-      let url = try URL(
-        resolvingBookmarkData: bookmarkData,
-        options: [.withSecurityScope],
-        relativeTo: nil,
-        bookmarkDataIsStale: &isStale
-      )
-
-      if isStale {
-        saveWallpaperBookmark(for: url)
-      }
-
+    if let url = Bundle.main.url(
+      forResource: resource.resourceName,
+      withExtension: resource.fileExtension
+    ) {
       return url
-    } catch {
-      UserDefaults.standard.removeObject(forKey: wallpaperBookmarkKey)
-      return nil
     }
+
+    if let url = Bundle.main.resourceURL?
+      .appendingPathComponent(resource.fileName),
+      fm.fileExists(atPath: url.path) {
+      return url
+    }
+
+    return nil
   }
 }

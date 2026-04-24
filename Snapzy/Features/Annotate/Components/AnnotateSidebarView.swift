@@ -8,10 +8,50 @@
 import AppKit
 import SwiftUI
 
+private struct AnnotateSidebarSnapshot: Equatable {
+  let editorMode: AnnotateState.EditorMode
+  let backgroundStyle: BackgroundStyle
+  let padding: CGFloat
+  let previewPadding: CGFloat?
+  let shadowIntensity: CGFloat
+  let previewShadowIntensity: CGFloat?
+  let cornerRadius: CGFloat
+  let previewCornerRadius: CGFloat?
+  let imageAlignment: ImageAlignment
+  let canvasPresets: [AnnotateCanvasPreset]
+  let selectedCanvasPresetId: UUID?
+  let isSelectedCanvasPresetDirty: Bool
+
+  init(state: AnnotateState) {
+    editorMode = state.editorMode
+    backgroundStyle = state.backgroundStyle
+    padding = state.padding
+    previewPadding = state.previewPadding
+    shadowIntensity = state.shadowIntensity
+    previewShadowIntensity = state.previewShadowIntensity
+    cornerRadius = state.cornerRadius
+    previewCornerRadius = state.previewCornerRadius
+    imageAlignment = state.imageAlignment
+    canvasPresets = state.canvasPresets
+    selectedCanvasPresetId = state.selectedCanvasPresetId
+    isSelectedCanvasPresetDirty = state.isSelectedCanvasPresetDirty
+  }
+}
+
 /// Left sidebar with background customization options
-struct AnnotateSidebarView: View {
-  @ObservedObject var state: AnnotateState
+struct AnnotateSidebarView: View, Equatable {
+  let state: AnnotateState
+  private let snapshot: AnnotateSidebarSnapshot
   @State private var isPresetDropdownPresented = false
+
+  init(state: AnnotateState) {
+    self.state = state
+    snapshot = AnnotateSidebarSnapshot(state: state)
+  }
+
+  static func == (lhs: AnnotateSidebarView, rhs: AnnotateSidebarView) -> Bool {
+    lhs.snapshot == rhs.snapshot
+  }
   
   var body: some View {
     ScrollView(.vertical, showsIndicators: true) {
@@ -423,7 +463,10 @@ struct AnnotateSidebarView: View {
       )
       CompactSliderRow(
         label: L10n.Common.shadow,
-        value: $state.shadowIntensity,
+        value: Binding(
+          get: { state.shadowIntensity },
+          set: { state.shadowIntensity = $0 }
+        ),
         range: 0...1,
         onDragging: { isDragging, value in
           state.previewShadowIntensity = isDragging ? value : nil
@@ -431,7 +474,10 @@ struct AnnotateSidebarView: View {
       )
       CompactSliderRow(
         label: L10n.Common.corners,
-        value: $state.cornerRadius,
+        value: Binding(
+          get: { state.cornerRadius },
+          set: { state.cornerRadius = $0 }
+        ),
         range: 0...60,
         onDragging: { isDragging, value in
           state.previewCornerRadius = isDragging ? value : nil
@@ -443,7 +489,10 @@ struct AnnotateSidebarView: View {
   private var alignmentSection: some View {
     VStack(alignment: .leading, spacing: Spacing.sm) {
       SidebarSectionHeader(title: L10n.AnnotateUI.alignment)
-      AlignmentGrid(selected: $state.imageAlignment, onAlignmentChange: { newAlignment in
+      AlignmentGrid(selected: Binding(
+        get: { state.imageAlignment },
+        set: { state.imageAlignment = $0 }
+      ), onAlignmentChange: { newAlignment in
         print("DEBUG [Alignment]: Callback fired with newAlignment = \(newAlignment)")
         print("DEBUG [Alignment]: Current padding = \(state.padding), backgroundStyle = \(state.backgroundStyle)")
 

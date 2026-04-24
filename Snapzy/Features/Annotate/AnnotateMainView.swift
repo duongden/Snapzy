@@ -34,6 +34,7 @@ struct AnnotateMainView: View {
         // Hide sidebar in preview mode
         if state.showSidebar && state.editorMode != .preview {
           AnnotateSidebarView(state: state)
+            .equatable()
             .frame(width: 240)
             .transition(.move(edge: .leading))
 

@@ -6,11 +6,12 @@
 //
 
 import AppKit
+import Combine
 import SwiftUI
 
 /// NSViewRepresentable wrapper for the drawing canvas
 struct CanvasDrawingView: NSViewRepresentable {
-  @ObservedObject var state: AnnotateState
+  let state: AnnotateState
   var displayScale: CGFloat = 1.0
 
   func makeNSView(context: Context) -> DrawingCanvasNSView {
@@ -20,9 +21,13 @@ struct CanvasDrawingView: NSViewRepresentable {
   }
 
   func updateNSView(_ nsView: DrawingCanvasNSView, context: Context) {
-    nsView.state = state
-    nsView.displayScale = displayScale
-    nsView.needsDisplay = true
+    if nsView.state !== state {
+      nsView.state = state
+    }
+    if abs(nsView.displayScale - displayScale) > 0.0001 {
+      nsView.displayScale = displayScale
+      nsView.invalidateDrawing()
+    }
   }
 }
 
@@ -34,7 +39,13 @@ enum ResizeHandle: Equatable {
 
 /// NSView subclass handling mouse events and drawing
 final class DrawingCanvasNSView: NSView {
-  var state: AnnotateState
+  var state: AnnotateState {
+    didSet {
+      guard oldValue !== state else { return }
+      observeStateChanges()
+      invalidateDrawing()
+    }
+  }
   var displayScale: CGFloat = 1.0
   private let shortcutManager = AnnotateShortcutManager.shared
   private var currentPath: [CGPoint] = []
@@ -66,11 +77,14 @@ final class DrawingCanvasNSView: NSView {
   // Blur cache manager for performance optimization
   private let blurCacheManager = BlurCacheManager()
   private var lastSourceImageIdentifier: ObjectIdentifier?
+  private var stateObserver: AnyCancellable?
+  private var isDisplayInvalidationScheduled = false
 
   init(state: AnnotateState) {
     self.state = state
     super.init(frame: .zero)
     setupView()
+    observeStateChanges()
   }
 
   @available(*, unavailable)
@@ -90,6 +104,27 @@ final class DrawingCanvasNSView: NSView {
       userInfo: nil
     )
     addTrackingArea(trackingArea)
+  }
+
+  private func observeStateChanges() {
+    stateObserver = state.objectWillChange.sink { [weak self] _ in
+      self?.scheduleDisplayInvalidation()
+    }
+  }
+
+  func invalidateDrawing() {
+    needsDisplay = true
+  }
+
+  private func scheduleDisplayInvalidation() {
+    guard !isDisplayInvalidationScheduled else { return }
+    isDisplayInvalidationScheduled = true
+
+    DispatchQueue.main.async { [weak self] in
+      guard let self else { return }
+      self.isDisplayInvalidationScheduled = false
+      self.invalidateDrawing()
+    }
   }
 
   // MARK: - First Responder

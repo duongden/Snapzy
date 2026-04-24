@@ -143,9 +143,9 @@ struct AddWallpaperButton: View {
   }
 }
 
-// MARK: - System Wallpaper Button
+// MARK: - Default Wallpaper Button
 
-struct SystemWallpaperButton: View {
+struct DefaultWallpaperButton: View {
   let item: SystemWallpaperManager.WallpaperItem
   let isSelected: Bool
   let action: () -> Void

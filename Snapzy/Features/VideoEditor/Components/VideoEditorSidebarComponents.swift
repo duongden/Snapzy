@@ -154,9 +154,9 @@ struct VideoSliderRow: View {
   }
 }
 
-// MARK: - System Wallpaper Button (Cached)
+// MARK: - Default Wallpaper Button (Cached)
 
-struct VideoSystemWallpaperButton: View {
+struct VideoDefaultWallpaperButton: View {
   let item: SystemWallpaperManager.WallpaperItem
   let isSelected: Bool
   let action: () -> Void
