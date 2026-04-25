@@ -16,6 +16,7 @@ struct HistoryItemView: View {
   @State private var isHovering = false
   @State private var fileExists: Bool = true
   @State private var isVisible = false
+  @State private var thumbnailReloadToken = 0
 
   var body: some View {
     VStack(spacing: 6) {
@@ -121,6 +122,12 @@ struct HistoryItemView: View {
         guard isVisible else { return }
         await loadThumbnail()
       }
+      .onReceive(NotificationCenter.default.publisher(for: .captureHistoryFileDidChange)) { notification in
+        guard matchesHistoryFileChange(notification) else { return }
+        thumbnailImage = nil
+        checkFileExistence()
+        thumbnailReloadToken += 1
+      }
       // Filename
       Text(record.fileName)
         .font(.caption)
@@ -156,12 +163,23 @@ struct HistoryItemView: View {
 
   @MainActor
   private func loadThumbnail() async {
-    thumbnailImage = await HistoryThumbnailGenerator.shared.loadThumbnailImage(for: record)
+    let image = await HistoryThumbnailGenerator.shared.loadThumbnailImage(for: record)
+    guard !Task.isCancelled else { return }
+    thumbnailImage = image
   }
 
   private var thumbnailTaskID: String {
     let id = record.thumbnailPath ?? record.id.uuidString
-    return isVisible ? id : "hidden-\(record.id.uuidString)"
+    return isVisible ? "\(id)-\(thumbnailReloadToken)" : "hidden-\(record.id.uuidString)"
+  }
+
+  private func matchesHistoryFileChange(_ notification: Notification) -> Bool {
+    if let recordIDs = notification.userInfo?["recordIDs"] as? [UUID],
+       recordIDs.contains(record.id) {
+      return true
+    }
+
+    return (notification.userInfo?["filePath"] as? String) == record.filePath
   }
 
   private func checkFileExistence() {

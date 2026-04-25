@@ -32,7 +32,7 @@ struct CaptureHistoryRecord: Identifiable, Codable, Equatable, FetchableRecord, 
   var filePath: String
   var fileName: String
   let captureType: CaptureHistoryType
-  let fileSize: Int64
+  var fileSize: Int64
   let capturedAt: Date
   var width: Int?
   var height: Int?

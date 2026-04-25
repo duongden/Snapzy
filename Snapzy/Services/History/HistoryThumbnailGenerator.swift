@@ -29,7 +29,8 @@ final class HistoryThumbnailGenerator {
   )
   private let stateQueue = DispatchQueue(label: "snapzy.history-thumbnail-generator.state")
   private let memoryCache = NSCache<NSString, NSImage>()
-  private var inFlightRequests: [UUID: [(NSImage?) -> Void]] = [:]
+  private var inFlightRequests: [String: [(NSImage?) -> Void]] = [:]
+  private var memoryCacheKeysByRecordId: [UUID: Set<String>] = [:]
 
   var thumbnailsDirectory: URL {
     let appSupport = FileManager.default.urls(
@@ -63,7 +64,8 @@ final class HistoryThumbnailGenerator {
     for record: CaptureHistoryRecord,
     completion: @escaping (NSImage?) -> Void
   ) {
-    let cacheKey = cacheKey(for: record.id)
+    let identity = cacheIdentity(for: record)
+    let cacheKey = NSString(string: identity.cacheKey)
 
     if let cachedImage = memoryCache.object(forKey: cacheKey) {
       DispatchQueue.main.async {
@@ -73,12 +75,12 @@ final class HistoryThumbnailGenerator {
     }
 
     let shouldStartWork = stateQueue.sync { () -> Bool in
-      if inFlightRequests[record.id] != nil {
-        inFlightRequests[record.id]?.append(completion)
+      if inFlightRequests[identity.cacheKey] != nil {
+        inFlightRequests[identity.cacheKey]?.append(completion)
         return false
       }
 
-      inFlightRequests[record.id] = [completion]
+      inFlightRequests[identity.cacheKey] = [completion]
       return true
     }
 
@@ -86,15 +88,15 @@ final class HistoryThumbnailGenerator {
 
     workerQueue.async { [weak self] in
       guard let self else { return }
-      let image = self.resolveThumbnailImage(for: record)
+      let image = self.resolveThumbnailImage(for: record, identity: identity)
 
       if let image {
         let cost = max(Int(image.size.width * image.size.height * 4), 1)
-        self.memoryCache.setObject(image, forKey: cacheKey, cost: cost)
+        self.storeInMemory(image, identity: identity, cost: cost)
       }
 
       let completions = self.stateQueue.sync {
-        self.inFlightRequests.removeValue(forKey: record.id) ?? []
+        self.inFlightRequests.removeValue(forKey: identity.cacheKey) ?? []
       }
 
       DispatchQueue.main.async {
@@ -113,21 +115,23 @@ final class HistoryThumbnailGenerator {
   /// Returns the cached thumbnail URL if successful.
   func generate(for record: CaptureHistoryRecord) async -> URL? {
     await withCheckedContinuation { continuation in
-      let preferredURL = existingThumbnailURL(for: record)
+      let identity = cacheIdentity(for: record)
+      let preferredURL = existingThumbnailURL(for: record, identity: identity)
       loadThumbnailImage(for: record) { image in
         guard image != nil else {
           continuation.resume(returning: nil)
           return
         }
 
-        continuation.resume(returning: preferredURL ?? self.defaultThumbnailURL(for: record.id))
+        continuation.resume(returning: preferredURL ?? identity.thumbnailURL)
       }
     }
   }
 
   /// Load a thumbnail from disk for a record
   func thumbnailURL(for record: CaptureHistoryRecord) -> URL? {
-    existingThumbnailURL(for: record)
+    let identity = cacheIdentity(for: record)
+    return existingThumbnailURL(for: record, identity: identity)
   }
 
   /// Total size of all cached thumbnails in bytes
@@ -171,15 +175,19 @@ final class HistoryThumbnailGenerator {
 
   /// Delete thumbnail for a specific record ID
   func deleteThumbnail(for recordId: UUID) {
-    try? FileManager.default.removeItem(at: defaultThumbnailURL(for: recordId))
-    try? FileManager.default.removeItem(at: legacyThumbnailURL(for: recordId))
-    memoryCache.removeObject(forKey: cacheKey(for: recordId))
+    deleteThumbnailFiles(for: recordId)
+    let keys = stateQueue.sync {
+      Array(memoryCacheKeysByRecordId.removeValue(forKey: recordId) ?? [])
+    }
+    keys.forEach { key in
+      memoryCache.removeObject(forKey: NSString(string: key))
+    }
   }
 
   // MARK: - Private
 
-  private func resolveThumbnailImage(for record: CaptureHistoryRecord) -> NSImage? {
-    if let cachedURL = existingThumbnailURL(for: record),
+  private func resolveThumbnailImage(for record: CaptureHistoryRecord, identity: ThumbnailCacheIdentity) -> NSImage? {
+    if let cachedURL = existingThumbnailURL(for: record, identity: identity),
       let cachedImage = decodeThumbnail(at: cachedURL)
     {
       return cachedImage
@@ -193,9 +201,9 @@ final class HistoryThumbnailGenerator {
     let generatedThumbnail: GeneratedThumbnail?
     switch record.captureType {
     case .screenshot, .gif:
-      generatedThumbnail = generateImageThumbnail(for: record)
+      generatedThumbnail = generateImageThumbnail(for: record, identity: identity)
     case .video:
-      generatedThumbnail = generateVideoThumbnail(for: record)
+      generatedThumbnail = generateVideoThumbnail(for: record, identity: identity)
     }
 
     guard let generatedThumbnail else { return nil }
@@ -207,7 +215,7 @@ final class HistoryThumbnailGenerator {
     return generatedThumbnail.image
   }
 
-  private func generateImageThumbnail(for record: CaptureHistoryRecord) -> GeneratedThumbnail? {
+  private func generateImageThumbnail(for record: CaptureHistoryRecord, identity: ThumbnailCacheIdentity) -> GeneratedThumbnail? {
     let url = record.fileURL
     let scopedAccess = SandboxFileAccessManager.shared.beginAccessingURL(url)
     defer { scopedAccess.stop() }
@@ -217,10 +225,10 @@ final class HistoryThumbnailGenerator {
       return nil
     }
 
-    return saveThumbnail(cgImage, recordId: record.id)
+    return saveThumbnail(cgImage, identity: identity)
   }
 
-  private func generateVideoThumbnail(for record: CaptureHistoryRecord) -> GeneratedThumbnail? {
+  private func generateVideoThumbnail(for record: CaptureHistoryRecord, identity: ThumbnailCacheIdentity) -> GeneratedThumbnail? {
     let url = record.fileURL
     let scopedAccess = SandboxFileAccessManager.shared.beginAccessingURL(url)
     defer { scopedAccess.stop() }
@@ -243,15 +251,15 @@ final class HistoryThumbnailGenerator {
 
     do {
       let cgImage = try imageGenerator.copyCGImage(at: time, actualTime: nil)
-      return saveThumbnail(cgImage, recordId: record.id)
+      return saveThumbnail(cgImage, identity: identity)
     } catch {
       logger.error("Failed to generate video thumbnail: \(error.localizedDescription)")
       return nil
     }
   }
 
-  private func existingThumbnailURL(for record: CaptureHistoryRecord) -> URL? {
-    let currentURL = defaultThumbnailURL(for: record.id)
+  private func existingThumbnailURL(for record: CaptureHistoryRecord, identity: ThumbnailCacheIdentity) -> URL? {
+    let currentURL = identity.thumbnailURL
 
     if FileManager.default.fileExists(atPath: currentURL.path) {
       return currentURL
@@ -268,16 +276,57 @@ final class HistoryThumbnailGenerator {
     return storedURL
   }
 
-  private func defaultThumbnailURL(for recordId: UUID) -> URL {
-    thumbnailsDirectory.appendingPathComponent("\(recordId.uuidString)-\(cacheVersion).jpg")
+  private func cacheIdentity(for record: CaptureHistoryRecord) -> ThumbnailCacheIdentity {
+    let signature = sourceFileSignature(for: record) ?? "missing"
+    let cacheKey = "\(record.id.uuidString)-\(cacheVersion)-\(signature)"
+    return ThumbnailCacheIdentity(
+      recordId: record.id,
+      cacheKey: cacheKey,
+      thumbnailURL: thumbnailsDirectory.appendingPathComponent("\(cacheKey).jpg")
+    )
+  }
+
+  private func sourceFileSignature(for record: CaptureHistoryRecord) -> String? {
+    let attributes = SandboxFileAccessManager.shared.withScopedAccess(to: record.fileURL) {
+      try? FileManager.default.attributesOfItem(atPath: record.filePath)
+    }
+    guard let attributes else { return nil }
+
+    let modifiedAt = (attributes[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0
+    let modifiedAtMs = Int64((modifiedAt * 1000).rounded())
+    let fileSize = (attributes[.size] as? NSNumber)?.int64Value ?? 0
+    return "\(modifiedAtMs)-\(fileSize)"
   }
 
   private func legacyThumbnailURL(for recordId: UUID) -> URL {
     thumbnailsDirectory.appendingPathComponent("\(recordId.uuidString).jpg")
   }
 
-  private func cacheKey(for recordId: UUID) -> NSString {
-    NSString(string: "\(recordId.uuidString)-\(cacheVersion)")
+  private func deleteThumbnailFiles(for recordId: UUID, keeping keptURL: URL? = nil) {
+    let prefix = "\(recordId.uuidString)-"
+    let contents = (try? FileManager.default.contentsOfDirectory(
+      at: thumbnailsDirectory,
+      includingPropertiesForKeys: nil
+    )) ?? []
+
+    for url in contents where url.lastPathComponent.hasPrefix(prefix) {
+      if keptURL?.standardizedFileURL == url.standardizedFileURL { continue }
+      try? FileManager.default.removeItem(at: url)
+    }
+
+    let legacyURL = legacyThumbnailURL(for: recordId)
+    if keptURL?.standardizedFileURL != legacyURL.standardizedFileURL {
+      try? FileManager.default.removeItem(at: legacyURL)
+    }
+  }
+
+  private func storeInMemory(_ image: NSImage, identity: ThumbnailCacheIdentity, cost: Int) {
+    memoryCache.setObject(image, forKey: NSString(string: identity.cacheKey), cost: cost)
+    stateQueue.sync {
+      var keys = memoryCacheKeysByRecordId[identity.recordId] ?? []
+      keys.insert(identity.cacheKey)
+      memoryCacheKeysByRecordId[identity.recordId] = keys
+    }
   }
 
   private func downsampledImage(at url: URL) -> CGImage? {
@@ -316,8 +365,8 @@ final class HistoryThumbnailGenerator {
     )
   }
 
-  private func saveThumbnail(_ image: CGImage, recordId: UUID) -> GeneratedThumbnail? {
-    let url = defaultThumbnailURL(for: recordId)
+  private func saveThumbnail(_ image: CGImage, identity: ThumbnailCacheIdentity) -> GeneratedThumbnail? {
+    let url = identity.thumbnailURL
 
     guard let destination = CGImageDestinationCreateWithURL(
       url as CFURL,
@@ -325,7 +374,7 @@ final class HistoryThumbnailGenerator {
       1,
       nil
     ) else {
-      logger.warning("Failed to create thumbnail destination for \(recordId)")
+      logger.warning("Failed to create thumbnail destination for \(identity.recordId)")
       return nil
     }
 
@@ -335,14 +384,11 @@ final class HistoryThumbnailGenerator {
     CGImageDestinationAddImage(destination, image, properties as CFDictionary)
 
     guard CGImageDestinationFinalize(destination) else {
-      logger.warning("Failed to encode thumbnail as JPEG for \(recordId)")
+      logger.warning("Failed to encode thumbnail as JPEG for \(identity.recordId)")
       return nil
     }
 
-    let legacyURL = legacyThumbnailURL(for: recordId)
-    if legacyURL != url {
-      try? FileManager.default.removeItem(at: legacyURL)
-    }
+    deleteThumbnailFiles(for: identity.recordId, keeping: url)
 
     let thumbnailImage = NSImage(
       cgImage: image,
@@ -352,13 +398,19 @@ final class HistoryThumbnailGenerator {
     do {
       let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
       let fileSize = (attributes[.size] as? NSNumber)?.intValue ?? 0
-      memoryCache.setObject(thumbnailImage, forKey: cacheKey(for: recordId), cost: max(fileSize, 1))
+      storeInMemory(thumbnailImage, identity: identity, cost: max(fileSize, 1))
       return GeneratedThumbnail(url: url, image: thumbnailImage)
     } catch {
       logger.error("Failed to read thumbnail metadata: \(error.localizedDescription)")
       return nil
     }
   }
+}
+
+private struct ThumbnailCacheIdentity {
+  let recordId: UUID
+  let cacheKey: String
+  let thumbnailURL: URL
 }
 
 private struct GeneratedThumbnail {

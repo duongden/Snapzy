@@ -58,6 +58,7 @@ final class AnnotateExporter {
       try SandboxFileAccessManager.shared.withScopedAccess(to: url.deletingLastPathComponent()) {
         try data.write(to: url, options: .atomic)
       }
+      CaptureHistoryStore.shared.markFileChanged(at: url)
       SoundManager.play("Pop")
       return true
     } catch {
@@ -81,6 +82,7 @@ final class AnnotateExporter {
       try SandboxFileAccessManager.shared.withScopedAccess(to: sourceURL.deletingLastPathComponent()) {
         try data.write(to: sourceURL, options: .atomic)
       }
+      CaptureHistoryStore.shared.markFileChanged(at: sourceURL)
       return true
     } catch {
       DiagnosticLogger.shared.logError(.annotate, error, "Background save failed")

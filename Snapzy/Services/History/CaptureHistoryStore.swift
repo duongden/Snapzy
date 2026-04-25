@@ -12,6 +12,10 @@ import os.log
 
 private let logger = Logger(subsystem: "Snapzy", category: "CaptureHistoryStore")
 
+extension Notification.Name {
+  static let captureHistoryFileDidChange = Notification.Name("captureHistoryFileDidChange")
+}
+
 /// Manages persistent storage of capture history records using SQLite via GRDB
 @MainActor
 final class CaptureHistoryStore: ObservableObject {
@@ -205,6 +209,52 @@ final class CaptureHistoryStore: ObservableObject {
     }
   }
 
+  /// Mark matching history rows stale after their backing file was overwritten.
+  @discardableResult
+  func markFileChanged(at url: URL) -> [UUID] {
+    let filePath = url.path
+    let fileName = url.lastPathComponent
+    let fileSize = currentFileSize(at: url)
+    var updatedIds: [UUID] = []
+
+    do {
+      try dbPool.write { db in
+        let matchingRecords = try CaptureHistoryRecord
+          .filter(Column("filePath") == filePath)
+          .fetchAll(db)
+
+        for var record in matchingRecords {
+          updatedIds.append(record.id)
+          record.fileName = fileName
+          record.fileSize = fileSize
+          record.thumbnailPath = nil
+          try record.update(db)
+        }
+      }
+
+      guard !updatedIds.isEmpty else { return [] }
+
+      for id in updatedIds {
+        HistoryThumbnailGenerator.shared.deleteThumbnail(for: id)
+      }
+
+      NotificationCenter.default.post(
+        name: .captureHistoryFileDidChange,
+        object: self,
+        userInfo: [
+          "filePath": filePath,
+          "recordIDs": updatedIds,
+        ]
+      )
+
+      logger.info("Marked \(updatedIds.count) history thumbnail(s) stale for file: \(fileName)")
+      return updatedIds
+    } catch {
+      logger.error("Failed to mark history file changed: \(error.localizedDescription)")
+      return []
+    }
+  }
+
   /// Check whether an active history record exists for a given file path
   func hasRecord(forFilePath filePath: String) -> Bool {
     do {
@@ -326,5 +376,16 @@ final class CaptureHistoryStore: ObservableObject {
   /// Most recent N records
   func recentRecords(limit: Int = 5) -> [CaptureHistoryRecord] {
     Array(records.prefix(limit))
+  }
+
+  private func currentFileSize(at url: URL) -> Int64 {
+    SandboxFileAccessManager.shared.withScopedAccess(to: url) {
+      do {
+        let attrs = try FileManager.default.attributesOfItem(atPath: url.path)
+        return (attrs[.size] as? NSNumber)?.int64Value ?? 0
+      } catch {
+        return 0
+      }
+    }
   }
 }
