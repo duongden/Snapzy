@@ -101,6 +101,16 @@ final class AnnotateState: ObservableObject {
     case selectedItem
   }
 
+  enum DragToAppPreparationState: Equatable {
+    case unavailable
+    case preparing
+    case ready
+
+    var isInteractive: Bool {
+      self == .ready
+    }
+  }
+
   @Published var editorMode: EditorMode = .annotate
 
   // MARK: - UI State
@@ -108,6 +118,7 @@ final class AnnotateState: ObservableObject {
   @Published var showSidebar: Bool = false
   @Published var zoomLevel: CGFloat = 1.0
   @Published var isPinned: Bool = false
+  @Published private(set) var dragToAppPreparationState: DragToAppPreparationState
 
   static let minimumZoomLevel: CGFloat = 0.25
   static let defaultMaximumZoomLevel: CGFloat = 4.0
@@ -870,6 +881,7 @@ final class AnnotateState: ObservableObject {
     self.cloudURL = cloudURL
     self.cloudKey = cloudKey
     self.isCloudStale = isCloudStale
+    self.dragToAppPreparationState = .ready
     loadCanvasPresets()
   }
 
@@ -880,6 +892,7 @@ final class AnnotateState: ObservableObject {
     self.quickAccessItemId = nil
     self.cloudURL = nil
     self.cloudKey = nil
+    self.dragToAppPreparationState = .unavailable
     loadCanvasPresets()
   }
 
@@ -1042,6 +1055,11 @@ final class AnnotateState: ObservableObject {
     importWarningMessage = nil
   }
 
+  func setDragToAppPreparationState(_ newState: DragToAppPreparationState) {
+    guard dragToAppPreparationState != newState else { return }
+    dragToAppPreparationState = newState
+  }
+
   private func resetCanvasForNewBaseImage(image: NSImage, url: URL?) {
     resetBackgroundCutoutState(markUnsaved: false)
     sourceImage = image
@@ -1066,6 +1084,7 @@ final class AnnotateState: ObservableObject {
     hasUnsavedChanges = false
     importWarningMessage = nil
     lastImportWarningSignature = nil
+    dragToAppPreparationState = url == nil ? .preparing : .ready
   }
 
   // MARK: - Background Cutout

@@ -160,31 +160,74 @@ struct AnnotateBottomBarView: View {
   @State private var isDragHovering = false
 
   private var dragHandle: some View {
-    AnnotateDragHandleView(state: state)
+    let dragState = state.dragToAppPreparationState
+
+    return AnnotateDragHandleView(state: state)
       .frame(width: 160, height: 32)
       .overlay(
         HStack(spacing: 6) {
-          Image(systemName: "hand.draw")
-            .font(.system(size: 13, weight: .medium))
-            .foregroundColor(isDragHovering ? .primary : .secondary)
+          if dragState == .preparing {
+            ProgressView()
+              .controlSize(.small)
+              .scaleEffect(0.7)
+              .tint(isDragHovering ? .primary : .secondary)
+          } else {
+            Image(systemName: "hand.draw")
+              .font(.system(size: 13, weight: .medium))
+              .foregroundColor(isDragHovering ? .primary : .secondary)
+          }
 
           Text(L10n.AnnotateUI.dragToApp)
             .font(.system(size: 12, weight: .medium))
-            .foregroundColor(isDragHovering ? .primary : .secondary)
+            .foregroundColor(dragLabelColor(for: dragState))
         }
         .allowsHitTesting(false)
       )
       .background(
         Capsule()
-          .fill(isDragHovering ? Color.primary.opacity(0.12) : Color.primary.opacity(0.06))
+          .fill(dragBackgroundColor(for: dragState))
       )
       .overlay(
         Capsule()
-          .strokeBorder(Color.primary.opacity(isDragHovering ? 0.2 : 0.1), lineWidth: 1)
+          .strokeBorder(dragBorderColor(for: dragState), lineWidth: 1)
       )
       .onHover { isDragHovering = $0 }
       .animation(.easeInOut(duration: 0.15), value: isDragHovering)
+      .animation(.easeInOut(duration: 0.15), value: dragState)
       .help(L10n.AnnotateUI.dragToAppHelp)
+  }
+
+  private func dragLabelColor(for state: AnnotateState.DragToAppPreparationState) -> Color {
+    switch state {
+    case .ready:
+      return isDragHovering ? .primary : .secondary
+    case .preparing:
+      return .primary
+    case .unavailable:
+      return .secondary.opacity(0.6)
+    }
+  }
+
+  private func dragBackgroundColor(for state: AnnotateState.DragToAppPreparationState) -> Color {
+    switch state {
+    case .ready:
+      return isDragHovering ? Color.primary.opacity(0.12) : Color.primary.opacity(0.06)
+    case .preparing:
+      return Color.accentColor.opacity(isDragHovering ? 0.12 : 0.08)
+    case .unavailable:
+      return Color.primary.opacity(0.04)
+    }
+  }
+
+  private func dragBorderColor(for state: AnnotateState.DragToAppPreparationState) -> Color {
+    switch state {
+    case .ready:
+      return Color.primary.opacity(isDragHovering ? 0.2 : 0.1)
+    case .preparing:
+      return Color.accentColor.opacity(isDragHovering ? 0.35 : 0.22)
+    case .unavailable:
+      return Color.primary.opacity(0.08)
+    }
   }
 
   // MARK: - Action Buttons
