@@ -5,6 +5,7 @@
 //  SwiftUI overlay for inline text annotation editing
 //
 
+import AppKit
 import SwiftUI
 
 /// Overlay for editing text annotations inline on the canvas
@@ -34,7 +35,11 @@ struct TextEditOverlay: View {
          case .text(let currentText) = annotation.type {
 
         let displayBounds = calculateDisplayBounds(annotation.bounds)
-        let fontSize = max(annotation.properties.fontSize * scale, 10)
+        let displayFont = AnnotateTextLayout.displayFont(
+          size: annotation.properties.fontSize,
+          fontName: annotation.properties.fontName,
+          scale: scale
+        )
         let fieldWidth = max(displayBounds.width, minTextFieldWidth)
         // Use measured textHeight which accounts for TextEditor's narrower
         // rendering width, plus vertical padding for TextEditor's chrome
@@ -42,7 +47,7 @@ struct TextEditOverlay: View {
 
         // Multiline text editor positioned at annotation bounds (top-left anchored)
         TextEditor(text: $editingText)
-          .font(.system(size: fontSize))
+          .font(Font(displayFont))
           .foregroundColor(annotation.properties.strokeColor)
           .scrollContentBackground(.hidden)
           .scrollDisabled(true)
@@ -59,7 +64,7 @@ struct TextEditOverlay: View {
           )
           .onAppear {
             editingText = currentText
-            recalculateHeight(text: currentText, fontSize: fontSize, width: fieldWidth)
+            recalculateHeight(text: currentText, font: displayFont, width: fieldWidth)
             // Delay focus to ensure view is ready
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
               isFocused = true
@@ -69,7 +74,7 @@ struct TextEditOverlay: View {
             cancelEdit()
           }
           .onChange(of: editingText) { newValue in
-            recalculateHeight(text: newValue, fontSize: fontSize, width: fieldWidth)
+            recalculateHeight(text: newValue, font: displayFont, width: fieldWidth)
             // Live-update annotation text and bounds
             if let editingId = state.editingTextAnnotationId {
               state.updateAnnotationText(id: editingId, text: newValue)
@@ -87,11 +92,11 @@ struct TextEditOverlay: View {
   /// Recalculate editor height based on wrapped text content.
   /// We subtract TextEditor's internal horizontal insets from the measurement
   /// width so that wrap predictions match the actual narrower rendering area.
-  private func recalculateHeight(text: String, fontSize: CGFloat, width: CGFloat) {
+  private func recalculateHeight(text: String, font: NSFont, width: CGFloat) {
     let effectiveWidth = max(width - textEditorHorizontalInsets, minTextFieldWidth)
     textHeight = AnnotateTextLayout.measuredHeight(
       text: text,
-      font: AnnotateTextLayout.font(size: fontSize),
+      font: font,
       constrainedWidth: effectiveWidth
     )
   }

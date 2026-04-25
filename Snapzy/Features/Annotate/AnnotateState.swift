@@ -2832,6 +2832,17 @@ enum AnnotateTextLayout {
     return NSFont.systemFont(ofSize: clampedSize)
   }
 
+  static func displayFont(size: CGFloat, fontName: String? = nil, scale: CGFloat) -> NSFont {
+    let baseFont = font(size: size, fontName: fontName)
+    let displaySize = max(baseFont.pointSize * scale, 1)
+
+    if let scaledFont = NSFont(descriptor: baseFont.fontDescriptor, size: displaySize) {
+      return scaledFont
+    }
+
+    return NSFont.systemFont(ofSize: displaySize)
+  }
+
   static func bounds(
     text: String,
     font: NSFont,
