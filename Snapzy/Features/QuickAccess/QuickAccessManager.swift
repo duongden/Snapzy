@@ -77,6 +77,8 @@ final class QuickAccessManager: ObservableObject {
   private var dismissTimers: [UUID: QuickAccessCountdownTimer] = [:]
   /// Tracks which item IDs are currently being edited (paused by editor)
   private var editingItemIds: Set<UUID> = []
+  /// Tracks items doing async work, such as GIF conversion or cloud upload.
+  private var activityHoldItemIds: Set<UUID> = []
 
   // MARK: - UserDefaults Keys (preserved for backward compatibility)
 
@@ -217,6 +219,7 @@ final class QuickAccessManager: ObservableObject {
     guard let item = items.first(where: { $0.id == id }) else {
       cancelDismissTimer(for: id)
       editingItemIds.remove(id)
+      activityHoldItemIds.remove(id)
       return
     }
 
@@ -245,6 +248,7 @@ final class QuickAccessManager: ObservableObject {
 
     cancelDismissTimer(for: id)
     editingItemIds.remove(id)
+    activityHoldItemIds.remove(id)
     // Clear annotation session cache for this item
     AnnotateManager.shared.clearSessionData(for: id)
     // Fast animation (0.15s) for immediate perceived response
@@ -268,6 +272,7 @@ final class QuickAccessManager: ObservableObject {
   func dismissCard(id: UUID) {
     cancelDismissTimer(for: id)
     editingItemIds.remove(id)
+    activityHoldItemIds.remove(id)
     // Clear annotation session cache for this item
     AnnotateManager.shared.clearSessionData(for: id)
     withAnimation(.spring(response: 0.15, dampingFraction: 0.8)) {
@@ -282,6 +287,11 @@ final class QuickAccessManager: ObservableObject {
   func updateProcessingState(id: UUID, state: QuickAccessProcessingState) {
     guard let index = items.firstIndex(where: { $0.id == id }) else { return }
     items[index].processingState = state
+    if state == .idle {
+      resumeCountdownForActivity(id)
+    } else {
+      pauseCountdownForActivity(id)
+    }
   }
 
   /// Replace item URL and thumbnail after processing (e.g. GIF conversion)
@@ -296,7 +306,9 @@ final class QuickAccessManager: ObservableObject {
       capturedAt: existing.capturedAt,
       itemType: existing.itemType,
       duration: existing.duration,
-      cloudURL: existing.cloudURL
+      cloudURL: existing.cloudURL,
+      cloudKey: existing.cloudKey,
+      isCloudStale: existing.isCloudStale
     )
   }
 
@@ -373,7 +385,9 @@ final class QuickAccessManager: ObservableObject {
       capturedAt: existing.capturedAt,
       itemType: existing.itemType,
       duration: existing.duration,
-      cloudURL: existing.cloudURL
+      cloudURL: existing.cloudURL,
+      cloudKey: existing.cloudKey,
+      isCloudStale: existing.isCloudStale
     )
     logger.info("Thumbnail refreshed for \(url.lastPathComponent)")
   }
@@ -387,6 +401,7 @@ final class QuickAccessManager: ObservableObject {
     }
     items.removeAll()
     editingItemIds.removeAll()
+    activityHoldItemIds.removeAll()
     panelController.hide()
   }
 
@@ -490,6 +505,7 @@ final class QuickAccessManager: ObservableObject {
     // Remove card immediately (don't trigger temp file deletion since we're saving)
     cancelDismissTimer(for: id)
     editingItemIds.remove(id)
+    activityHoldItemIds.remove(id)
     withAnimation(.spring(response: 0.15, dampingFraction: 0.8)) {
       items.removeAll { $0.id == id }
     }
@@ -555,14 +571,8 @@ final class QuickAccessManager: ObservableObject {
     dismissTimers[id] = timer
     timer.start()
 
-    // If an edit session is active, pause this new card if it's newer than an edited item
-    if !editingItemIds.isEmpty, let newIndex = items.firstIndex(where: { $0.id == id }) {
-      for editId in editingItemIds {
-        if let editIndex = items.firstIndex(where: { $0.id == editId }), newIndex < editIndex {
-          timer.pause()
-          break
-        }
-      }
+    if isItemCountdownHeld(id) {
+      timer.pause()
     }
   }
 
@@ -580,9 +590,26 @@ final class QuickAccessManager: ObservableObject {
 
   /// Resume countdown for a single item (used by hover un-hover)
   func resumeCountdown(for id: UUID) {
-    // Don't resume if the item should stay paused due to an active editing session
-    guard !isItemPausedByEditing(id) else { return }
+    // Don't resume if an editor, upload, or conversion still owns the countdown.
+    guard !isItemCountdownHeld(id) else { return }
     dismissTimers[id]?.resume()
+  }
+
+  /// Pause countdown while an async activity is running for an item.
+  func pauseCountdownForActivity(_ id: UUID) {
+    activityHoldItemIds.insert(id)
+    dismissTimers[id]?.pause()
+  }
+
+  /// Resume countdown after an async activity finishes, unless another hold remains.
+  func resumeCountdownForActivity(_ id: UUID) {
+    activityHoldItemIds.remove(id)
+    guard !isItemCountdownHeld(id) else { return }
+    dismissTimers[id]?.resume()
+  }
+
+  private func isItemCountdownHeld(_ id: UUID) -> Bool {
+    activityHoldItemIds.contains(id) || isItemPausedByEditing(id)
   }
 
   /// Check if an item should remain paused because of an active editing session.
@@ -618,14 +645,14 @@ final class QuickAccessManager: ObservableObject {
       // Item still exists — resume it + items at lower indices (newer)
       for i in 0...editIndex {
         let itemId = items[i].id
-        guard !editingItemIds.contains(itemId) else { continue }
+        guard !isItemCountdownHeld(itemId) else { continue }
         dismissTimers[itemId]?.resume()
       }
     } else {
       // Edited item was already removed (swiped/dismissed during editing).
       // Resume all remaining items that aren't held by another editor.
       for item in items {
-        guard !editingItemIds.contains(item.id) else { continue }
+        guard !isItemCountdownHeld(item.id) else { continue }
         dismissTimers[item.id]?.resume()
       }
     }
@@ -657,7 +684,9 @@ final class QuickAccessManager: ObservableObject {
           capturedAt: existing.capturedAt,
           itemType: existing.itemType,
           duration: existing.duration,
-          cloudURL: existing.cloudURL
+          cloudURL: existing.cloudURL,
+          cloudKey: existing.cloudKey,
+          isCloudStale: existing.isCloudStale
         )
         logger.info("Thumbnail retry succeeded for \(url.lastPathComponent)")
       }

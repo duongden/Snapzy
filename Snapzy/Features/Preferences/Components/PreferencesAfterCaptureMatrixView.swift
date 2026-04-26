@@ -71,8 +71,7 @@ struct AfterCaptureMatrixView: View {
 
   @ViewBuilder
   private func toggleColumn(captureType: CaptureType, action: AfterCaptureAction, type: CaptureType) -> some View {
-    let isDisabled = (action == .openAnnotate && type == .recording)
-      || (action == .uploadToCloud && type == .recording)
+    let isDisabled = action == .openAnnotate && type == .recording
     Toggle("", isOn: cloudAwareBinding(for: action, type: type))
       .labelsHidden()
       .accessibilityLabel(L10n.AfterCapture.accessibilityLabel(action.displayName, captureKind: captureType.displayName))

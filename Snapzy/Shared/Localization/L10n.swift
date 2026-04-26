@@ -5206,7 +5206,7 @@ enum L10n {
     )
     static let uploadToCloudDescription = string(
       "after-capture.upload-to-cloud-description",
-      defaultValue: "Upload screenshot to cloud & copy link",
+      defaultValue: "Upload captures to cloud & copy link",
       comment: "After capture action description"
     )
     static func accessibilityLabel(_ action: String, captureKind: String) -> String {

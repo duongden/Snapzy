@@ -244,8 +244,8 @@ Snapzy/
 
 ## Current Behavior Clarifications
 
-- `Upload to Cloud & copy link` in Preferences is a screenshot-only capability toggle. Current implementation exposes upload actions in Quick Access and Annotate; it does not auto-run inside `PostCaptureActionHandler`.
+- `Upload to Cloud & copy link` in Preferences enables manual cloud actions in Quick Access for screenshots, videos, and GIFs, plus Annotate for screenshots; it does not auto-run inside `PostCaptureActionHandler`.
 - Quick Access can outlive the original capture location: saved captures stay in the export folder, temp captures are deleted when dismissed unless the user explicitly saves them.
-- Annotate and Video Editor both pause Quick Access countdowns for the edited item and resume them when the editor closes.
+- Annotate, Video Editor, GIF conversion, and cloud upload pause Quick Access countdowns for the active item and resume them when the activity ends.
 - During recording, the menu bar item no longer turns into a left-click stop button. It keeps the normal menu path available, adds a live timer to the status item, and exposes stop plus pause/resume from the active menu section.
 - When Preferences is opened during an active recording with own-app capture enabled, Snapzy temporarily excludes that Settings window from the stream instead of forcing the user to stop recording first.

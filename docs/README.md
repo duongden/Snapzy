@@ -50,7 +50,7 @@ flowchart TD
 
     Q --> T["Annotate"]
     Q --> U["Video Editor"]
-    Q --> V["Screenshot cloud upload"]
+    Q --> V["Cloud upload"]
 
     I --> W["PreferencesManager + Theme + Shortcuts + Cloud + Sparkle"]
 ```
@@ -66,7 +66,7 @@ flowchart TD
 ## Current Behavior Notes
 
 - `AfterCaptureAction.save` decides whether captures go straight to the export folder or into `~/Library/Application Support/Snapzy/Captures/` as temp files.
-- `AfterCaptureAction.uploadToCloud` currently enables screenshot cloud-upload entry points in Quick Access and Annotate. It is not executed directly by `PostCaptureActionHandler`.
+- `AfterCaptureAction.uploadToCloud` currently enables Quick Access cloud-upload entry points for screenshots, videos, and GIFs, plus Annotate cloud upload for screenshots. It is not executed directly by `PostCaptureActionHandler`.
 - GIF recording flow first creates a video, inserts it into Quick Access, converts it, then swaps the card to the GIF output.
 - Annotate and Video Editor temporarily elevate Snapzy from accessory mode to regular app mode so the editor windows appear in Dock and Cmd+Tab.
 - During recording, the menu bar item stays menu-first instead of left-click-to-stop. It shows the live timer, keeps Preferences reachable, and temporarily excludes the Settings window from own-app recordings when needed.

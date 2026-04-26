@@ -710,61 +710,61 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Screenshot in die Cloud hochladen und Link kopieren"
+            "value" : "Aufnahmen in die Cloud hochladen und Link kopieren"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Upload screenshot to cloud & copy link"
+            "value" : "Upload captures to cloud & copy link"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Sube captura de pantalla a la nube y copia el enlace"
+            "value" : "Sube capturas a la nube y copia el enlace"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Télécharger une capture d'écran sur le cloud et copier le lien"
+            "value" : "Télécharger les captures sur le cloud et copier le lien"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "スクリーンショットをクラウドにアップロードしてリンクをコピー"
+            "value" : "キャプチャをクラウドにアップロードしてリンクをコピー"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "클라우드에 스크린샷 업로드 및 링크 복사"
+            "value" : "캡처를 클라우드에 업로드하고 링크 복사"
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Загрузите скриншот в облако и скопируйте ссылку"
+            "value" : "Загрузите снимки и записи в облако и скопируйте ссылку"
           }
         },
         "vi" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tải ảnh chụp lên cloud & sao chép liên kết"
+            "value" : "Tải bản chụp/ghi lên cloud & sao chép liên kết"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "将屏幕截图上传到云端并复制链接"
+            "value" : "将捕获内容上传到云端并复制链接"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "將螢幕截圖上傳到雲端並複製鏈接"
+            "value" : "將擷取內容上傳到雲端並複製連結"
           }
         }
       }

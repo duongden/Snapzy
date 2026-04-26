@@ -426,7 +426,7 @@ struct QuickAccessCardView: View {
         }
       }
 
-      // Cloud upload button (bottom-right) — only for screenshots when cloud is configured
+      // Cloud upload button (bottom-right)
       if shouldShowCloudButton {
         let alreadyUploaded = item.cloudURL != nil && !item.isCloudStale
         VStack {
@@ -476,9 +476,8 @@ struct QuickAccessCardView: View {
 
   /// Whether to show the cloud upload button
   private var shouldShowCloudButton: Bool {
-    guard !item.isVideo else { return false }
     guard cloudManager.isConfigured else { return false }
-    let captureType: CaptureType = .screenshot
+    let captureType: CaptureType = item.isVideo ? .recording : .screenshot
     return preferencesManager.isActionEnabled(.uploadToCloud, for: captureType)
   }
 
@@ -489,6 +488,7 @@ struct QuickAccessCardView: View {
 
     isCloudUploading = true
     cloudUploadProgress = 0
+    manager.pauseCountdownForActivity(item.id)
 
     // Animate to 80% quickly to show activity
     withAnimation(.easeOut(duration: 0.4)) {
@@ -499,6 +499,10 @@ struct QuickAccessCardView: View {
     let oldCloudKey = item.cloudKey  // Save old key for cleanup
 
     Task {
+      defer {
+        manager.resumeCountdownForActivity(item.id)
+      }
+
       do {
         let fileAccess = SandboxFileAccessManager.shared.beginAccessingURL(item.url)
         defer { fileAccess.stop() }
