@@ -646,6 +646,10 @@ final class AreaSelectionOverlayView: NSView {
   private var verticalCrosshairLayer: CAShapeLayer!
   private var selectionBorderLayer: CAShapeLayer!
   private var crosshairIndicatorLayer: CAShapeLayer!
+  private var sizeIndicatorBackgroundLayer: CALayer!
+  private var sizeIndicatorTextLayer: CATextLayer!
+  private var modeHintBackgroundLayer: CALayer!
+  private var modeHintTextLayer: CATextLayer!
 
   // Appearance constants
   private let dimColor = NSColor.black.withAlphaComponent(0.4)
@@ -655,6 +659,7 @@ final class AreaSelectionOverlayView: NSView {
   private let crosshairIndicatorSize: CGFloat = 10.0
   private let crosshairIndicatorLineWidth: CGFloat = 1.5
   private let crosshairIndicatorCenterRadius: CGFloat = 6.0
+  private let overlayFont = NSFont.systemFont(ofSize: 12, weight: .medium)
   private var selectionEnabled = true
 
   /// Disabled animations for instant layer updates
@@ -748,6 +753,28 @@ final class AreaSelectionOverlayView: NSView {
     crosshairIndicatorLayer.shadowOpacity = 0.5
     rootLayer.addSublayer(crosshairIndicatorLayer)
 
+    sizeIndicatorBackgroundLayer = CALayer()
+    sizeIndicatorBackgroundLayer.backgroundColor = NSColor.black.withAlphaComponent(0.7).cgColor
+    sizeIndicatorBackgroundLayer.cornerRadius = 4
+    sizeIndicatorBackgroundLayer.actions = disabledActions
+    sizeIndicatorBackgroundLayer.isHidden = true
+    rootLayer.addSublayer(sizeIndicatorBackgroundLayer)
+
+    sizeIndicatorTextLayer = CATextLayer()
+    configureOverlayTextLayer(sizeIndicatorTextLayer)
+    rootLayer.addSublayer(sizeIndicatorTextLayer)
+
+    modeHintBackgroundLayer = CALayer()
+    modeHintBackgroundLayer.backgroundColor = NSColor.black.withAlphaComponent(0.68).cgColor
+    modeHintBackgroundLayer.cornerRadius = 8
+    modeHintBackgroundLayer.actions = disabledActions
+    modeHintBackgroundLayer.isHidden = true
+    rootLayer.addSublayer(modeHintBackgroundLayer)
+
+    modeHintTextLayer = CATextLayer()
+    configureOverlayTextLayer(modeHintTextLayer)
+    rootLayer.addSublayer(modeHintTextLayer)
+
     CATransaction.commit()
   }
 
@@ -825,6 +852,7 @@ final class AreaSelectionOverlayView: NSView {
     verticalCrosshairLayer.isHidden = true
     selectionBorderLayer.isHidden = true
     crosshairIndicatorLayer.isHidden = !selectionEnabled || interactionMode != .manualRegion
+    hideSizeIndicator()
     dimLayer.mask = nil
     dimLayer.frame = bounds
 
@@ -836,7 +864,7 @@ final class AreaSelectionOverlayView: NSView {
       refreshActiveCursor()
     }
 
-    needsDisplay = true
+    updateModeHint()
   }
 
   func setSelectionEnabled(_ enabled: Bool) {
@@ -889,10 +917,12 @@ final class AreaSelectionOverlayView: NSView {
     CATransaction.setDisableActions(true)
     snapshotLayer.frame = bounds
     dimLayer.frame = bounds
+    hideSizeIndicator()
     CATransaction.commit()
 
     // Rebuild tracking areas for new bounds
     updateTrackingAreas()
+    updateModeHint()
   }
 
   // MARK: - First Mouse
@@ -921,51 +951,9 @@ final class AreaSelectionOverlayView: NSView {
     CATransaction.setDisableActions(true)
     snapshotLayer.frame = bounds
     dimLayer.frame = bounds
+    hideSizeIndicator()
     CATransaction.commit()
-  }
-
-  // MARK: - Drawing (Only for size indicator text)
-
-  override func draw(_ dirtyRect: NSRect) {
-    // Only draw size indicator - layers handle dim, crosshair, selection
-    if isSelecting, let rect = calculateSelectionRect() {
-      drawSizeIndicator(for: rect)
-    }
-    drawModeHint()
-  }
-
-  private func drawSizeIndicator(for rect: CGRect) {
-    let sizeText = "\(Int(rect.width)) x \(Int(rect.height))"
-    let attributes: [NSAttributedString.Key: Any] = [
-      .font: NSFont.systemFont(ofSize: 12, weight: .medium),
-      .foregroundColor: NSColor.white,
-    ]
-
-    let textSize = sizeText.size(withAttributes: attributes)
-    let padding: CGFloat = 6
-    var bgRect = CGRect(
-      x: rect.maxX - textSize.width - padding * 2 - 4,
-      y: rect.minY - textSize.height - padding - 8,
-      width: textSize.width + padding * 2,
-      height: textSize.height + padding
-    )
-
-    // Ensure text stays within bounds
-    if bgRect.minY < 0 {
-      bgRect.origin.y = rect.maxY + 4
-    }
-    if bgRect.maxX > bounds.maxX {
-      bgRect.origin.x = rect.minX
-    }
-
-    // Draw background
-    NSColor.black.withAlphaComponent(0.7).setFill()
-    let bgPath = NSBezierPath(roundedRect: bgRect, xRadius: 4, yRadius: 4)
-    bgPath.fill()
-
-    // Draw text
-    let textPoint = CGPoint(x: bgRect.minX + padding, y: bgRect.minY + padding / 2)
-    sizeText.draw(at: textPoint, withAttributes: attributes)
+    updateModeHint()
   }
 
   private func calculateSelectionRect() -> CGRect? {
@@ -1035,11 +1023,9 @@ final class AreaSelectionOverlayView: NSView {
 
     // Update dim layer mask to clear selection area
     updateDimLayerMask(for: rect)
+    updateSizeIndicator(for: rect)
 
     CATransaction.commit()
-
-    // Trigger draw() only for size indicator text
-    needsDisplay = true
   }
 
   private func updateDimLayerMask(for selectionRect: CGRect) {
@@ -1053,17 +1039,97 @@ final class AreaSelectionOverlayView: NSView {
     dimLayer.mask = maskLayer
   }
 
-  private func drawModeHint() {
-    guard selectionMode == .screenshot, allowsApplicationWindowSelection else { return }
+  private var screenScaleFactor: CGFloat {
+    window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2.0
+  }
+
+  private var overlayTextAttributes: [NSAttributedString.Key: Any] {
+    [
+      .font: overlayFont,
+      .foregroundColor: NSColor.white,
+    ]
+  }
+
+  private func configureOverlayTextLayer(_ textLayer: CATextLayer) {
+    textLayer.actions = disabledActions
+    textLayer.font = overlayFont as CTFont
+    textLayer.fontSize = overlayFont.pointSize
+    textLayer.foregroundColor = NSColor.white.cgColor
+    textLayer.alignmentMode = .left
+    textLayer.contentsScale = screenScaleFactor
+    textLayer.truncationMode = .none
+    textLayer.isWrapped = false
+    textLayer.isHidden = true
+  }
+
+  private func updateTextLayerScales() {
+    let scale = screenScaleFactor
+    sizeIndicatorTextLayer.contentsScale = scale
+    modeHintTextLayer.contentsScale = scale
+  }
+
+  private func hideSizeIndicator() {
+    sizeIndicatorBackgroundLayer.isHidden = true
+    sizeIndicatorTextLayer.isHidden = true
+  }
+
+  private func updateSizeIndicator(for rect: CGRect) {
+    let sizeText = "\(Int(rect.width)) x \(Int(rect.height))"
+    let attributes = overlayTextAttributes
+    let textSize = sizeText.size(withAttributes: attributes)
+    let padding: CGFloat = 6
+    var backgroundRect = CGRect(
+      x: rect.maxX - textSize.width - padding * 2 - 4,
+      y: rect.minY - textSize.height - padding - 8,
+      width: textSize.width + padding * 2,
+      height: textSize.height + padding
+    )
+
+    if backgroundRect.minY < bounds.minY {
+      backgroundRect.origin.y = rect.maxY + 4
+    }
+    if backgroundRect.maxY > bounds.maxY {
+      backgroundRect.origin.y = max(bounds.minY + 4, rect.minY - textSize.height - padding - 8)
+    }
+    if backgroundRect.maxX > bounds.maxX {
+      backgroundRect.origin.x = rect.minX
+    }
+
+    let edgeInset: CGFloat = 4
+    if backgroundRect.width <= bounds.width - edgeInset * 2 {
+      backgroundRect.origin.x = min(
+        max(backgroundRect.origin.x, bounds.minX + edgeInset),
+        bounds.maxX - backgroundRect.width - edgeInset
+      )
+    } else {
+      backgroundRect.origin.x = bounds.minX + edgeInset
+    }
+
+    updateTextLayerScales()
+    sizeIndicatorBackgroundLayer.frame = backgroundRect
+    sizeIndicatorBackgroundLayer.isHidden = false
+    sizeIndicatorTextLayer.string = sizeText
+    sizeIndicatorTextLayer.frame = CGRect(
+      x: backgroundRect.minX + padding,
+      y: backgroundRect.minY + padding / 2,
+      width: textSize.width,
+      height: textSize.height
+    )
+    sizeIndicatorTextLayer.isHidden = false
+  }
+
+  private func updateModeHint() {
+    guard selectionMode == .screenshot, allowsApplicationWindowSelection else {
+      modeHintBackgroundLayer.isHidden = true
+      modeHintTextLayer.isHidden = true
+      return
+    }
 
     let shortcut = CaptureOverlayShortcutSettings.applicationCaptureShortcutDisplay
     let hint = interactionMode == .manualRegion
       ? L10n.ScreenCapture.applicationModeHint(shortcut)
       : L10n.ScreenCapture.manualModeHint(shortcut)
-    let attributes: [NSAttributedString.Key: Any] = [
-      .font: NSFont.systemFont(ofSize: 12, weight: .medium),
-      .foregroundColor: NSColor.white,
-    ]
+    let attributes = overlayTextAttributes
     let hintSize = hint.size(withAttributes: attributes)
     let padding = NSEdgeInsets(top: 6, left: 10, bottom: 6, right: 10)
     let backgroundRect = CGRect(
@@ -1073,17 +1139,22 @@ final class AreaSelectionOverlayView: NSView {
       height: hintSize.height + padding.top + padding.bottom
     )
 
-    NSColor.black.withAlphaComponent(0.68).setFill()
-    NSBezierPath(roundedRect: backgroundRect, xRadius: 8, yRadius: 8).fill()
-    hint.draw(
-      at: CGPoint(x: backgroundRect.minX + padding.left, y: backgroundRect.minY + padding.bottom - 1),
-      withAttributes: attributes
+    updateTextLayerScales()
+    modeHintBackgroundLayer.frame = backgroundRect
+    modeHintBackgroundLayer.isHidden = false
+    modeHintTextLayer.string = hint
+    modeHintTextLayer.frame = CGRect(
+      x: backgroundRect.minX + padding.left,
+      y: backgroundRect.minY + padding.bottom - 1,
+      width: hintSize.width,
+      height: hintSize.height
     )
+    modeHintTextLayer.isHidden = false
   }
 
   func setAllowsApplicationWindowSelection(_ allowsApplicationWindowSelection: Bool) {
     self.allowsApplicationWindowSelection = allowsApplicationWindowSelection
-    needsDisplay = true
+    updateModeHint()
   }
 
   func setInteractionMode(
@@ -1097,7 +1168,7 @@ final class AreaSelectionOverlayView: NSView {
       refreshInteractionState()
     }
     refreshActiveCursor()
-    needsDisplay = true
+    updateModeHint()
   }
 
   func setWindowSelectionSnapshot(_ windowSelectionSnapshot: WindowSelectionSnapshot?) {
@@ -1154,6 +1225,7 @@ final class AreaSelectionOverlayView: NSView {
     crosshairIndicatorLayer.isHidden = true
     horizontalCrosshairLayer.isHidden = true
     verticalCrosshairLayer.isHidden = true
+    hideSizeIndicator()
 
     if let hoveredWindowCandidate {
       let localRect = convertToLocalRect(hoveredWindowCandidate.target.frame).intersection(bounds)
@@ -1171,7 +1243,7 @@ final class AreaSelectionOverlayView: NSView {
     }
 
     CATransaction.commit()
-    needsDisplay = true
+    updateModeHint()
   }
 
   private func convertToLocalRect(_ screenRect: CGRect) -> CGRect {
