@@ -10,7 +10,10 @@ import SwiftUI
 struct HistoryToolbar: View {
   @Binding var searchText: String
   let selectedCount: Int
+  let canSelectAll: Bool
+  let onSelectAll: () -> Void
   let onClearSelection: () -> Void
+  let onDeleteSelection: () -> Void
 
   var body: some View {
     HStack(spacing: 12) {
@@ -39,15 +42,30 @@ struct HistoryToolbar: View {
 
       // Selection info
       if selectedCount > 0 {
-        Text("\(selectedCount) selected")
+        Text(L10n.PreferencesHistory.selectedCaptures(selectedCount))
           .font(.caption)
           .foregroundColor(.secondary)
 
+        if canSelectAll {
+          Button(action: onSelectAll) {
+            Text(L10n.PreferencesHistory.selectAll)
+              .font(.caption)
+          }
+          .buttonStyle(PlainButtonStyle())
+        }
+
         Button(action: onClearSelection) {
-          Text("Clear")
+          Text(L10n.PreferencesHistory.clearSelection)
             .font(.caption)
         }
         .buttonStyle(PlainButtonStyle())
+
+        Button(action: onDeleteSelection) {
+          Label(L10n.Common.deleteAction, systemImage: "trash")
+            .font(.caption)
+        }
+        .buttonStyle(PlainButtonStyle())
+        .foregroundColor(.red)
       }
     }
     .padding(.horizontal)

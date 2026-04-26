@@ -34,14 +34,7 @@ struct HistoryContextMenu: View {
     Divider()
 
     Button("Delete") {
-      let access = SandboxFileAccessManager.shared.beginAccessingURL(record.fileURL)
-      let exists = FileManager.default.fileExists(atPath: record.filePath)
-      access.stop()
-      if exists {
-        try? NSWorkspace.shared.recycle([record.fileURL])
-      }
-      CaptureHistoryStore.shared.remove(id: record.id)
-      HistoryThumbnailGenerator.shared.deleteThumbnail(for: record.id)
+      HistoryWindowController.shared.deleteRecords([record], asksConfirmation: false)
     }
   }
 }

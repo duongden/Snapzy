@@ -76,23 +76,41 @@ final class CaptureHistoryStore: ObservableObject {
 
   /// Remove a record by ID and delete its thumbnail if present
   func remove(id: UUID) {
+    remove(ids: [id])
+  }
+
+  /// Remove multiple records by ID and delete their stored thumbnails if present
+  func remove(ids: [UUID]) {
+    let uniqueIds = Array(Set(ids))
+    guard !uniqueIds.isEmpty else { return }
+
     do {
-      let thumbnailPath = try dbPool.read { db in
-        try CaptureHistoryRecord.fetchOne(db, id: id)?.thumbnailPath
-      }
+      var thumbnailPaths: [String] = []
+      var removedCount = 0
 
       try dbPool.write { db in
-        _ = try CaptureHistoryRecord.deleteOne(db, id: id)
+        for id in uniqueIds {
+          if let thumbnailPath = try CaptureHistoryRecord.fetchOne(db, id: id)?.thumbnailPath {
+            thumbnailPaths.append(thumbnailPath)
+          }
+
+          if try CaptureHistoryRecord.deleteOne(db, id: id) {
+            removedCount += 1
+          }
+        }
       }
 
-      // Clean up thumbnail file
-      if let thumbnailPath = thumbnailPath {
+      // Clean up stored thumbnail files
+      for thumbnailPath in thumbnailPaths {
         try? FileManager.default.removeItem(atPath: thumbnailPath)
       }
 
-      logger.info("Capture history record removed: \(id)")
+      if removedCount > 0 {
+        refreshRecords()
+        logger.info("Capture history records removed: \(removedCount)")
+      }
     } catch {
-      logger.error("Failed to remove capture history record: \(error.localizedDescription)")
+      logger.error("Failed to remove capture history records: \(error.localizedDescription)")
     }
   }
 
@@ -376,6 +394,18 @@ final class CaptureHistoryStore: ObservableObject {
   /// Most recent N records
   func recentRecords(limit: Int = 5) -> [CaptureHistoryRecord] {
     Array(records.prefix(limit))
+  }
+
+  private func refreshRecords() {
+    do {
+      records = try dbPool.read { db in
+        try CaptureHistoryRecord
+          .order(Column("capturedAt").desc)
+          .fetchAll(db)
+      }
+    } catch {
+      logger.error("Failed to refresh capture history records: \(error.localizedDescription)")
+    }
   }
 
   private func currentFileSize(at url: URL) -> Int64 {

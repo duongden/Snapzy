@@ -122,21 +122,13 @@ struct HistoryExpandedCaptureCardView: View {
 
         HStack(spacing: 8) {
           typeBadge
-
-          if isSelected {
-            Image(systemName: "checkmark.circle.fill")
-              .font(.system(size: 15, weight: .bold))
-              .foregroundColor(.accentColor)
-              .padding(6)
-              .background(Color.white.opacity(colorScheme == .dark ? 0.12 : 0.78), in: Circle())
-          }
         }
         .padding(8)
       }
       .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
       .overlay(
         RoundedRectangle(cornerRadius: 16, style: .continuous)
-          .stroke(previewBorderColor, lineWidth: isSelected ? 1.8 : 1)
+          .stroke(previewBorderColor, lineWidth: 1)
       )
     }
     .aspectRatio(16 / 10, contentMode: .fit)
@@ -179,9 +171,6 @@ struct HistoryExpandedCaptureCardView: View {
   }
 
   private var previewBorderColor: Color {
-    if isSelected {
-      return Color.accentColor.opacity(0.76)
-    }
     return colorScheme == .dark ? Color.white.opacity(0.08) : Color.black.opacity(0.05)
   }
 

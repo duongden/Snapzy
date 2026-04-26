@@ -72,6 +72,11 @@ final class HistoryFloatingPanel: NSPanel {
   override func keyDown(with event: NSEvent) {
     let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
 
+    if !isTextInputActive, flags.isEmpty, (event.keyCode == 51 || event.keyCode == 117) {
+      NotificationCenter.default.post(name: .historyDeleteSelection, object: self)
+      return
+    }
+
     if !isTextInputActive, flags.isEmpty, (event.keyCode == 36 || event.keyCode == 76) {
       NotificationCenter.default.post(name: .historyActivateSelection, object: self)
       return

@@ -10,6 +10,7 @@ import SwiftUI
 struct HistoryGridView: View {
   let records: [CaptureHistoryRecord]
   @Binding var selectedIds: Set<UUID>
+  @State private var lastSelectedId: UUID?
 
   private let columns = [
     GridItem(.adaptive(minimum: 140, maximum: 180), spacing: 12)
@@ -38,19 +39,27 @@ struct HistoryGridView: View {
   }
 
   private func handleTap(record: CaptureHistoryRecord) {
-    if NSEvent.modifierFlags.contains(.command) {
-      // Cmd+click toggle
+    let flags = NSEvent.modifierFlags.intersection(.deviceIndependentFlagsMask)
+
+    if flags.contains(.shift), let lastSelectedId,
+      let startIndex = records.firstIndex(where: { $0.id == lastSelectedId }),
+      let endIndex = records.firstIndex(where: { $0.id == record.id })
+    {
+      let range = min(startIndex, endIndex)...max(startIndex, endIndex)
+      selectedIds.formUnion(records[range].map(\.id))
+    } else if flags.contains(.command) {
       if selectedIds.contains(record.id) {
         selectedIds.remove(record.id)
       } else {
         selectedIds.insert(record.id)
       }
-    } else if NSEvent.modifierFlags.contains(.shift) {
-      // Shift+click range selection (simplified)
+      lastSelectedId = record.id
+    } else if flags.contains(.shift) {
       selectedIds.insert(record.id)
+      lastSelectedId = record.id
     } else {
-      // Single click
       selectedIds = [record.id]
+      lastSelectedId = record.id
     }
   }
 }

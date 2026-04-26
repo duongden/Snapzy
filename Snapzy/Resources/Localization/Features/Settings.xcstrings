@@ -4417,6 +4417,22 @@
         }
       }
     },
+    "preferences-history.clear-selection" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Clear"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bỏ chọn"
+          }
+        }
+      }
+    },
     "preferences-history.default-filter-description" : {
       "localizations" : {
         "en" : {
@@ -4461,6 +4477,54 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Xóa ảnh và video cũ hơn %d ngày"
+          }
+        }
+      }
+    },
+    "preferences-history.delete-selected-alert-message" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Move %d selected capture item(s) to Trash and remove them from History."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chuyển %d mục đã chọn vào Thùng rác và xóa khỏi History."
+          }
+        }
+      }
+    },
+    "preferences-history.delete-selected-alert-title" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete Selected Captures?"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Xóa các mục đã chọn?"
+          }
+        }
+      }
+    },
+    "preferences-history.deleted-captures" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deleted %d capture item(s)"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Đã xóa %d mục"
           }
         }
       }
@@ -4733,6 +4797,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Lưu giữ"
+          }
+        }
+      }
+    },
+    "preferences-history.select-all" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Select All"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chọn tất cả"
+          }
+        }
+      }
+    },
+    "preferences-history.selected-captures" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%d selected"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%d đã chọn"
           }
         }
       }

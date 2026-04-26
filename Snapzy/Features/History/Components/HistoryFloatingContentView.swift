@@ -17,6 +17,8 @@ struct HistoryFloatingContentView: View {
   @State private var selectedCompactFilter: CaptureHistoryType? = nil
   @State private var usesExplicitCompactFilterSelection = false
   @State private var selectedId: UUID? = nil
+  @State private var expandedSelectedIds: Set<UUID> = []
+  @State private var expandedLastSelectedId: UUID?
   @State private var compactScrollOffset: CGFloat = 0
   @State private var compactSelectionRevealTrigger = 0
   @State private var isExpandedGridReady = false
@@ -54,6 +56,10 @@ struct HistoryFloatingContentView: View {
 
   private var expandedRecordIDs: [UUID] {
     expandedRecords.map(\.id)
+  }
+
+  private var expandedSelectedRecords: [CaptureHistoryRecord] {
+    expandedRecords.filter { expandedSelectedIds.contains($0.id) }
   }
 
   private var basePanelSize: CGSize {
@@ -95,9 +101,13 @@ struct HistoryFloatingContentView: View {
         syncSelectionIfNeeded()
       }
       .onChange(of: expandedRecordIDs) { _ in
+        pruneExpandedSelection()
         prefetchExpandedThumbnailsIfNeeded()
       }
       .onChange(of: manager.presentationMode) { _ in
+        if manager.presentationMode != .expanded {
+          clearExpandedSelection()
+        }
         syncSelectionIfNeeded()
         syncExpandedGridPresentation(for: manager.presentationMode)
       }
@@ -108,6 +118,10 @@ struct HistoryFloatingContentView: View {
       .onReceive(NotificationCenter.default.publisher(for: .historyActivateSelection)) { notification in
         guard notification.object is HistoryFloatingPanel else { return }
         openSelectedRecord()
+      }
+      .onReceive(NotificationCenter.default.publisher(for: .historyDeleteSelection)) { notification in
+        guard notification.object is HistoryFloatingPanel else { return }
+        deleteSelectedRecords()
       }
   }
 
@@ -220,15 +234,21 @@ struct HistoryFloatingContentView: View {
   // MARK: - Expanded
 
   private var expandedContent: some View {
-    VStack(spacing: 18) {
-      expandedHeader
+    ZStack(alignment: .bottom) {
+      VStack(spacing: 18) {
+        expandedHeader
 
-      if expandedRecords.isEmpty {
-        expandedEmptyState
-      } else if isExpandedGridReady {
-        expandedGrid
-      } else {
-        expandedGridPlaceholder
+        if expandedRecords.isEmpty {
+          expandedEmptyState
+        } else if isExpandedGridReady {
+          expandedGrid
+        } else {
+          expandedGridPlaceholder
+        }
+      }
+
+      if !expandedSelectedRecords.isEmpty {
+        expandedSelectionBar
       }
     }
     .padding(.horizontal, 20)
@@ -348,16 +368,61 @@ struct HistoryFloatingContentView: View {
     }
   }
 
+  private var expandedSelectionBar: some View {
+    HStack(spacing: 10) {
+      Label(
+        L10n.PreferencesHistory.selectedCaptures(expandedSelectedRecords.count),
+        systemImage: "checkmark.circle.fill"
+      )
+      .font(.system(size: 11, weight: .semibold))
+      .foregroundColor(.primary.opacity(0.84))
+
+      if expandedSelectedRecords.count < expandedRecords.count {
+        selectionControlButton(
+          title: L10n.PreferencesHistory.selectAll,
+          systemName: "checkmark.circle",
+          action: selectAllExpandedRecords
+        )
+      }
+
+      selectionControlButton(
+        title: L10n.PreferencesHistory.clearSelection,
+        systemName: "xmark.circle",
+        action: clearExpandedSelection
+      )
+
+      selectionControlButton(
+        title: L10n.Common.deleteAction,
+        systemName: "trash",
+        isDestructive: true,
+        action: deleteSelectedRecords
+      )
+    }
+    .padding(.horizontal, 14)
+    .padding(.vertical, 9)
+    .background(.ultraThinMaterial, in: Capsule())
+    .background(selectionBarTint, in: Capsule())
+    .overlay(
+      Capsule()
+        .stroke(selectionBarBorder, lineWidth: 1)
+    )
+    .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.32 : 0.14), radius: 18, x: 0, y: 8)
+    .fixedSize(horizontal: true, vertical: false)
+    .frame(maxWidth: .infinity, alignment: .center)
+    .padding(.bottom, 4)
+    .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .bottom)))
+  }
+
   private var expandedGrid: some View {
     ScrollView(.vertical, showsIndicators: false) {
       LazyVGrid(columns: expandedColumns, spacing: 12) {
         ForEach(expandedRecords) { record in
           HistoryExpandedCaptureCardView(
             record: record,
-            isSelected: selectedId == record.id,
+            isSelected: expandedSelectedIds.contains(record.id),
             backgroundStyle: backgroundStyle,
             onTap: {
-              selectRecord(record)
+              selectExpandedRecord(record)
             }
           )
           .contextMenu {
@@ -367,7 +432,7 @@ struct HistoryFloatingContentView: View {
       }
       .padding(.horizontal, 6)
       .padding(.top, 4)
-      .padding(.bottom, 14)
+      .padding(.bottom, 88)
     }
   }
 
@@ -469,6 +534,14 @@ struct HistoryFloatingContentView: View {
 
   private var chromeSurfaceShadow: Color {
     Color.black.opacity(colorScheme == .dark ? 0.18 : 0.07)
+  }
+
+  private var selectionBarTint: Color {
+    colorScheme == .dark ? Color.black.opacity(0.18) : Color.white.opacity(0.42)
+  }
+
+  private var selectionBarBorder: Color {
+    colorScheme == .dark ? Color.white.opacity(0.16) : Color.white.opacity(0.7)
   }
 
   private var unselectedPillBackground: AnyShapeStyle {
@@ -581,6 +654,22 @@ struct HistoryFloatingContentView: View {
     .help(help)
   }
 
+  private func selectionControlButton(
+    title: String,
+    systemName: String,
+    isDestructive: Bool = false,
+    action: @escaping () -> Void
+  ) -> some View {
+    Button(role: isDestructive ? .destructive : nil, action: action) {
+      Label(title, systemImage: systemName)
+        .font(.system(size: 11, weight: .semibold))
+        .lineLimit(1)
+        .fixedSize(horizontal: true, vertical: false)
+    }
+    .buttonStyle(.plain)
+    .foregroundColor(isDestructive ? .red : .primary.opacity(0.82))
+  }
+
   private func filteredRecords(
     typeFilter: CaptureHistoryType?,
     searchText: String,
@@ -647,11 +736,63 @@ struct HistoryFloatingContentView: View {
     manager.focusPanel()
   }
 
+  private func selectExpandedRecord(_ record: CaptureHistoryRecord) {
+    let flags = NSEvent.modifierFlags.intersection(.deviceIndependentFlagsMask)
+
+    if flags.contains(.shift), let expandedLastSelectedId,
+      let startIndex = expandedRecords.firstIndex(where: { $0.id == expandedLastSelectedId }),
+      let endIndex = expandedRecords.firstIndex(where: { $0.id == record.id })
+    {
+      let range = min(startIndex, endIndex)...max(startIndex, endIndex)
+      expandedSelectedIds.formUnion(expandedRecords[range].map(\.id))
+    } else if flags.contains(.command) {
+      if expandedSelectedIds.contains(record.id) {
+        expandedSelectedIds.remove(record.id)
+      } else {
+        expandedSelectedIds.insert(record.id)
+      }
+      expandedLastSelectedId = record.id
+    } else if flags.contains(.shift) {
+      expandedSelectedIds.insert(record.id)
+      expandedLastSelectedId = record.id
+    } else {
+      expandedSelectedIds = [record.id]
+      expandedLastSelectedId = record.id
+    }
+
+    selectedId = record.id
+    manager.focusPanel()
+  }
+
+  private func selectAllExpandedRecords() {
+    expandedSelectedIds = Set(expandedRecords.map(\.id))
+    expandedLastSelectedId = expandedRecords.last?.id
+  }
+
+  private func clearExpandedSelection() {
+    expandedSelectedIds.removeAll()
+    expandedLastSelectedId = nil
+  }
+
+  private func pruneExpandedSelection() {
+    let visibleIds = Set(expandedRecordIDs)
+    expandedSelectedIds.formIntersection(visibleIds)
+
+    if let expandedLastSelectedId, !visibleIds.contains(expandedLastSelectedId) {
+      self.expandedLastSelectedId = expandedSelectedIds.first
+    }
+  }
+
   private func openFullHistory() {
     manager.showExpanded(initialFilter: effectiveCompactFilter)
   }
 
   private func copySelectedRecord() {
+    if manager.presentationMode == .expanded, !expandedSelectedRecords.isEmpty {
+      HistoryWindowController.shared.copyToClipboard(expandedSelectedRecords)
+      return
+    }
+
     guard let selectedId,
       let record = activeRecords.first(where: { $0.id == selectedId })
     else { return }
@@ -660,11 +801,34 @@ struct HistoryFloatingContentView: View {
   }
 
   private func openSelectedRecord() {
+    if manager.presentationMode == .expanded {
+      if expandedSelectedRecords.count == 1, let record = expandedSelectedRecords.first {
+        HistoryWindowController.shared.openItem(record)
+        return
+      }
+
+      if expandedSelectedRecords.count > 1 {
+        return
+      }
+    }
+
     guard let selectedId,
       let record = activeRecords.first(where: { $0.id == selectedId })
     else { return }
 
     HistoryWindowController.shared.openItem(record)
+  }
+
+  private func deleteSelectedRecords() {
+    guard manager.presentationMode == .expanded else { return }
+
+    let deletedCount = HistoryWindowController.shared.deleteRecords(
+      expandedSelectedRecords,
+      asksConfirmation: true
+    )
+    guard deletedCount > 0 else { return }
+
+    clearExpandedSelection()
   }
 
   private func expandedTypeFilterMinWidth(for filter: CaptureHistoryType?) -> CGFloat {

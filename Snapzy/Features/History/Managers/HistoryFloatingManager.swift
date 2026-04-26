@@ -80,6 +80,10 @@ final class HistoryFloatingManager: ObservableObject {
   private lazy var panelContentView = HistoryFloatingContentView(manager: self)
   private var localEscapeMonitor: Any?
   private var globalEscapeMonitor: Any?
+  private var modalInteractionSuppressionCount = 0
+  private var isModalInteractionActive: Bool {
+    modalInteractionSuppressionCount > 0
+  }
 
   private enum Keys {
     static let enabled = "history.floating.enabled"
@@ -93,7 +97,7 @@ final class HistoryFloatingManager: ObservableObject {
 
   private init() {
     panelController.onPanelDidResignKey = { [weak self] in
-      self?.hide()
+      self?.handlePanelDidResignKey()
     }
     loadSettings()
   }
@@ -178,6 +182,23 @@ final class HistoryFloatingManager: ObservableObject {
     panelController.focusPanel()
   }
 
+  func performModalInteraction<Result>(_ action: () -> Result) -> Result {
+    modalInteractionSuppressionCount += 1
+    let result = action()
+
+    DispatchQueue.main.async { [weak self] in
+      MainActor.assumeIsolated {
+        guard let self else { return }
+        self.modalInteractionSuppressionCount = max(0, self.modalInteractionSuppressionCount - 1)
+        if self.panelController.isPresenting {
+          self.focusPanel()
+        }
+      }
+    }
+
+    return result
+  }
+
   private var preferredPanelSize: CGSize {
     HistoryFloatingLayout.panelSize(
       for: panelScale,
@@ -208,6 +229,11 @@ final class HistoryFloatingManager: ObservableObject {
     setupEscapeMonitors()
   }
 
+  private func handlePanelDidResignKey() {
+    guard !isModalInteractionActive else { return }
+    hide()
+  }
+
   private func resetExpandedState(initialFilter: CaptureHistoryType? = nil) {
     expandedFilter = initialFilter ?? defaultFilter
     expandedTimeFilter = .all
@@ -219,13 +245,15 @@ final class HistoryFloatingManager: ObservableObject {
 
     localEscapeMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
       guard event.keyCode == 53 else { return event }
+      guard self?.isModalInteractionActive == false else { return event }
       self?.hide()
       return nil
     }
 
     globalEscapeMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
       guard event.keyCode == 53 else { return }
-      DispatchQueue.main.async {
+      Task { @MainActor [weak self] in
+        guard self?.isModalInteractionActive == false else { return }
         self?.hide()
       }
     }

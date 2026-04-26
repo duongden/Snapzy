@@ -31,6 +31,10 @@ struct HistoryMainView: View {
     return result
   }
 
+  private var filteredRecordIDs: [UUID] {
+    filteredRecords.map(\.id)
+  }
+
   var body: some View {
     ZStack {
       HistoryBackdropView(style: backgroundStyle)
@@ -39,8 +43,11 @@ struct HistoryMainView: View {
       VStack(spacing: 0) {
         HistoryToolbar(
           searchText: $searchText,
-          selectedCount: selectedIds.count,
-          onClearSelection: { selectedIds.removeAll() }
+          selectedCount: selectedRecords.count,
+          canSelectAll: selectedRecords.count < filteredRecords.count,
+          onSelectAll: selectAllFilteredRecords,
+          onClearSelection: { selectedIds.removeAll() },
+          onDeleteSelection: deleteSelectedRecords
         )
 
         HistoryFilterBar(
@@ -68,6 +75,13 @@ struct HistoryMainView: View {
       guard notification.object is HistoryWindow else { return }
       copySelectedRecords()
     }
+    .onReceive(NotificationCenter.default.publisher(for: .historyDeleteSelection)) { notification in
+      guard notification.object is HistoryWindow else { return }
+      deleteSelectedRecords()
+    }
+    .onChange(of: filteredRecordIDs) { ids in
+      selectedIds.formIntersection(Set(ids))
+    }
   }
 
   private var filterCounts: [CaptureHistoryType?: Int] {
@@ -85,6 +99,19 @@ struct HistoryMainView: View {
 
   private func copySelectedRecords() {
     HistoryWindowController.shared.copyToClipboard(selectedRecords)
+  }
+
+  private func selectAllFilteredRecords() {
+    selectedIds = Set(filteredRecords.map(\.id))
+  }
+
+  private func deleteSelectedRecords() {
+    let deletedCount = HistoryWindowController.shared.deleteRecords(
+      selectedRecords,
+      asksConfirmation: true
+    )
+    guard deletedCount > 0 else { return }
+    selectedIds.removeAll()
   }
 }
 

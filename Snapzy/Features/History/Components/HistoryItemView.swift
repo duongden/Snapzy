@@ -208,13 +208,6 @@ struct HistoryItemView: View {
   }
 
   private func deleteRecord() {
-    // Move file to trash if it exists
-    if fileExists {
-      try? NSWorkspace.shared.recycle([record.fileURL])
-    }
-    // Remove from history
-    CaptureHistoryStore.shared.remove(id: record.id)
-    // Clean up thumbnail
-    HistoryThumbnailGenerator.shared.deleteThumbnail(for: record.id)
+    HistoryWindowController.shared.deleteRecords([record], asksConfirmation: false)
   }
 }

@@ -6008,6 +6008,45 @@ enum L10n {
       defaultValue: "Clear",
       comment: "Confirm button for clearing history"
     )
+    static func selectedCaptures(_ count: Int) -> String {
+      format(
+        "preferences-history.selected-captures",
+        defaultValue: "%d selected",
+        comment: "History browser selection count label. %d is the number of selected captures.",
+        count
+      )
+    }
+    static let selectAll = string(
+      "preferences-history.select-all",
+      defaultValue: "Select All",
+      comment: "Button title for selecting all visible history captures"
+    )
+    static let clearSelection = string(
+      "preferences-history.clear-selection",
+      defaultValue: "Clear",
+      comment: "Button title for clearing selected history captures"
+    )
+    static let deleteSelectedAlertTitle = string(
+      "preferences-history.delete-selected-alert-title",
+      defaultValue: "Delete Selected Captures?",
+      comment: "Alert title when deleting selected capture history items"
+    )
+    static func deleteSelectedAlertMessage(_ count: Int) -> String {
+      format(
+        "preferences-history.delete-selected-alert-message",
+        defaultValue: "Move %d selected capture item(s) to Trash and remove them from History.",
+        comment: "Alert message when deleting selected capture history items. %d is the number of selected captures.",
+        count
+      )
+    }
+    static func deletedCaptures(_ count: Int) -> String {
+      format(
+        "preferences-history.deleted-captures",
+        defaultValue: "Deleted %d capture item(s)",
+        comment: "Toast shown after deleting capture history items. %d is the number of deleted captures.",
+        count
+      )
+    }
   }
 
   enum HistoryPanelPosition {
