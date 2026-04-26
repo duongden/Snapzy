@@ -30,7 +30,8 @@ struct HistorySettingsView: View {
           }
           .labelsHidden()
           .pickerStyle(.menu)
-          .frame(width: 140)
+          .fixedSize()
+          .frame(width: 140, alignment: .trailing)
         }
       }
 
@@ -44,12 +45,13 @@ struct HistorySettingsView: View {
           }
           .labelsHidden()
           .pickerStyle(.menu)
-          .frame(width: 140)
+          .fixedSize()
+          .frame(width: 140, alignment: .trailing)
         }
 
         SettingRow(icon: "macwindow", title: L10n.PreferencesHistory.backgroundStyleTitle, description: L10n.PreferencesHistory.backgroundStyleDescription) {
           HistoryBackgroundStylePicker(selection: $historyBackgroundStyle)
-            .frame(maxWidth: 392, alignment: .trailing)
+            .frame(width: 220, alignment: .trailing)
         }
 
         SettingRow(icon: "arrow.up.left.and.arrow.down.right", title: L10n.PreferencesHistory.panelSizeTitle, description: L10n.PreferencesHistory.panelSizeDescription) {
@@ -67,6 +69,7 @@ struct HistorySettingsView: View {
               .monospacedDigit()
               .foregroundColor(.secondary)
           }
+          .frame(width: 220, alignment: .trailing)
         }
 
         SettingRow(icon: "number", title: L10n.PreferencesHistory.maxItemsTitle, description: L10n.PreferencesHistory.maxItemsDescription) {
@@ -81,6 +84,7 @@ struct HistorySettingsView: View {
             ), in: 3...20, step: 1)
             .frame(width: 120)
           }
+          .frame(width: 220, alignment: .trailing)
         }
       }
 
@@ -97,6 +101,7 @@ struct HistorySettingsView: View {
             ), in: 0...90, step: 1)
             .frame(width: 120)
           }
+          .frame(width: 220, alignment: .trailing)
         }
 
         SettingRow(icon: "archivebox", title: L10n.PreferencesHistory.maxCountTitle, description: L10n.PreferencesHistory.maxCountDescription) {
@@ -111,6 +116,7 @@ struct HistorySettingsView: View {
             ), in: 0...1000, step: 50)
             .frame(width: 120)
           }
+          .frame(width: 220, alignment: .trailing)
         }
       }
 
