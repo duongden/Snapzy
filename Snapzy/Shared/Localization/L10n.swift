@@ -1520,8 +1520,8 @@ enum L10n {
     static func reportIssueDescription(_ destination: String) -> String {
       format(
         "preferences-general.report-issue-description",
-        defaultValue: "Send diagnostic logs at %@ when something goes wrong",
-        comment: "General preferences setting description. %@ is the bug report destination.",
+        defaultValue: "Send a diagnostic log bundle at %@ when something goes wrong",
+        comment: "General preferences setting description. %@ is the problem report destination.",
         destination
       )
     }
@@ -2281,9 +2281,9 @@ enum L10n {
       defaultValue: "Checked",
       comment: "About screen label before relative update check time"
     )
-    static let submitCrashReport = string(
-      "preferences-about.submit-crash-report",
-      defaultValue: "Submit Crash Report",
+    static let reportProblem = string(
+      "preferences-about.report-problem",
+      defaultValue: "Report a Problem",
       comment: "Button title on the about screen"
     )
     static let checkForUpdates = string(
@@ -5161,23 +5161,33 @@ enum L10n {
   enum CrashReport {
     static let alertTitle = string(
       "crash-report.alert-title",
-      defaultValue: "Snapzy quit unexpectedly",
-      comment: "Alert title shown when presenting a crash report dialog"
+      defaultValue: "Report a Problem",
+      comment: "Alert title shown when presenting a problem report dialog"
     )
     static let alertMessage = string(
       "crash-report.alert-message",
-      defaultValue: "A diagnostic log was saved. Drag the file below to the bug report page.",
-      comment: "Alert message shown when presenting a crash report dialog"
+      defaultValue: "Snapzy bundled your diagnostic logs into one file. Drag the file below to the report page.",
+      comment: "Alert message shown when presenting a problem report dialog with a log bundle"
+    )
+    static let alertMessageNoLogBundle = string(
+      "crash-report.alert-message-no-log-bundle",
+      defaultValue: "Snapzy could not prepare a diagnostic log bundle. You can still open the report page and describe the problem.",
+      comment: "Alert message shown when presenting a problem report dialog without a log bundle"
     )
     static let submit = string(
       "crash-report.submit",
-      defaultValue: "Submit",
-      comment: "Primary button title for crash report alert"
+      defaultValue: "Open Report Page",
+      comment: "Primary button title for problem report alert"
     )
     static let dismiss = string(
       "crash-report.dismiss",
-      defaultValue: "Dismiss",
-      comment: "Secondary button title for crash report alert"
+      defaultValue: "Close",
+      comment: "Secondary button title for problem report alert"
+    )
+    static let accessoryHint = string(
+      "crash-report.accessory-hint",
+      defaultValue: "Drag log bundle to the report page",
+      comment: "Hint shown below the draggable problem report log bundle"
     )
   }
 

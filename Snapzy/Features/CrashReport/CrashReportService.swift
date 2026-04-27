@@ -2,7 +2,7 @@
 //  CrashReportService.swift
 //  Snapzy
 //
-//  Centralized crash report presentation logic.
+//  Centralized problem report presentation logic.
 //  Both the status bar menu and preferences call this single entry point.
 //
 
@@ -12,21 +12,22 @@ enum CrashReportService {
 
   static let bugReportURL = URL(string: "https://snapzy.app/bug-report")!
 
-  /// Present the crash report alert with a draggable log file.
-  /// Returns `true` if the user chose "Submit" (and the bug report page was opened).
+  /// Present the problem report alert with a draggable diagnostic log archive.
+  /// Returns `true` if the user chose to open the report page.
   @MainActor
   @discardableResult
   static func presentAlert() -> Bool {
+    let archiveURL = makeLogArchive()
+
     let alert = NSAlert()
     alert.messageText = L10n.CrashReport.alertTitle
-    alert.informativeText = L10n.CrashReport.alertMessage
-    alert.alertStyle = .warning
+    alert.informativeText = archiveURL == nil ? L10n.CrashReport.alertMessageNoLogBundle : L10n.CrashReport.alertMessage
+    alert.alertStyle = .informational
     alert.addButton(withTitle: L10n.CrashReport.submit)
     alert.addButton(withTitle: L10n.CrashReport.dismiss)
 
-    let logFile = DiagnosticLogger.shared.currentLogFileURL
-    if FileManager.default.fileExists(atPath: logFile.path) {
-      alert.accessoryView = CrashReportAccessoryView(fileURL: logFile)
+    if let archiveURL {
+      alert.accessoryView = CrashReportAccessoryView(fileURL: archiveURL)
     }
 
     let response = alert.runModal()
@@ -37,5 +38,17 @@ enum CrashReportService {
     }
 
     return false
+  }
+
+  private static func makeLogArchive() -> URL? {
+    do {
+      return try ProblemReportLogArchive.makeArchive(
+        from: DiagnosticLogger.shared.logDirectoryURL,
+        reportURL: bugReportURL
+      )
+    } catch {
+      DiagnosticLogger.shared.logError(.preferences, error, "Problem report log archive failed")
+      return nil
+    }
   }
 }

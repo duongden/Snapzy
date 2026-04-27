@@ -1,66 +1,194 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
-    "crash-report.alert-message" : {
+    "crash-report.accessory-hint" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ein Diagnoseprotokoll wurde gespeichert. Ziehen Sie die Datei unten auf die Fehlerberichtsseite."
+            "value" : "Log-Bundle auf die Berichtsseite ziehen"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "A diagnostic log was saved. Drag the file below to the bug report page."
+            "value" : "Drag log bundle to the report page"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Se guardó un registro de diagnóstico. Arrastre el archivo siguiente a la página del informe de errores."
+            "value" : "Arrastra el paquete de logs a la página de informe"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Un journal de diagnostic a été enregistré. Faites glisser le fichier ci-dessous vers la page de rapport de bug."
+            "value" : "Faites glisser le lot de journaux vers la page de rapport"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "診断ログが保存されました。以下のファイルをバグレポートページにドラッグします。"
+            "value" : "ログバンドルを報告ページへドラッグ"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "진단 로그가 저장되었습니다. 아래 파일을 버그 신고 페이지로 드래그하세요."
+            "value" : "로그 묶음을 신고 페이지로 드래그하세요"
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Журнал диагностики сохранен. Перетащите файл ниже на страницу отчета об ошибке."
+            "value" : "Перетащите пакет журналов на страницу отчета"
           }
         },
         "vi" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Một tệp log chẩn đoán đã được lưu. Hãy kéo tệp bên dưới vào trang báo lỗi."
+            "value" : "Kéo gói log vào trang báo lỗi"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "已保存诊断日志。将下面的文件拖到错误报告页面。"
+            "value" : "将日志包拖到报告页面"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "已保存診斷日誌。將下面的檔案拖到錯誤報告頁面。"
+            "value" : "將日誌包拖到回報頁面"
+          }
+        }
+      }
+    },
+    "crash-report.alert-message" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Snapzy hat Ihre Diagnoseprotokolle in einer Datei gebündelt. Ziehen Sie die Datei unten auf die Berichtsseite."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Snapzy bundled your diagnostic logs into one file. Drag the file below to the report page."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Snapzy agrupó tus logs de diagnóstico en un archivo. Arrastra el archivo siguiente a la página de informe."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Snapzy a regroupé vos journaux de diagnostic dans un fichier. Faites glisser le fichier ci-dessous vers la page de rapport."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Snapzy は診断ログを1つのファイルにまとめました。下のファイルを報告ページへドラッグしてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Snapzy가 진단 로그를 하나의 파일로 묶었습니다. 아래 파일을 신고 페이지로 드래그하세요."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Snapzy собрал журналы диагностики в один файл. Перетащите файл ниже на страницу отчета."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Snapzy đã gom log chẩn đoán thành một tệp. Hãy kéo tệp bên dưới vào trang báo lỗi."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Snapzy 已将诊断日志打包为一个文件。将下面的文件拖到报告页面。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Snapzy 已將診斷日誌打包成一個檔案。將下面的檔案拖到回報頁面。"
+          }
+        }
+      }
+    },
+    "crash-report.alert-message-no-log-bundle" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Snapzy konnte kein Diagnose-Log-Bundle vorbereiten. Sie können die Berichtsseite trotzdem öffnen und das Problem beschreiben."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Snapzy could not prepare a diagnostic log bundle. You can still open the report page and describe the problem."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Snapzy no pudo preparar un paquete de logs de diagnóstico. Aun así puedes abrir la página de informe y describir el problema."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Snapzy n’a pas pu préparer de lot de journaux de diagnostic. Vous pouvez quand même ouvrir la page de rapport et décrire le problème."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Snapzy は診断ログバンドルを準備できませんでした。報告ページを開いて問題を説明することはできます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Snapzy가 진단 로그 묶음을 준비하지 못했습니다. 신고 페이지를 열어 문제를 설명할 수 있습니다."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Snapzy не удалось подготовить пакет журналов диагностики. Вы все равно можете открыть страницу отчета и описать проблему."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Snapzy không thể chuẩn bị gói log chẩn đoán. Bạn vẫn có thể mở trang báo lỗi và mô tả vấn đề."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Snapzy 无法准备诊断日志包。你仍然可以打开报告页面并描述问题。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Snapzy 無法準備診斷日誌包。你仍然可以開啟回報頁面並描述問題。"
           }
         }
       }
@@ -70,61 +198,61 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Snapzy wurde unerwartet beendet"
+            "value" : "Problem melden"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Snapzy quit unexpectedly"
+            "value" : "Report a Problem"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Snapzy se cerró inesperadamente"
+            "value" : "Informar de un problema"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Snapzy a quitté de manière inattendue"
+            "value" : "Signaler un problème"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Snapzy が予期せず終了しました"
+            "value" : "問題を報告"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Snapzy가 예기치 않게 종료되었습니다"
+            "value" : "문제 신고"
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Snapzy неожиданно ушел"
+            "value" : "Сообщить о проблеме"
           }
         },
         "vi" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Snapzy đã thoát ngoài ý muốn"
+            "value" : "Báo vấn đề"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Snapzy 意外退出"
+            "value" : "报告问题"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Snapzy 意外退出"
+            "value" : "回報問題"
           }
         }
       }
@@ -134,31 +262,31 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ablehnen"
+            "value" : "Schließen"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Dismiss"
+            "value" : "Close"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Descartar"
+            "value" : "Cerrar"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Rejeter"
+            "value" : "Fermer"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "却下"
+            "value" : "閉じる"
           }
         },
         "ko" : {
@@ -170,7 +298,7 @@
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Уволить"
+            "value" : "Закрыть"
           }
         },
         "vi" : {
@@ -182,13 +310,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "解雇"
+            "value" : "关闭"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "解雇"
+            "value" : "關閉"
           }
         }
       }
@@ -198,61 +326,61 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Senden"
+            "value" : "Berichtsseite öffnen"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Submit"
+            "value" : "Open Report Page"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Enviar"
+            "value" : "Abrir página de informe"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Soumettre"
+            "value" : "Ouvrir la page de rapport"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "送信する"
+            "value" : "報告ページを開く"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "제출"
+            "value" : "신고 페이지 열기"
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Отправить"
+            "value" : "Открыть страницу отчета"
           }
         },
         "vi" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Gửi"
+            "value" : "Mở trang báo lỗi"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "提交"
+            "value" : "打开报告页面"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "提交"
+            "value" : "開啟回報頁面"
           }
         }
       }

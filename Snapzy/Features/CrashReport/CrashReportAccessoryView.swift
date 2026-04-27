@@ -2,8 +2,8 @@
 //  CrashReportAccessoryView.swift
 //  Snapzy
 //
-//  Draggable file icon for the crash report alert — users can drag-and-drop
-//  the diagnostic log directly onto a browser upload field.
+//  Draggable file icon for the problem report alert — users can drag-and-drop
+//  the diagnostic log bundle directly onto a browser upload field.
 //
 
 import AppKit
@@ -42,11 +42,12 @@ final class CrashReportAccessoryView: NSView {
     let nameLabel = NSTextField(labelWithString: fileURL.lastPathComponent)
     nameLabel.font = .systemFont(ofSize: 12, weight: .medium)
     nameLabel.textColor = .labelColor
+    nameLabel.lineBreakMode = .byTruncatingMiddle
     nameLabel.translatesAutoresizingMaskIntoConstraints = false
     addSubview(nameLabel)
 
     // Hint label
-    let hintLabel = NSTextField(labelWithString: "Drag to the bug report page")
+    let hintLabel = NSTextField(labelWithString: L10n.CrashReport.accessoryHint)
     hintLabel.font = .systemFont(ofSize: 11)
     hintLabel.textColor = .secondaryLabelColor
     hintLabel.translatesAutoresizingMaskIntoConstraints = false

@@ -507,8 +507,8 @@ final class AppStatusBarController: ObservableObject {
     UpdaterManager.shared.checkForUpdates()
   }
 
-  @objc private func submitCrashReportAction() {
-    logMenuAction("submitCrashReport")
+  @objc private func reportProblemAction() {
+    logMenuAction("reportProblem")
     CrashReportService.presentAlert()
     didDetectCrash = false
   }

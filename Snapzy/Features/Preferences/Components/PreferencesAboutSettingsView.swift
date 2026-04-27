@@ -80,7 +80,7 @@ struct AboutSettingsView: View {
         Button(action: { CrashReportService.presentAlert() }) {
           HStack(spacing: Spacing.sm) {
             Image(systemName: "exclamationmark.triangle")
-            Text(L10n.PreferencesAbout.submitCrashReport)
+            Text(L10n.PreferencesAbout.reportProblem)
           }
         }
         .buttonStyle(.bordered)

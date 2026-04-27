@@ -51,7 +51,7 @@
 - **Onboarding**: màn hình chào, chọn ngôn ngữ lần đầu, hướng dẫn cấp quyền, và cấu hình shortcut cho người dùng lần đầu
 - **Bản địa hóa**: bản địa hóa ứng dụng cho 🇺🇸 English, 🇻🇳 Vietnamese, 🇨🇳 Simplified Chinese, 🇹🇼 Traditional Chinese, 🇪🇸 Spanish, 🇯🇵 Japanese, 🇰🇷 Korean, 🇷🇺 Russian, 🇫🇷 French và 🇩🇪 German, hỗ trợ chọn ngôn ngữ riêng cho từng app theo macOS
 - **Cloud Upload**: quyền riêng tư trước hết với mô hình tự mang storage bằng AWS S3 hoặc Cloudflare R2, không dùng server bên thứ ba, upload thủ công từ Quick Access cho screenshot, video và GIF, hoặc từ Annotate cho screenshot, credential lưu trong macOS Keychain với bảo vệ mật khẩu tùy chọn, import/export credential mã hóa thủ công để thiết lập nhanh trên Mac khác, lịch sử upload, auto-expiration cấu hình được (1–90 ngày hoặc vĩnh viễn), lifecycle rules, hỗ trợ custom domain
-- **Cập nhật & chẩn đoán**: cập nhật trong app qua Sparkle, crash reporting, quản lý cache
+- **Cập nhật & chẩn đoán**: cập nhật trong app qua Sparkle, báo vấn đề kèm gói log chẩn đoán, quản lý cache
 - **Nền tảng**: app thanh menu, giao diện light/dark/system, App Sandbox với bookmark truy cập file an toàn
 
 <a id="install"></a>

@@ -321,66 +321,66 @@
         }
       }
     },
-    "preferences-about.submit-crash-report" : {
+    "preferences-about.report-problem" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Absturzbericht senden"
+            "value" : "Problem melden"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Submit Crash Report"
+            "value" : "Report a Problem"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Enviar informe de fallos"
+            "value" : "Informar de un problema"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Soumettre un rapport d'incident"
+            "value" : "Signaler un problème"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "クラッシュレポートを送信する"
+            "value" : "問題を報告"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "충돌 보고서 제출"
+            "value" : "문제 신고"
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Отправить отчет о сбое"
+            "value" : "Сообщить о проблеме"
           }
         },
         "vi" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Gửi báo cáo sự cố"
+            "value" : "Báo vấn đề"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "提交崩溃报告"
+            "value" : "报告问题"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "提交崩潰報告"
+            "value" : "回報問題"
           }
         }
       }
@@ -3014,61 +3014,61 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Diagnoseprotokolle bei Problemen über %@ senden"
+            "value" : "Bei Problemen ein Diagnose-Log-Bundle über %@ senden"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Send diagnostic logs at %@ when something goes wrong"
+            "value" : "Send a diagnostic log bundle at %@ when something goes wrong"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Envía registros de diagnóstico en %@ cuando algo vaya mal"
+            "value" : "Envía un paquete de logs de diagnóstico en %@ cuando algo vaya mal"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Envoyez les journaux de diagnostic sur %@ en cas de problème"
+            "value" : "Envoyez un lot de journaux de diagnostic sur %@ en cas de problème"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "問題が発生したら %@ で診断ログを送信します"
+            "value" : "問題が発生したら %@ で診断ログバンドルを送信します"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "문제가 생기면 %@에서 진단 로그를 보내세요"
+            "value" : "문제가 생기면 %@에서 진단 로그 묶음을 보내세요"
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "При проблемах отправляйте журналы диагностики на %@"
+            "value" : "При проблемах отправляйте пакет журналов диагностики на %@"
           }
         },
         "vi" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Gửi log chẩn đoán tại %@ khi gặp vấn đề"
+            "value" : "Gửi gói log chẩn đoán tại %@ khi gặp vấn đề"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "遇到问题时在 %@ 发送诊断日志"
+            "value" : "遇到问题时在 %@ 发送诊断日志包"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "遇到問題時在 %@ 傳送診斷日誌"
+            "value" : "遇到問題時在 %@ 傳送診斷日誌包"
           }
         }
       }
