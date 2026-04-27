@@ -11,10 +11,7 @@ import AVFoundation
 import CoreGraphics
 import Foundation
 import ImageIO
-import os.log
 import UniformTypeIdentifiers
-
-private let logger = Logger(subsystem: "Snapzy", category: "GIFConverter")
 
 /// Converts a video file to an animated GIF
 @MainActor
@@ -53,6 +50,11 @@ final class GIFConverter {
       sourceAccess.stop()
       outputDirectoryAccess.stop()
     }
+    DiagnosticLogger.shared.log(.info, .recording, "GIF conversion pipeline started", context: [
+      "file": videoURL.lastPathComponent,
+      "fps": "\(options.fps)",
+      "maxWidth": "\(Int(options.maxWidth))",
+    ])
 
     let asset = AVURLAsset(url: videoURL)
 
@@ -66,6 +68,10 @@ final class GIFConverter {
     let durationSeconds = CMTimeGetSeconds(duration)
 
     guard durationSeconds > 0, durationSeconds.isFinite else {
+      DiagnosticLogger.shared.log(.error, .recording, "GIF conversion invalid video duration", context: [
+        "file": videoURL.lastPathComponent,
+        "durationSeconds": "\(durationSeconds)",
+      ])
       throw GIFConversionError.invalidVideo
     }
 
@@ -85,6 +91,9 @@ final class GIFConverter {
         naturalSize = track.naturalSize
       }
     } else {
+      DiagnosticLogger.shared.log(.warning, .recording, "GIF conversion found no video track; using fallback size", context: [
+        "file": videoURL.lastPathComponent
+      ])
       naturalSize = CGSize(width: 640, height: 480)
     }
 
@@ -95,7 +104,19 @@ final class GIFConverter {
 
     // Calculate frame times
     let totalFrames = Int(ceil(durationSeconds * Double(options.fps)))
-    guard totalFrames > 0 else { throw GIFConversionError.noFrames }
+    guard totalFrames > 0 else {
+      DiagnosticLogger.shared.log(.error, .recording, "GIF conversion has no frame times", context: [
+        "durationSeconds": String(format: "%.3f", durationSeconds),
+        "fps": "\(options.fps)",
+      ])
+      throw GIFConversionError.noFrames
+    }
+    DiagnosticLogger.shared.log(.debug, .recording, "GIF conversion plan", context: [
+      "durationSeconds": String(format: "%.3f", durationSeconds),
+      "sourceSize": "\(Int(naturalSize.width))x\(Int(naturalSize.height))",
+      "outputSize": "\(outputWidth)x\(outputHeight)",
+      "expectedFrames": "\(totalFrames)",
+    ])
 
     var frameTimes: [NSValue] = []
     for i in 0..<totalFrames {
@@ -128,6 +149,10 @@ final class GIFConverter {
       totalFrames,
       nil
     ) else {
+      DiagnosticLogger.shared.log(.error, .recording, "GIF conversion destination creation failed", context: [
+        "file": gifURL.lastPathComponent,
+        "expectedFrames": "\(totalFrames)",
+      ])
       throw GIFConversionError.destinationCreationFailed
     }
 
@@ -180,12 +205,22 @@ final class GIFConverter {
           // Reconstruct frames in correct temporal order
           let sorted = (0..<expectedCount).compactMap { frameMap[$0] }
           if sorted.isEmpty {
+            DiagnosticLogger.shared.log(.error, .recording, "GIF conversion generated no frames", context: [
+              "file": videoURL.lastPathComponent,
+              "expectedFrames": "\(expectedCount)",
+            ])
             continuation.resume(throwing: GIFConversionError.noFrames)
           } else {
             continuation.resume(returning: sorted)
           }
         }
       }
+    }
+    if orderedFrames.count < totalFrames {
+      DiagnosticLogger.shared.log(.warning, .recording, "GIF conversion generated fewer frames than expected", context: [
+        "expectedFrames": "\(totalFrames)",
+        "generatedFrames": "\(orderedFrames.count)",
+      ])
     }
 
     // Add all frames to GIF destination
@@ -199,17 +234,22 @@ final class GIFConverter {
 
     // Finalize GIF
     guard CGImageDestinationFinalize(destination) else {
+      DiagnosticLogger.shared.log(.error, .recording, "GIF conversion finalization failed", context: [
+        "file": gifURL.lastPathComponent,
+        "frames": "\(orderedFrames.count)",
+      ])
       throw GIFConversionError.finalizationFailed
     }
 
     onProgress(1.0)
 
-    // Log file size for debugging
     let fileSize = (try? FileManager.default.attributesOfItem(atPath: gifURL.path)[.size] as? Int) ?? 0
     let fileSizeMB = String(format: "%.1f", Double(fileSize) / 1_048_576.0)
-    logger.info(
-      "GIF complete: \(gifURL.lastPathComponent) — \(orderedFrames.count) frames, \(fileSizeMB)MB"
-    )
+    DiagnosticLogger.shared.log(.info, .recording, "GIF conversion completed", context: [
+      "file": gifURL.lastPathComponent,
+      "frames": "\(orderedFrames.count)",
+      "fileSizeMB": fileSizeMB,
+    ])
 
     return gifURL
   }

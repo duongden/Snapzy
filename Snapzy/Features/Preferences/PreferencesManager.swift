@@ -68,6 +68,16 @@ final class PreferencesManager: ObservableObject {
       afterCaptureActions[action] = [:]
     }
     afterCaptureActions[action]?[type] = enabled
+    DiagnosticLogger.shared.log(
+      .info,
+      .preferences,
+      "After-capture action changed",
+      context: [
+        "action": action.rawValue,
+        "captureType": type.rawValue,
+        "enabled": enabled ? "true" : "false",
+      ]
+    )
     saveAfterCaptureActions()
   }
 
@@ -103,31 +113,72 @@ final class PreferencesManager: ObservableObject {
       serializable[action.rawValue] = innerDict
     }
 
-    if let data = try? JSONEncoder().encode(serializable) {
+    do {
+      let data = try JSONEncoder().encode(serializable)
       UserDefaults.standard.set(data, forKey: afterCaptureActionsKey)
+    } catch {
+      DiagnosticLogger.shared.logError(
+        .preferences,
+        error,
+        "Failed to save after-capture actions",
+        context: ["actionCount": "\(afterCaptureActions.count)"]
+      )
     }
   }
 
   private func loadAfterCaptureActions() {
-    guard let data = UserDefaults.standard.data(forKey: afterCaptureActionsKey),
-      let serializable = try? JSONDecoder().decode([String: [String: Bool]].self, from: data)
-    else {
-      // Initialize with defaults
+    guard let data = UserDefaults.standard.data(forKey: afterCaptureActionsKey) else {
+      initializeDefaults()
+      return
+    }
+
+    let serializable: [String: [String: Bool]]
+    do {
+      serializable = try JSONDecoder().decode([String: [String: Bool]].self, from: data)
+    } catch {
+      DiagnosticLogger.shared.logError(
+        .preferences,
+        error,
+        "Failed to decode after-capture actions; using defaults",
+        context: ["dataBytes": "\(data.count)"]
+      )
       initializeDefaults()
       return
     }
 
     // Convert back to typed format
     for (actionRaw, typeDict) in serializable {
-      guard let action = AfterCaptureAction(rawValue: actionRaw) else { continue }
+      guard let action = AfterCaptureAction(rawValue: actionRaw) else {
+        DiagnosticLogger.shared.log(
+          .warning,
+          .preferences,
+          "Unknown after-capture action ignored",
+          context: ["action": actionRaw]
+        )
+        continue
+      }
       for (typeRaw, enabled) in typeDict {
-        guard let captureType = CaptureType(rawValue: typeRaw) else { continue }
+        guard let captureType = CaptureType(rawValue: typeRaw) else {
+          DiagnosticLogger.shared.log(
+            .warning,
+            .preferences,
+            "Unknown after-capture capture type ignored",
+            context: ["captureType": typeRaw]
+          )
+          continue
+        }
         if afterCaptureActions[action] == nil {
           afterCaptureActions[action] = [:]
         }
         afterCaptureActions[action]?[captureType] = enabled
       }
     }
+    DiagnosticLogger.shared.log(
+      .debug,
+      .preferences,
+      "After-capture actions loaded",
+      context: ["actionCount": "\(afterCaptureActions.count)"]
+    )
   }
 
   private func initializeDefaults() {
@@ -137,5 +188,6 @@ final class PreferencesManager: ObservableObject {
         afterCaptureActions[action]?[type] = defaultValue(for: action, type: type)
       }
     }
+    DiagnosticLogger.shared.log(.debug, .preferences, "After-capture action defaults initialized")
   }
 }

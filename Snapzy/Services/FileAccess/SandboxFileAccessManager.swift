@@ -49,6 +49,12 @@ final class SandboxFileAccessManager {
   func ensureExportLocationInitialized() {
     if defaults.string(forKey: PreferencesKeys.exportLocation)?.isEmpty != false {
       defaults.set(defaultExportDirectory.path, forKey: PreferencesKeys.exportLocation)
+      DiagnosticLogger.shared.log(
+        .info,
+        .fileAccess,
+        "Default export location initialized",
+        context: ["directory": defaultExportDirectory.lastPathComponent]
+      )
     }
     migrateLegacyPathBookmarkIfPossible()
   }
@@ -99,8 +105,20 @@ final class SandboxFileAccessManager {
       defaults.set(normalizedURL.path, forKey: PreferencesKeys.exportLocation)
       defaults.set(bookmarkData, forKey: PreferencesKeys.exportLocationBookmark)
       didPromptForMissingExportPermissionThisSession = false
+      DiagnosticLogger.shared.log(
+        .info,
+        .fileAccess,
+        "Export directory bookmark saved",
+        context: ["directory": normalizedURL.lastPathComponent]
+      )
       return true
     } catch {
+      DiagnosticLogger.shared.logError(
+        .fileAccess,
+        error,
+        "Export directory bookmark save failed",
+        context: ["directory": normalizedURL.lastPathComponent]
+      )
       return false
     }
   }
@@ -122,13 +140,21 @@ final class SandboxFileAccessManager {
     panel.prompt = prompt
     panel.directoryURL = directoryURL ?? defaultExportDirectory
 
+    DiagnosticLogger.shared.log(.info, .fileAccess, "Export directory picker opened")
     if panel.runModal() == .OK, let selectedURL = panel.url {
       guard setExportDirectory(selectedURL) else {
         showBookmarkSaveFailedAlert()
         return nil
       }
+      DiagnosticLogger.shared.log(
+        .info,
+        .fileAccess,
+        "Export directory picker accepted",
+        context: ["directory": selectedURL.standardizedFileURL.lastPathComponent]
+      )
       return selectedURL.standardizedFileURL
     }
+    DiagnosticLogger.shared.log(.debug, .fileAccess, "Export directory picker cancelled")
     return nil
   }
 
@@ -136,15 +162,18 @@ final class SandboxFileAccessManager {
     ensureExportLocationInitialized()
 
     if hasPersistedExportPermission {
+      DiagnosticLogger.shared.log(.debug, .fileAccess, "Export directory permission already available")
       return resolvedExportDirectoryURL()
     }
 
     // If user dismissed runtime picker once in this app session, avoid re-prompt loops.
     guard !didPromptForMissingExportPermissionThisSession else {
+      DiagnosticLogger.shared.log(.warning, .fileAccess, "Export directory permission prompt suppressed for session")
       return nil
     }
     didPromptForMissingExportPermissionThisSession = true
 
+    DiagnosticLogger.shared.log(.warning, .fileAccess, "Export directory permission missing; prompting user")
     return chooseExportDirectory(
       message: promptMessage,
       prompt: L10n.FileAccess.chooseFolderPrompt,
@@ -168,6 +197,12 @@ final class SandboxFileAccessManager {
     if !didStartAccessing && isRunningSandboxed {
       logger.error(
         "Failed to start security-scoped access for target: \(targetURL.path, privacy: .public)"
+      )
+      DiagnosticLogger.shared.log(
+        .error,
+        .fileAccess,
+        "Failed to start security-scoped file access",
+        context: ["fileName": targetURL.lastPathComponent]
       )
     }
 
@@ -210,6 +245,12 @@ final class SandboxFileAccessManager {
 
       if isStale {
         _ = setExportDirectory(url)
+        DiagnosticLogger.shared.log(
+          .warning,
+          .fileAccess,
+          "Export directory bookmark was stale and refreshed",
+          context: ["directory": url.lastPathComponent]
+        )
       }
 
       return url
@@ -217,6 +258,12 @@ final class SandboxFileAccessManager {
       if removeInvalidBookmark {
         defaults.removeObject(forKey: PreferencesKeys.exportLocationBookmark)
       }
+      DiagnosticLogger.shared.logError(
+        .fileAccess,
+        error,
+        "Export directory bookmark resolve failed",
+        context: ["removedInvalidBookmark": removeInvalidBookmark ? "true" : "false"]
+      )
       return nil
     }
   }
@@ -238,11 +285,21 @@ final class SandboxFileAccessManager {
 
     let legacyURL = URL(fileURLWithPath: legacyPath, isDirectory: true).standardizedFileURL
     if FileManager.default.fileExists(atPath: legacyURL.path) {
-      _ = setExportDirectory(legacyURL)
+      let didMigrate = setExportDirectory(legacyURL)
+      DiagnosticLogger.shared.log(
+        didMigrate ? .info : .warning,
+        .fileAccess,
+        "Legacy export path bookmark migration attempted",
+        context: [
+          "directory": legacyURL.lastPathComponent,
+          "success": didMigrate ? "true" : "false",
+        ]
+      )
     }
   }
 
   private func showBookmarkSaveFailedAlert() {
+    DiagnosticLogger.shared.log(.warning, .fileAccess, "Export bookmark save failure alert shown")
     let alert = NSAlert()
     alert.messageText = L10n.FileAccess.bookmarkSaveFailedTitle
     alert.informativeText = L10n.FileAccess.bookmarkSaveFailedMessage

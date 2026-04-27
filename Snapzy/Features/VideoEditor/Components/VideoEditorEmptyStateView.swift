@@ -90,30 +90,44 @@ struct VideoEditorEmptyStateView: View {
 
   private func handleDrop(providers: [NSItemProvider]) -> Bool {
     guard let provider = providers.first else {
-      print("[VideoEditor Drop] No provider found")
+      DiagnosticLogger.shared.log(.warning, .editor, "Video editor drop skipped; provider missing")
       return false
     }
 
-    print("[VideoEditor Drop] Provider: \(provider)")
-    print("[VideoEditor Drop] Registered types: \(provider.registeredTypeIdentifiers)")
+    DiagnosticLogger.shared.log(
+      .info,
+      .editor,
+      "Video editor drop received",
+      context: ["registeredTypeCount": "\(provider.registeredTypeIdentifiers.count)"]
+    )
 
     // Find the first video type the provider can load
     guard let videoType = supportedTypes.first(where: {
       provider.hasItemConformingToTypeIdentifier($0.identifier)
     }) else {
-      print("[VideoEditor Drop] No supported video type found")
+      DiagnosticLogger.shared.log(.warning, .editor, "Video editor drop rejected; unsupported type")
       DispatchQueue.main.async {
         showError(message: L10n.VideoEditor.unsupportedFileType)
       }
       return false
     }
 
-    print("[VideoEditor Drop] Loading file for type: \(videoType.identifier)")
+    DiagnosticLogger.shared.log(
+      .debug,
+      .editor,
+      "Video editor drop loading file",
+      context: ["type": videoType.identifier]
+    )
 
     // First, extract the original URL using loadItem (provides actual file URL)
     provider.loadItem(forTypeIdentifier: videoType.identifier, options: nil) { item, error in
       if let error = error {
-        print("[VideoEditor Drop] loadItem error: \(error)")
+        DiagnosticLogger.shared.logError(
+          .editor,
+          error,
+          "Video editor drop loadItem failed",
+          context: ["type": videoType.identifier]
+        )
         DispatchQueue.main.async {
           self.showError(message: L10n.VideoEditor.failedToLoadFile(error.localizedDescription))
         }
@@ -124,19 +138,34 @@ struct VideoEditorEmptyStateView: View {
       let originalURL: URL?
       if let url = item as? URL {
         originalURL = url
-        print("[VideoEditor Drop] Original URL from loadItem: \(url)")
+        DiagnosticLogger.shared.log(
+          .debug,
+          .editor,
+          "Video editor drop original URL resolved",
+          context: ["source": "loadItem", "fileName": url.lastPathComponent]
+        )
       } else if let data = item as? Data, let url = URL(dataRepresentation: data, relativeTo: nil) {
         originalURL = url
-        print("[VideoEditor Drop] Original URL from Data: \(url)")
+        DiagnosticLogger.shared.log(
+          .debug,
+          .editor,
+          "Video editor drop original URL resolved",
+          context: ["source": "data", "fileName": url.lastPathComponent]
+        )
       } else {
         originalURL = nil
-        print("[VideoEditor Drop] Could not extract original URL from item: \(String(describing: item))")
+        DiagnosticLogger.shared.log(.debug, .editor, "Video editor drop original URL unavailable")
       }
 
       // Now load file representation to get a working copy
       _ = provider.loadFileRepresentation(forTypeIdentifier: videoType.identifier) { tempURL, repError in
         if let repError = repError {
-          print("[VideoEditor Drop] loadFileRepresentation error: \(repError)")
+          DiagnosticLogger.shared.logError(
+            .editor,
+            repError,
+            "Video editor drop file representation failed",
+            context: ["type": videoType.identifier]
+          )
           DispatchQueue.main.async {
             self.showError(message: L10n.VideoEditor.failedToLoadFile(repError.localizedDescription))
           }
@@ -144,14 +173,12 @@ struct VideoEditorEmptyStateView: View {
         }
 
         guard let tempURL = tempURL else {
-          print("[VideoEditor Drop] No temp URL received")
+          DiagnosticLogger.shared.log(.warning, .editor, "Video editor drop file representation missing temp URL")
           DispatchQueue.main.async {
             self.showError(message: L10n.VideoEditor.couldNotReadFile)
           }
           return
         }
-
-        print("[VideoEditor Drop] Temp URL: \(tempURL)")
 
         // Copy temp file to a permanent location before it gets deleted
         let fileName = tempURL.lastPathComponent
@@ -165,14 +192,26 @@ struct VideoEditorEmptyStateView: View {
             withIntermediateDirectories: true
           )
           try FileManager.default.copyItem(at: tempURL, to: destURL)
-          print("[VideoEditor Drop] Copied to: \(destURL)")
-          print("[VideoEditor Drop] Original URL to preserve: \(originalURL?.path ?? "nil")")
+          DiagnosticLogger.shared.log(
+            .info,
+            .editor,
+            "Video editor drop prepared working copy",
+            context: [
+              "fileName": destURL.lastPathComponent,
+              "hasOriginalURL": originalURL == nil ? "false" : "true",
+            ]
+          )
 
           DispatchQueue.main.async {
             self.validateAndLoad(url: destURL, originalURL: originalURL)
           }
         } catch {
-          print("[VideoEditor Drop] Copy error: \(error)")
+          DiagnosticLogger.shared.logError(
+            .editor,
+            error,
+            "Video editor drop working copy failed",
+            context: ["fileName": tempURL.lastPathComponent]
+          )
           DispatchQueue.main.async {
             self.showError(message: L10n.VideoEditor.failedToPrepareFile(error.localizedDescription))
           }
@@ -192,8 +231,16 @@ struct VideoEditorEmptyStateView: View {
 
     panel.begin { response in
       if response == .OK, let url = panel.url {
+        DiagnosticLogger.shared.log(
+          .info,
+          .editor,
+          "Video editor browse selected file",
+          context: ["fileName": url.lastPathComponent]
+        )
         // Browse uses original file directly - pass same URL as both working and original
         validateAndLoad(url: url, originalURL: url)
+      } else {
+        DiagnosticLogger.shared.log(.debug, .editor, "Video editor browse cancelled")
       }
     }
   }
@@ -201,6 +248,12 @@ struct VideoEditorEmptyStateView: View {
   private func validateAndLoad(url: URL, originalURL: URL? = nil) {
     // Validate file exists
     guard FileManager.default.fileExists(atPath: url.path) else {
+      DiagnosticLogger.shared.log(
+        .warning,
+        .editor,
+        "Video editor load rejected; file missing",
+        context: ["fileName": url.lastPathComponent]
+      )
       showError(message: L10n.VideoEditor.fileNotFound)
       return
     }
@@ -208,10 +261,22 @@ struct VideoEditorEmptyStateView: View {
     // Validate it's a video or GIF file
     guard let type = try? url.resourceValues(forKeys: [.contentTypeKey]).contentType,
           type.conforms(to: .movie) || type.conforms(to: .video) || type.conforms(to: .gif) else {
+      DiagnosticLogger.shared.log(
+        .warning,
+        .editor,
+        "Video editor load rejected; invalid type",
+        context: ["fileName": url.lastPathComponent]
+      )
       showError(message: L10n.VideoEditor.selectValidVideoOrGIFFile)
       return
     }
 
+    DiagnosticLogger.shared.log(
+      .info,
+      .editor,
+      "Video editor loading file",
+      context: ["fileName": url.lastPathComponent, "hasOriginalURL": originalURL == nil ? "false" : "true"]
+    )
     onVideoDropped(url, originalURL)
   }
 

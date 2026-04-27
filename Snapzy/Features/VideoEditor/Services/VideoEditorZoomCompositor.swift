@@ -78,6 +78,7 @@ class ZoomCompositor {
     // Get video track
     guard let videoTrack = try await asset.loadTracks(withMediaType: .video).first else {
       print("❌ [ZoomCompositor] ERROR: No video track found")
+      DiagnosticLogger.shared.log(.error, .export, "Zoom compositor failed; source video track missing")
       throw ZoomCompositorError.noVideoTrack
     }
     print("🎬 [ZoomCompositor] Video track ID: \(videoTrack.trackID)")
@@ -254,6 +255,12 @@ class ZoomVideoCompositorClass: NSObject, AVVideoCompositing {
 
     guard let instruction = request.videoCompositionInstruction as? ZoomVideoCompositionInstruction else {
       print("❌ [Compositor] Frame \(frameCount): Invalid instruction type")
+      DiagnosticLogger.shared.log(
+        .error,
+        .export,
+        "Zoom compositor request failed; invalid instruction type",
+        context: ["frame": "\(frameCount)"]
+      )
       request.finish(with: ZoomCompositor.ZoomCompositorError.compositionFailed)
       return
     }
@@ -263,6 +270,16 @@ class ZoomVideoCompositorClass: NSObject, AVVideoCompositing {
       let availableTrackIDs = request.sourceTrackIDs.map(\.int32Value)
       print("❌ [Compositor] Frame \(frameCount): No source frame for trackID \(instruction.trackID)")
       print("❌ [Compositor] Available track IDs: \(availableTrackIDs)")
+      DiagnosticLogger.shared.log(
+        .error,
+        .export,
+        "Zoom compositor source frame missing",
+        context: [
+          "frame": "\(frameCount)",
+          "expectedTrackID": "\(instruction.trackID)",
+          "availableTrackCount": "\(availableTrackIDs.count)",
+        ]
+      )
 
       // Try fallback: use first available track
       if let firstTrackID = availableTrackIDs.first,
@@ -312,6 +329,14 @@ class ZoomVideoCompositorClass: NSObject, AVVideoCompositing {
       instruction: instruction
     ) else {
       print("❌ [Compositor] Frame \(frameCount): applyEffects returned nil, passing through")
+      if frameCount == 1 || frameCount % 30 == 0 {
+        DiagnosticLogger.shared.log(
+          .warning,
+          .export,
+          "Zoom compositor effects failed; passed through source frame",
+          context: ["frame": "\(frameCount)"]
+        )
+      }
       request.finish(withComposedVideoFrame: sourceBuffer)
       return
     }

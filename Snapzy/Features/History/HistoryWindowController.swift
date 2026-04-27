@@ -58,17 +58,27 @@ final class HistoryWindowController {
   private init() {}
 
   func showWindow() {
+    DiagnosticLogger.shared.log(.info, .history, "History window requested")
     HistoryFloatingManager.shared.showExpanded()
     NSApp.activate(ignoringOtherApps: true)
   }
 
   func hideWindow() {
+    DiagnosticLogger.shared.log(.debug, .history, "History window hide requested")
     HistoryFloatingManager.shared.hide()
   }
 
   func copyToClipboard(_ records: [CaptureHistoryRecord]) {
     let existingRecords = records.filter(\.fileExists)
-    guard !existingRecords.isEmpty else { return }
+    guard !existingRecords.isEmpty else {
+      DiagnosticLogger.shared.log(
+        .warning,
+        .clipboard,
+        "History clipboard copy skipped; no existing files",
+        context: ["requestedCount": "\(records.count)"]
+      )
+      return
+    }
 
     if existingRecords.count == 1, let record = existingRecords.first {
       switch record.captureType {
@@ -87,17 +97,47 @@ final class HistoryWindowController {
       duration: 1.6,
       variant: .compact
     )
+    DiagnosticLogger.shared.log(
+      .info,
+      .clipboard,
+      "History copied selection to clipboard",
+      context: [
+        "requestedCount": "\(records.count)",
+        "copiedCount": "\(existingRecords.count)",
+        "multiItem": existingRecords.count > 1 ? "true" : "false",
+      ]
+    )
   }
 
   func openItem(_ record: CaptureHistoryRecord) {
-    guard record.fileExists else { return }
+    guard record.fileExists else {
+      DiagnosticLogger.shared.log(
+        .warning,
+        .history,
+        "History open skipped; file missing",
+        context: ["fileName": record.fileName, "type": record.captureType.rawValue]
+      )
+      return
+    }
 
     HistoryFloatingManager.shared.hide()
 
     switch record.captureType {
     case .screenshot:
+      DiagnosticLogger.shared.log(
+        .info,
+        .history,
+        "History opening screenshot in annotate",
+        context: ["fileName": record.fileName]
+      )
       AnnotateManager.shared.openAnnotation(url: record.fileURL)
     case .video, .gif:
+      DiagnosticLogger.shared.log(
+        .info,
+        .history,
+        "History opening media in editor",
+        context: ["fileName": record.fileName, "type": record.captureType.rawValue]
+      )
       VideoEditorManager.shared.openEditor(for: record.fileURL)
     }
   }
@@ -111,7 +151,15 @@ final class HistoryWindowController {
       let isConfirmed = HistoryFloatingManager.shared.performModalInteraction {
         confirmDelete(records: recordsToDelete)
       }
-      guard isConfirmed else { return 0 }
+      guard isConfirmed else {
+        DiagnosticLogger.shared.log(
+          .debug,
+          .history,
+          "History delete cancelled by user",
+          context: ["recordCount": "\(recordsToDelete.count)"]
+        )
+        return 0
+      }
     }
 
     let scopedAccesses = recordsToDelete.map {
@@ -126,7 +174,16 @@ final class HistoryWindowController {
       .map(\.fileURL)
 
     if !existingFileURLs.isEmpty {
-      try? NSWorkspace.shared.recycle(existingFileURLs)
+      do {
+        try NSWorkspace.shared.recycle(existingFileURLs)
+      } catch {
+        DiagnosticLogger.shared.logError(
+          .fileAccess,
+          error,
+          "History recycle files failed",
+          context: ["fileCount": "\(existingFileURLs.count)"]
+        )
+      }
     }
 
     let ids = recordsToDelete.map(\.id)
@@ -140,6 +197,15 @@ final class HistoryWindowController {
       variant: .compact
     )
 
+    DiagnosticLogger.shared.log(
+      .info,
+      .history,
+      "History records deleted",
+      context: [
+        "recordCount": "\(recordsToDelete.count)",
+        "fileCount": "\(existingFileURLs.count)",
+      ]
+    )
     return recordsToDelete.count
   }
 

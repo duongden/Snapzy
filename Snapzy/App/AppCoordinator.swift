@@ -21,6 +21,12 @@ final class AppCoordinator {
     AppIdentityManager.shared.refresh()
     let didCrash = CrashSentinel.shared.checkAndReset()
     DiagnosticLogger.shared.startSession()
+    DiagnosticLogger.shared.log(
+      .info,
+      .lifecycle,
+      "App launch sequence started",
+      context: ["previousCrash": didCrash ? "true" : "false"]
+    )
     LegacyLicenseCleanupService.shared.runIfNeeded()
     LogCleanupScheduler.shared.start()
     RecordingMetadataCleanupScheduler.shared.start()
@@ -52,14 +58,22 @@ final class AppCoordinator {
     }
 
     CaptureHistoryRetentionService.shared.start()
+    DiagnosticLogger.shared.log(.debug, .lifecycle, "Background schedulers started")
 
     AppStatusBarController.shared.setup(
       viewModel: environment.screenCaptureViewModel,
       updater: UpdaterManager.shared.updater,
       didCrash: didCrash && DiagnosticLogger.shared.isEnabled
     )
+    DiagnosticLogger.shared.log(
+      .debug,
+      .ui,
+      "Status bar controller configured",
+      context: ["crashPrompt": (didCrash && DiagnosticLogger.shared.isEnabled) ? "true" : "false"]
+    )
 
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+      DiagnosticLogger.shared.log(.debug, .ui, "Splash presentation scheduled")
       SplashWindowController.shared.show()
     }
 
@@ -85,10 +99,17 @@ final class AppCoordinator {
       queue: .main
     ) { _ in
       Task { @MainActor in
+        DiagnosticLogger.shared.log(.info, .ui, "Onboarding requested from notification")
         SplashWindowController.shared.show(forceOnboarding: true)
       }
     }
 
     observers.append(onboardingObserver)
+    DiagnosticLogger.shared.log(
+      .debug,
+      .lifecycle,
+      "App notifications observed",
+      context: ["observerCount": "\(observers.count)"]
+    )
   }
 }

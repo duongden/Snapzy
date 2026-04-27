@@ -50,6 +50,12 @@ final class AppStatusBarController: ObservableObject {
 
     // Pre-allocate area selection windows for instant activation (<150ms)
     AreaSelectionController.shared.prepareWindowPool()
+    DiagnosticLogger.shared.log(
+      .info,
+      .ui,
+      "Status bar item initialized",
+      context: ["previousCrashPrompt": didCrash ? "true" : "false"]
+    )
   }
 
   func stopRecording() {
@@ -74,6 +80,12 @@ final class AppStatusBarController: ObservableObject {
     guard let event = NSApp.currentEvent else { return }
     switch event.type {
     case .leftMouseUp, .rightMouseUp:
+      DiagnosticLogger.shared.log(
+        .debug,
+        .ui,
+        "Status bar menu opened",
+        context: ["event": event.type == .leftMouseUp ? "leftMouseUp" : "rightMouseUp"]
+      )
       showMenu()
     default:
       break
@@ -184,7 +196,10 @@ final class AppStatusBarController: ObservableObject {
     menu = NSMenu()
     menu?.autoenablesItems = false
 
-    guard let viewModel = viewModel else { return }
+    guard let viewModel = viewModel else {
+      DiagnosticLogger.shared.log(.warning, .ui, "Status bar menu requested before view model setup")
+      return
+    }
     let shortcutManager = KeyboardShortcutManager.shared
 
     // Recording status indicator (when recording)
@@ -406,73 +421,100 @@ final class AppStatusBarController: ObservableObject {
   // MARK: - Menu Actions
 
   @objc private func stopRecordingAction() {
+    logMenuAction("stopRecording", context: ["state": "\(recorder.state)"])
     stopRecording()
   }
 
   @objc private func togglePauseRecordingAction() {
+    logMenuAction("togglePauseRecording", context: ["state": "\(recorder.state)"])
     recorder.togglePause()
   }
 
   @objc private func captureAreaAction() {
+    logMenuAction("captureArea")
     viewModel?.captureArea()
   }
 
   @objc private func captureFullscreenAction() {
+    logMenuAction("captureFullscreen")
     viewModel?.captureFullscreen()
   }
 
   @objc private func captureScrollingAction() {
+    logMenuAction("captureScrolling")
     viewModel?.captureScrolling()
   }
 
   @objc private func captureOCRAction() {
+    logMenuAction("captureOCR")
     viewModel?.captureOCR()
   }
 
   @objc private func captureObjectCutoutAction() {
+    logMenuAction("captureObjectCutout")
     viewModel?.captureObjectCutout()
   }
 
   @objc private func recordScreenAction() {
+    logMenuAction("recordScreen")
     viewModel?.startRecordingFlow()
   }
 
   @objc private func openAnnotateAction() {
+    logMenuAction("openAnnotate")
     AnnotateManager.shared.openEmptyAnnotation()
   }
 
   @objc private func editVideoAction() {
+    logMenuAction("editVideo")
     VideoEditorManager.shared.openEmptyEditor()
   }
 
   @objc private func openCloudUploadsAction() {
-    if CloudUploadHistoryWindowController.shared.toggleWindow() {
+    logMenuAction(
+      "openCloudUploads",
+      context: ["cloudConfigured": CloudManager.shared.isConfigured ? "true" : "false"]
+    )
+    let didShow = CloudUploadHistoryWindowController.shared.toggleWindow()
+    DiagnosticLogger.shared.log(
+      .debug,
+      .cloud,
+      "Cloud uploads window toggled",
+      context: ["shown": didShow ? "true" : "false"]
+    )
+    if didShow {
       NSApp.activate(ignoringOtherApps: true)
     }
   }
 
   @objc private func openHistoryAction() {
+    logMenuAction("openHistory")
     HistoryFloatingManager.shared.toggle()
   }
 
   @objc private func showShortcutListAction() {
+    logMenuAction("showShortcutList")
     ShortcutOverlayManager.shared.toggle()
   }
 
   @objc private func grantPermissionAction() {
+    logMenuAction("grantPermission")
     viewModel?.requestPermission()
   }
 
   @objc private func checkForUpdatesAction() {
+    logMenuAction("checkForUpdates")
     UpdaterManager.shared.checkForUpdates()
   }
 
   @objc private func submitCrashReportAction() {
+    logMenuAction("submitCrashReport")
     CrashReportService.presentAlert()
     didDetectCrash = false
   }
 
   @objc private func openPreferencesAction() {
+    logMenuAction("openPreferences")
     openPreferencesWindow()
   }
 
@@ -480,6 +522,12 @@ final class AppStatusBarController: ObservableObject {
     if let tab {
       PreferencesNavigationState.shared.selectedTab = tab
     }
+    DiagnosticLogger.shared.log(
+      .info,
+      .preferences,
+      "Preferences window requested",
+      context: ["tab": tab.map { "\($0)" } ?? "current"]
+    )
     presentPreferencesWindow()
   }
 
@@ -490,6 +538,7 @@ final class AppStatusBarController: ObservableObject {
     if !didElevateForSettings {
       NSApp.setActivationPolicy(.regular)
       didElevateForSettings = true
+      DiagnosticLogger.shared.log(.debug, .ui, "Activation policy elevated for preferences window")
 
       // Observe when Settings window closes to revert policy
       NotificationCenter.default.addObserver(
@@ -527,6 +576,7 @@ final class AppStatusBarController: ObservableObject {
 
   @objc private func windowDidClose(_ notification: Notification) {
     if let window = notification.object as? NSWindow, trackedPreferencesWindow === window {
+      DiagnosticLogger.shared.log(.debug, .preferences, "Tracked preferences window closed")
       trackedPreferencesWindow = nil
       removeTrackedPreferencesWindowExclusion()
     }
@@ -542,6 +592,7 @@ final class AppStatusBarController: ObservableObject {
     if visibleWindows.isEmpty && didElevateForSettings {
       NSApp.setActivationPolicy(.accessory)
       didElevateForSettings = false
+      DiagnosticLogger.shared.log(.debug, .ui, "Activation policy restored after preferences closed")
       NotificationCenter.default.removeObserver(
         self,
         name: NSWindow.willCloseNotification,
@@ -551,7 +602,21 @@ final class AppStatusBarController: ObservableObject {
   }
 
   @objc private func quitAction() {
+    logMenuAction("quit")
     NSApp.terminate(nil)
+  }
+
+  private func logMenuAction(_ action: String, context: [String: String]? = nil) {
+    DiagnosticLogger.shared.log(
+      .info,
+      .action,
+      "Menu action invoked",
+      context: {
+        var values = context ?? [:]
+        values["action"] = action
+        return values
+      }()
+    )
   }
 
   private func applyConfiguredShortcut(
@@ -578,6 +643,12 @@ final class AppStatusBarController: ObservableObject {
 
   private func schedulePreferencesWindowTracking(excludingWindowNumbers existingWindowNumbers: Set<Int>) {
     pendingPreferencesWindowTrackingWorkItem?.cancel()
+    DiagnosticLogger.shared.log(
+      .debug,
+      .preferences,
+      "Preferences window tracking scheduled",
+      context: ["existingWindows": "\(existingWindowNumbers.count)"]
+    )
 
     let workItem = DispatchWorkItem { [weak self] in
       self?.trackPreferencesWindow(excludingWindowNumbers: existingWindowNumbers, remainingAttempts: 12)
@@ -601,11 +672,20 @@ final class AppStatusBarController: ObservableObject {
       !existingWindowNumbers.contains($0.windowNumber)
     }) {
       trackedPreferencesWindow = candidate
+      DiagnosticLogger.shared.log(
+        .debug,
+        .preferences,
+        "Preferences window tracked",
+        context: ["windowNumber": "\(candidate.windowNumber)"]
+      )
       syncTrackedPreferencesWindowExclusion()
       return
     }
 
-    guard remainingAttempts > 1 else { return }
+    guard remainingAttempts > 1 else {
+      DiagnosticLogger.shared.log(.warning, .preferences, "Preferences window tracking timed out")
+      return
+    }
 
     let workItem = DispatchWorkItem { [weak self] in
       self?.trackPreferencesWindow(
@@ -634,6 +714,12 @@ final class AppStatusBarController: ObservableObject {
 
     let previousWindowID = trackedPreferencesExcludedWindowID
     trackedPreferencesExcludedWindowID = windowID
+    DiagnosticLogger.shared.log(
+      .debug,
+      .recording,
+      "Preferences window added to runtime recording exclusion",
+      context: ["windowID": "\(windowID)"]
+    )
 
     Task { @MainActor [weak self] in
       guard let self else { return }
@@ -647,6 +733,12 @@ final class AppStatusBarController: ObservableObject {
   private func removeTrackedPreferencesWindowExclusion() {
     guard let windowID = trackedPreferencesExcludedWindowID else { return }
     trackedPreferencesExcludedWindowID = nil
+    DiagnosticLogger.shared.log(
+      .debug,
+      .recording,
+      "Preferences window removed from runtime recording exclusion",
+      context: ["windowID": "\(windowID)"]
+    )
 
     Task { @MainActor [weak self] in
       guard let self else { return }

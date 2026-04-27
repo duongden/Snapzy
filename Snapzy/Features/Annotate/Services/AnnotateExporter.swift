@@ -64,7 +64,6 @@ final class AnnotateExporter {
     } catch {
       SoundManager.play("Basso")
       DiagnosticLogger.shared.logError(.annotate, error, "Save failed")
-      print("Annotate save failed: \(error.localizedDescription)")
       return false
     }
   }
@@ -86,7 +85,6 @@ final class AnnotateExporter {
       return true
     } catch {
       DiagnosticLogger.shared.logError(.annotate, error, "Background save failed")
-      print("Annotate background save failed: \(error.localizedDescription)")
       return false
     }
   }

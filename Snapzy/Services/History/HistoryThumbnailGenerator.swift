@@ -42,10 +42,14 @@ final class HistoryThumbnailGenerator {
   }
 
   private init() {
-    try? FileManager.default.createDirectory(
-      at: thumbnailsDirectory,
-      withIntermediateDirectories: true
-    )
+    do {
+      try FileManager.default.createDirectory(
+        at: thumbnailsDirectory,
+        withIntermediateDirectories: true
+      )
+    } catch {
+      DiagnosticLogger.shared.logError(.history, error, "History thumbnail directory creation failed")
+    }
     memoryCache.countLimit = 160
     memoryCache.totalCostLimit = 48 * 1024 * 1024
   }
@@ -155,13 +159,28 @@ final class HistoryThumbnailGenerator {
   /// Delete all cached thumbnails and clear thumbnail paths in database
   func clearAllThumbnails() {
     let fm = FileManager.default
-    guard let contents = try? fm.contentsOfDirectory(
-      at: thumbnailsDirectory,
-      includingPropertiesForKeys: nil
-    ) else { return }
+    let contents: [URL]
+    do {
+      contents = try fm.contentsOfDirectory(
+        at: thumbnailsDirectory,
+        includingPropertiesForKeys: nil
+      )
+    } catch {
+      DiagnosticLogger.shared.logError(.history, error, "History thumbnails clear failed to list directory")
+      return
+    }
 
     for url in contents {
-      try? fm.removeItem(at: url)
+      do {
+        try fm.removeItem(at: url)
+      } catch {
+        DiagnosticLogger.shared.logError(
+          .history,
+          error,
+          "History thumbnail delete failed during clear all",
+          context: ["fileName": url.lastPathComponent]
+        )
+      }
     }
 
     memoryCache.removeAllObjects()
@@ -170,6 +189,12 @@ final class HistoryThumbnailGenerator {
     DispatchQueue.main.async {
       CaptureHistoryStore.shared.clearAllThumbnailPaths()
       logger.info("All history thumbnails cleared")
+      DiagnosticLogger.shared.log(
+        .info,
+        .history,
+        "All history thumbnails cleared",
+        context: ["thumbnailCount": "\(contents.count)"]
+      )
     }
   }
 
@@ -195,6 +220,12 @@ final class HistoryThumbnailGenerator {
 
     guard FileManager.default.fileExists(atPath: record.filePath) else {
       logger.debug("File missing, skipping thumbnail: \(record.fileName)")
+      DiagnosticLogger.shared.log(
+        .debug,
+        .history,
+        "History thumbnail skipped; source file missing",
+        context: ["fileName": record.fileName, "type": record.captureType.rawValue]
+      )
       return nil
     }
 
@@ -222,6 +253,12 @@ final class HistoryThumbnailGenerator {
 
     guard let cgImage = downsampledImage(at: url) else {
       logger.warning("Failed to load image for thumbnail: \(record.fileName)")
+      DiagnosticLogger.shared.log(
+        .warning,
+        .history,
+        "History image thumbnail generation failed",
+        context: ["fileName": record.fileName]
+      )
       return nil
     }
 
@@ -254,6 +291,12 @@ final class HistoryThumbnailGenerator {
       return saveThumbnail(cgImage, identity: identity)
     } catch {
       logger.error("Failed to generate video thumbnail: \(error.localizedDescription)")
+      DiagnosticLogger.shared.logError(
+        .history,
+        error,
+        "History video thumbnail generation failed",
+        context: ["fileName": record.fileName]
+      )
       return nil
     }
   }
@@ -311,12 +354,31 @@ final class HistoryThumbnailGenerator {
 
     for url in contents where url.lastPathComponent.hasPrefix(prefix) {
       if keptURL?.standardizedFileURL == url.standardizedFileURL { continue }
-      try? FileManager.default.removeItem(at: url)
+      do {
+        try FileManager.default.removeItem(at: url)
+      } catch {
+        DiagnosticLogger.shared.logError(
+          .history,
+          error,
+          "History thumbnail old cache delete failed",
+          context: ["fileName": url.lastPathComponent]
+        )
+      }
     }
 
     let legacyURL = legacyThumbnailURL(for: recordId)
     if keptURL?.standardizedFileURL != legacyURL.standardizedFileURL {
-      try? FileManager.default.removeItem(at: legacyURL)
+      guard FileManager.default.fileExists(atPath: legacyURL.path) else { return }
+      do {
+        try FileManager.default.removeItem(at: legacyURL)
+      } catch {
+        DiagnosticLogger.shared.logError(
+          .history,
+          error,
+          "History thumbnail legacy cache delete failed",
+          context: ["fileName": legacyURL.lastPathComponent]
+        )
+      }
     }
   }
 
@@ -375,6 +437,12 @@ final class HistoryThumbnailGenerator {
       nil
     ) else {
       logger.warning("Failed to create thumbnail destination for \(identity.recordId)")
+      DiagnosticLogger.shared.log(
+        .warning,
+        .history,
+        "History thumbnail destination creation failed",
+        context: ["recordId": identity.recordId.uuidString]
+      )
       return nil
     }
 
@@ -385,6 +453,12 @@ final class HistoryThumbnailGenerator {
 
     guard CGImageDestinationFinalize(destination) else {
       logger.warning("Failed to encode thumbnail as JPEG for \(identity.recordId)")
+      DiagnosticLogger.shared.log(
+        .warning,
+        .history,
+        "History thumbnail JPEG encode failed",
+        context: ["recordId": identity.recordId.uuidString]
+      )
       return nil
     }
 
@@ -402,6 +476,12 @@ final class HistoryThumbnailGenerator {
       return GeneratedThumbnail(url: url, image: thumbnailImage)
     } catch {
       logger.error("Failed to read thumbnail metadata: \(error.localizedDescription)")
+      DiagnosticLogger.shared.logError(
+        .history,
+        error,
+        "History thumbnail metadata read failed",
+        context: ["recordId": identity.recordId.uuidString]
+      )
       return nil
     }
   }

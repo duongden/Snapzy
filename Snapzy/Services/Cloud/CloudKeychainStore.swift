@@ -88,6 +88,16 @@ struct CloudKeychainStore {
       logger.notice(
         "Data-protection keychain unavailable (\(status, privacy: .public)); falling back [\(context, privacy: .public)]"
       )
+      DiagnosticLogger.shared.log(
+        .warning,
+        .cloud,
+        "Data-protection keychain unavailable; falling back",
+        context: [
+          "operation": context,
+          "item": itemDiagnosticName(item),
+          "status": "\(status)",
+        ]
+      )
       break
     case .authRequired, .interactionNotAllowed, .error:
       return primaryOutcome
@@ -148,6 +158,12 @@ struct CloudKeychainStore {
       logger.notice(
         "Stored cloud secret in file-based keychain due missing entitlement [\(item.account, privacy: .public)]"
       )
+      DiagnosticLogger.shared.log(
+        .warning,
+        .cloud,
+        "Cloud secret stored in file-based keychain due missing data-protection entitlement",
+        context: ["item": itemDiagnosticName(item)]
+      )
       cleanupLegacyLocations(for: item, excluding: fileBasedLocation)
       return fileBasedLocation.description
     case .updateFailed, .addFailed:
@@ -182,8 +198,20 @@ struct CloudKeychainStore {
       guard storedLocationDescription != location.description else { return }
       deleteValue(at: location)
       logger.info("Migrated legacy keychain item for \(context, privacy: .public)")
+      DiagnosticLogger.shared.log(
+        .info,
+        .cloud,
+        "Legacy keychain item migrated",
+        context: ["operation": context, "item": itemDiagnosticName(item)]
+      )
     } catch {
       logger.error("Legacy keychain migration failed for \(context, privacy: .public): \(error.localizedDescription)")
+      DiagnosticLogger.shared.logError(
+        .cloud,
+        error,
+        "Legacy keychain item migration failed",
+        context: ["operation": context, "item": itemDiagnosticName(item)]
+      )
     }
   }
 
@@ -253,6 +281,16 @@ struct CloudKeychainStore {
       logger.error(
         "Legacy cleanup failed at \(location.description, privacy: .public): \(status, privacy: .public)"
       )
+      DiagnosticLogger.shared.log(
+        .error,
+        .cloud,
+        "Legacy keychain cleanup failed",
+        context: [
+          "item": itemDiagnosticName(item),
+          "location": location.description,
+          "status": "\(status)",
+        ]
+      )
     }
   }
 
@@ -263,6 +301,12 @@ struct CloudKeychainStore {
     let status = SecItemDelete(baseQuery(for: location) as CFDictionary)
     guard !(location.usesDataProtection && status == errSecMissingEntitlement) else { return }
     guard status != errSecSuccess, status != errSecItemNotFound else { return }
+    DiagnosticLogger.shared.log(
+      .error,
+      .cloud,
+      "Cloud keychain delete issue collected",
+      context: ["location": location.description, "status": "\(status)"]
+    )
     issues.append(
       CloudKeychainDeleteIssue(
         locationDescription: location.description,
@@ -332,6 +376,17 @@ struct CloudKeychainStore {
       return CloudError.keychainError(L10n.CloudOperation.secItemUpdateFailed(Int(status)))
     case .addFailed(let status):
       return CloudError.keychainError(L10n.CloudOperation.secItemAddFailed(Int(status)))
+    }
+  }
+
+  private static func itemDiagnosticName(_ item: CloudKeychainItem) -> String {
+    switch item {
+    case .accessKey:
+      return "accessKey"
+    case .secretKey:
+      return "secretKey"
+    case .passwordHash:
+      return "passwordHash"
     }
   }
 }

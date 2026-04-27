@@ -117,13 +117,32 @@ final class QuickAccessManager: ObservableObject {
       UserDefaults.standard.object(forKey: Keys.dragDropEnabled) as? Bool ?? true
     pauseCountdownOnHover =
       UserDefaults.standard.object(forKey: Keys.pauseCountdownOnHover) as? Bool ?? true
+    DiagnosticLogger.shared.log(
+      .debug,
+      .ui,
+      "Quick access settings loaded",
+      context: [
+        "enabled": isEnabled ? "true" : "false",
+        "position": position.rawValue,
+        "autoDismiss": autoDismissEnabled ? "true" : "false",
+        "delay": "\(autoDismissDelay)",
+      ]
+    )
   }
 
   // MARK: - Public Methods
 
   /// Add a new screenshot to the quick access stack
   func addScreenshot(url: URL) async {
-    guard isEnabled else { return }
+    guard isEnabled else {
+      DiagnosticLogger.shared.log(
+        .debug,
+        .action,
+        "Quick access screenshot skipped; feature disabled",
+        context: ["fileName": url.lastPathComponent]
+      )
+      return
+    }
     let fileAccess = fileAccessManager.beginAccessingURL(url)
     defer { fileAccess.stop() }
     let result = await ThumbnailGenerator.generate(from: url)
@@ -136,6 +155,12 @@ final class QuickAccessManager: ObservableObject {
       needsRetry = false
     } else {
       logger.warning("Thumbnail failed for \(url.lastPathComponent), using placeholder")
+      DiagnosticLogger.shared.log(
+        .warning,
+        .ui,
+        "Quick access screenshot thumbnail failed; using placeholder",
+        context: ["fileName": url.lastPathComponent]
+      )
       thumbnail = ThumbnailGenerator.placeholderThumbnail()
       needsRetry = true
     }
@@ -148,9 +173,21 @@ final class QuickAccessManager: ObservableObject {
       if items.count >= maxVisibleItems, let oldestId = items.last?.id {
         cancelDismissTimer(for: oldestId)
         items.removeLast()
+        DiagnosticLogger.shared.log(
+          .debug,
+          .ui,
+          "Quick access trimmed oldest item",
+          context: ["maxVisibleItems": "\(maxVisibleItems)"]
+        )
       }
       items.insert(item, at: 0)
     }
+    DiagnosticLogger.shared.log(
+      .info,
+      .action,
+      "Quick access screenshot added",
+      context: ["fileName": url.lastPathComponent, "itemCount": "\(items.count)"]
+    )
 
     // Show panel if this is first item
     if wasEmpty {
@@ -170,7 +207,15 @@ final class QuickAccessManager: ObservableObject {
 
   /// Add a new video recording to the quick access stack
   func addVideo(url: URL) async {
-    guard isEnabled else { return }
+    guard isEnabled else {
+      DiagnosticLogger.shared.log(
+        .debug,
+        .action,
+        "Quick access video skipped; feature disabled",
+        context: ["fileName": url.lastPathComponent]
+      )
+      return
+    }
     let fileAccess = fileAccessManager.beginAccessingURL(url)
     defer { fileAccess.stop() }
     let result = await ThumbnailGenerator.generate(from: url)
@@ -183,6 +228,12 @@ final class QuickAccessManager: ObservableObject {
       needsRetry = false
     } else {
       logger.warning("Video thumbnail failed for \(url.lastPathComponent), using placeholder")
+      DiagnosticLogger.shared.log(
+        .warning,
+        .ui,
+        "Quick access video thumbnail failed; using placeholder",
+        context: ["fileName": url.lastPathComponent]
+      )
       thumbnail = ThumbnailGenerator.placeholderThumbnail()
       needsRetry = true
     }
@@ -196,6 +247,12 @@ final class QuickAccessManager: ObservableObject {
       if items.count >= maxVisibleItems, let oldestId = items.last?.id {
         cancelDismissTimer(for: oldestId)
         items.removeLast()
+        DiagnosticLogger.shared.log(
+          .debug,
+          .ui,
+          "Quick access trimmed oldest item",
+          context: ["maxVisibleItems": "\(maxVisibleItems)"]
+        )
       }
       items.insert(item, at: 0)
     }
@@ -212,6 +269,16 @@ final class QuickAccessManager: ObservableObject {
     if needsRetry {
       scheduleThumbnailRetry(for: item.id, url: url)
     }
+    DiagnosticLogger.shared.log(
+      .info,
+      .action,
+      "Quick access video added",
+      context: [
+        "fileName": url.lastPathComponent,
+        "itemCount": "\(items.count)",
+        "duration": "\(result.duration ?? 0)",
+      ]
+    )
   }
 
   /// Remove an item (screenshot or video) from the stack
@@ -220,6 +287,12 @@ final class QuickAccessManager: ObservableObject {
       cancelDismissTimer(for: id)
       editingItemIds.remove(id)
       activityHoldItemIds.remove(id)
+      DiagnosticLogger.shared.log(
+        .debug,
+        .action,
+        "Quick access remove requested for missing item",
+        context: ["itemId": id.uuidString]
+      )
       return
     }
 
@@ -232,18 +305,30 @@ final class QuickAccessManager: ObservableObject {
       let hasHistoryRecord = historyEnabled && CaptureHistoryStore.shared.hasRecord(forFilePath: url.path)
 
       if hasHistoryRecord {
-        DiagnosticLogger.shared.log(.info, .action, "[QuickAccess] Dismiss temp file (preserved for history): \(url.lastPathComponent)")
-        print("[Snapzy:QuickAccess] Dismiss temp file (preserved for history): \(url.lastPathComponent)")
+        DiagnosticLogger.shared.log(
+          .info,
+          .action,
+          "Quick access item dismissed; temp file preserved for history",
+          context: ["fileName": url.lastPathComponent]
+        )
       } else {
-        DiagnosticLogger.shared.log(.info, .action, "[QuickAccess] Dismiss temp file (auto-delete): \(url.lastPathComponent)")
-        print("[Snapzy:QuickAccess] Dismiss temp file (auto-delete): \(url.lastPathComponent)")
+        DiagnosticLogger.shared.log(
+          .info,
+          .action,
+          "Quick access item dismissed; temp file auto-delete requested",
+          context: ["fileName": url.lastPathComponent]
+        )
         Task { @MainActor in
           tempCaptureManager.deleteTempFile(at: url)
         }
       }
     } else {
-      DiagnosticLogger.shared.log(.info, .action, "[QuickAccess] Dismiss saved file: \(item.url.lastPathComponent)")
-      print("[Snapzy:QuickAccess] Dismiss saved file: \(item.url.lastPathComponent)")
+      DiagnosticLogger.shared.log(
+        .info,
+        .action,
+        "Quick access item dismissed; saved file retained",
+        context: ["fileName": item.url.lastPathComponent]
+      )
     }
 
     cancelDismissTimer(for: id)
@@ -270,6 +355,12 @@ final class QuickAccessManager: ObservableObject {
   /// Used after drag-to-app so the receiving app can still read the file.
   /// Orphaned temp files get cleaned up on next launch via cleanupOrphanedFiles().
   func dismissCard(id: UUID) {
+    DiagnosticLogger.shared.log(
+      .debug,
+      .action,
+      "Quick access card dismissed without deleting file",
+      context: ["itemId": id.uuidString]
+    )
     cancelDismissTimer(for: id)
     editingItemIds.remove(id)
     activityHoldItemIds.remove(id)
@@ -285,8 +376,22 @@ final class QuickAccessManager: ObservableObject {
 
   /// Update processing state for an item (used during GIF conversion)
   func updateProcessingState(id: UUID, state: QuickAccessProcessingState) {
-    guard let index = items.firstIndex(where: { $0.id == id }) else { return }
+    guard let index = items.firstIndex(where: { $0.id == id }) else {
+      DiagnosticLogger.shared.log(
+        .warning,
+        .action,
+        "Quick access processing state update missed item",
+        context: ["itemId": id.uuidString, "state": "\(state)"]
+      )
+      return
+    }
     items[index].processingState = state
+    DiagnosticLogger.shared.log(
+      .debug,
+      .action,
+      "Quick access processing state changed",
+      context: ["itemId": id.uuidString, "state": "\(state)"]
+    )
     if state == .idle {
       resumeCountdownForActivity(id)
     } else {
@@ -296,7 +401,15 @@ final class QuickAccessManager: ObservableObject {
 
   /// Replace item URL and thumbnail after processing (e.g. GIF conversion)
   func updateItemURL(id: UUID, newURL: URL, newThumbnail: NSImage? = nil) {
-    guard let index = items.firstIndex(where: { $0.id == id }) else { return }
+    guard let index = items.firstIndex(where: { $0.id == id }) else {
+      DiagnosticLogger.shared.log(
+        .warning,
+        .action,
+        "Quick access item URL update missed item",
+        context: ["itemId": id.uuidString, "fileName": newURL.lastPathComponent]
+      )
+      return
+    }
     let existing = items[index]
     let thumbnail = newThumbnail ?? existing.thumbnail
     items[index] = QuickAccessItem(
@@ -309,6 +422,12 @@ final class QuickAccessManager: ObservableObject {
       cloudURL: existing.cloudURL,
       cloudKey: existing.cloudKey,
       isCloudStale: existing.isCloudStale
+    )
+    DiagnosticLogger.shared.log(
+      .info,
+      .action,
+      "Quick access item URL updated",
+      context: ["itemId": id.uuidString, "fileName": newURL.lastPathComponent]
     )
   }
 
@@ -366,13 +485,27 @@ final class QuickAccessManager: ObservableObject {
 
   /// Refresh thumbnail for an item after its image was updated on disk (e.g. annotation saved)
   func refreshItemThumbnail(id: UUID) async {
-    guard let index = items.firstIndex(where: { $0.id == id }) else { return }
+    guard let index = items.firstIndex(where: { $0.id == id }) else {
+      DiagnosticLogger.shared.log(
+        .debug,
+        .ui,
+        "Quick access thumbnail refresh skipped; item missing",
+        context: ["itemId": id.uuidString]
+      )
+      return
+    }
     let url = items[index].url
     let fileAccess = fileAccessManager.beginAccessingURL(url)
     defer { fileAccess.stop() }
     let result = await ThumbnailGenerator.generate(from: url)
     guard let newThumbnail = result.thumbnail else {
       logger.warning("Thumbnail refresh failed for \(url.lastPathComponent)")
+      DiagnosticLogger.shared.log(
+        .warning,
+        .ui,
+        "Quick access thumbnail refresh failed",
+        context: ["fileName": url.lastPathComponent]
+      )
       return
     }
     // Re-check index (item may have been removed during async thumbnail generation)
@@ -390,10 +523,17 @@ final class QuickAccessManager: ObservableObject {
       isCloudStale: existing.isCloudStale
     )
     logger.info("Thumbnail refreshed for \(url.lastPathComponent)")
+    DiagnosticLogger.shared.log(
+      .debug,
+      .ui,
+      "Quick access thumbnail refreshed",
+      context: ["fileName": url.lastPathComponent]
+    )
   }
 
   /// Dismiss all screenshots
   func dismissAll() {
+    let count = items.count
     for item in items {
       cancelDismissTimer(for: item.id)
       // Clear annotation session cache
@@ -403,17 +543,37 @@ final class QuickAccessManager: ObservableObject {
     editingItemIds.removeAll()
     activityHoldItemIds.removeAll()
     panelController.hide()
+    DiagnosticLogger.shared.log(
+      .info,
+      .action,
+      "Quick access dismissed all items",
+      context: ["itemCount": "\(count)"]
+    )
   }
 
   /// Copy item to clipboard (cloud link if available, otherwise image or video file URL)
   func copyToClipboard(id: UUID) {
-    guard let item = items.first(where: { $0.id == id }) else { return }
+    guard let item = items.first(where: { $0.id == id }) else {
+      DiagnosticLogger.shared.log(
+        .warning,
+        .clipboard,
+        "Quick access clipboard copy missed item",
+        context: ["itemId": id.uuidString]
+      )
+      return
+    }
 
     // If cloud URL is available, copy the cloud link as text
     if let cloudURL = item.cloudURL {
       let pasteboard = NSPasteboard.general
       pasteboard.clearContents()
       pasteboard.setString(cloudURL.absoluteString, forType: .string)
+      DiagnosticLogger.shared.log(
+        .info,
+        .clipboard,
+        "Quick access copied cloud link to clipboard",
+        context: ["fileName": item.url.lastPathComponent]
+      )
       dismissCard(id: id)
       SoundManager.play("Pop")
       return
@@ -431,8 +591,20 @@ final class QuickAccessManager: ObservableObject {
       pasteboard.clearContents()
       pasteboard.writeObjects([url as NSURL])
       fileAccess.stop()
+      DiagnosticLogger.shared.log(
+        .info,
+        .clipboard,
+        "Quick access copied video file to clipboard",
+        context: ["fileName": url.lastPathComponent]
+      )
     } else {
       ClipboardHelper.copyImage(from: url)
+      DiagnosticLogger.shared.log(
+        .info,
+        .clipboard,
+        "Quick access copied image to clipboard",
+        context: ["fileName": url.lastPathComponent]
+      )
     }
 
     // Remove card from UI without deleting the temp file (same as drag-to-app).
@@ -446,12 +618,24 @@ final class QuickAccessManager: ObservableObject {
 
   /// Delete item from disk and remove from stack
   func deleteItem(id: UUID) {
-    guard let item = items.first(where: { $0.id == id }) else { return }
+    guard let item = items.first(where: { $0.id == id }) else {
+      DiagnosticLogger.shared.log(
+        .warning,
+        .action,
+        "Quick access delete missed item",
+        context: ["itemId": id.uuidString]
+      )
+      return
+    }
 
     let url = item.url
     let isTempFile = tempCaptureManager.isTempFile(url)
-    DiagnosticLogger.shared.log(.info, .action, "[QuickAccess] Delete item (temp=\(isTempFile)): \(url.lastPathComponent)")
-    print("[Snapzy:QuickAccess] Delete item (temp=\(isTempFile)): \(url.lastPathComponent)")
+    DiagnosticLogger.shared.log(
+      .info,
+      .action,
+      "Quick access delete requested",
+      context: ["fileName": url.lastPathComponent, "temp": isTempFile ? "true" : "false"]
+    )
     removeItem(id: id)
 
     // removeItem already handles temp file deletion,
@@ -470,6 +654,12 @@ final class QuickAccessManager: ObservableObject {
           }
         } catch {
           logger.error("Failed to delete item \(url.lastPathComponent): \(error.localizedDescription)")
+          DiagnosticLogger.shared.logError(
+            .fileAccess,
+            error,
+            "Quick access delete failed",
+            context: ["fileName": url.lastPathComponent]
+          )
         }
       }
     }
@@ -477,7 +667,15 @@ final class QuickAccessManager: ObservableObject {
 
   /// Open screenshot in Finder
   func openInFinder(id: UUID) {
-    guard let item = items.first(where: { $0.id == id }) else { return }
+    guard let item = items.first(where: { $0.id == id }) else {
+      DiagnosticLogger.shared.log(
+        .warning,
+        .action,
+        "Quick access reveal in Finder missed item",
+        context: ["itemId": id.uuidString]
+      )
+      return
+    }
 
     // Capture URL before removal
     let url = item.url
@@ -486,8 +684,12 @@ final class QuickAccessManager: ObservableObject {
     removeScreenshot(id: id)
 
     // Async Finder reveal
-    DiagnosticLogger.shared.log(.info, .action, "[QuickAccess] Open in Finder: \(url.lastPathComponent)")
-    print("[Snapzy:QuickAccess] Open in Finder: \(url.lastPathComponent)")
+    DiagnosticLogger.shared.log(
+      .info,
+      .action,
+      "Quick access reveal in Finder requested",
+      context: ["fileName": url.lastPathComponent]
+    )
     Task { @MainActor in
       let fileAccess = fileAccessManager.beginAccessingURL(url)
       defer { fileAccess.stop() }
@@ -497,10 +699,22 @@ final class QuickAccessManager: ObservableObject {
 
   /// Save a temp capture file to the permanent export location, then reveal in Finder
   func saveItem(id: UUID) {
-    guard let item = items.first(where: { $0.id == id }) else { return }
+    guard let item = items.first(where: { $0.id == id }) else {
+      DiagnosticLogger.shared.log(
+        .warning,
+        .action,
+        "Quick access save missed item",
+        context: ["itemId": id.uuidString]
+      )
+      return
+    }
     let tempURL = item.url
-    DiagnosticLogger.shared.log(.info, .action, "[QuickAccess] Manual save triggered: \(tempURL.lastPathComponent)")
-    print("[Snapzy:QuickAccess] Manual save triggered: \(tempURL.lastPathComponent)")
+    DiagnosticLogger.shared.log(
+      .info,
+      .action,
+      "Quick access manual save requested",
+      context: ["fileName": tempURL.lastPathComponent]
+    )
 
     // Remove card immediately (don't trigger temp file deletion since we're saving)
     cancelDismissTimer(for: id)
@@ -532,6 +746,19 @@ final class QuickAccessManager: ObservableObject {
         let fileAccess = fileAccessManager.beginAccessingURL(savedURL)
         defer { fileAccess.stop() }
         NSWorkspace.shared.selectFile(savedURL.path, inFileViewerRootedAtPath: "")
+        DiagnosticLogger.shared.log(
+          .info,
+          .action,
+          "Quick access manual save completed",
+          context: ["fileName": savedURL.lastPathComponent]
+        )
+      } else {
+        DiagnosticLogger.shared.log(
+          .error,
+          .fileAccess,
+          "Quick access manual save failed",
+          context: ["fileName": tempURL.lastPathComponent]
+        )
       }
     }
   }
@@ -539,6 +766,12 @@ final class QuickAccessManager: ObservableObject {
   /// Update position setting
   func setPosition(_ newPosition: QuickAccessPosition) {
     position = newPosition
+    DiagnosticLogger.shared.log(
+      .info,
+      .preferences,
+      "Quick access position changed",
+      context: ["position": newPosition.rawValue]
+    )
   }
 
   // MARK: - Private Methods
@@ -547,6 +780,12 @@ final class QuickAccessManager: ObservableObject {
     let stackView = QuickAccessStackView(manager: self)
     let size = calculateMaxPanelSize()
     panelController.show(stackView, size: size)
+    DiagnosticLogger.shared.log(
+      .debug,
+      .ui,
+      "Quick access panel shown",
+      context: ["itemCount": "\(items.count)"]
+    )
   }
 
   /// Fixed max-size panel — never resizes, prevents SwiftUI re-layout jitter
@@ -630,6 +869,12 @@ final class QuickAccessManager: ObservableObject {
   func pauseCountdownForEditingItem(_ id: UUID) {
     editingItemIds.insert(id)
     guard let editIndex = items.firstIndex(where: { $0.id == id }) else { return }
+    DiagnosticLogger.shared.log(
+      .debug,
+      .action,
+      "Quick access countdown paused for editing",
+      context: ["itemId": id.uuidString, "affectedCount": "\(editIndex + 1)"]
+    )
 
     // Pause the edited item + items at lower indices (captured after, newer)
     for i in 0...editIndex {
@@ -640,6 +885,12 @@ final class QuickAccessManager: ObservableObject {
   /// Resume countdown for an item done editing + all items captured after it (newer/above)
   func resumeCountdownForEditingItem(_ id: UUID) {
     editingItemIds.remove(id)
+    DiagnosticLogger.shared.log(
+      .debug,
+      .action,
+      "Quick access countdown resumed after editing",
+      context: ["itemId": id.uuidString]
+    )
 
     if let editIndex = items.firstIndex(where: { $0.id == id }) {
       // Item still exists — resume it + items at lower indices (newer)
@@ -672,6 +923,12 @@ final class QuickAccessManager: ObservableObject {
       let result = await ThumbnailGenerator.generate(from: url)
       guard let newThumbnail = result.thumbnail else {
         logger.error("Thumbnail retry also failed for \(url.lastPathComponent)")
+        DiagnosticLogger.shared.log(
+          .error,
+          .ui,
+          "Quick access thumbnail retry failed",
+          context: ["fileName": url.lastPathComponent]
+        )
         return
       }
 
@@ -689,22 +946,56 @@ final class QuickAccessManager: ObservableObject {
           isCloudStale: existing.isCloudStale
         )
         logger.info("Thumbnail retry succeeded for \(url.lastPathComponent)")
+        DiagnosticLogger.shared.log(
+          .debug,
+          .ui,
+          "Quick access thumbnail retry succeeded",
+          context: ["fileName": url.lastPathComponent]
+        )
       }
     }
   }
 
   /// Set cloud URL and key for an item after successful upload
   func setCloudURL(id: UUID, url: URL, key: String) {
-    guard let index = items.firstIndex(where: { $0.id == id }) else { return }
+    guard let index = items.firstIndex(where: { $0.id == id }) else {
+      DiagnosticLogger.shared.log(
+        .warning,
+        .cloud,
+        "Quick access cloud URL update missed item",
+        context: ["itemId": id.uuidString]
+      )
+      return
+    }
     items[index].cloudURL = url
     items[index].cloudKey = key
     items[index].isCloudStale = false
+    DiagnosticLogger.shared.log(
+      .info,
+      .cloud,
+      "Quick access cloud URL attached",
+      context: ["itemId": id.uuidString, "fileName": items[index].url.lastPathComponent]
+    )
   }
 
   /// Mark an item's cloud state as stale (local differs from cloud)
   func markCloudStale(id: UUID) {
-    guard let index = items.firstIndex(where: { $0.id == id }) else { return }
+    guard let index = items.firstIndex(where: { $0.id == id }) else {
+      DiagnosticLogger.shared.log(
+        .warning,
+        .cloud,
+        "Quick access cloud stale mark missed item",
+        context: ["itemId": id.uuidString]
+      )
+      return
+    }
     guard items[index].cloudURL != nil else { return }
     items[index].isCloudStale = true
+    DiagnosticLogger.shared.log(
+      .debug,
+      .cloud,
+      "Quick access cloud state marked stale",
+      context: ["itemId": id.uuidString, "fileName": items[index].url.lastPathComponent]
+    )
   }
 }

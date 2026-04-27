@@ -55,12 +55,50 @@ enum CloudCredentialTransferService {
     passphrase: String
   ) throws {
     guard passphrase.count >= minimumPassphraseLength else {
+      DiagnosticLogger.shared.log(
+        .warning,
+        .cloud,
+        "Cloud credential archive export rejected; passphrase too short",
+        context: ["minimumLength": "\(minimumPassphraseLength)"]
+      )
       throw CloudCredentialTransferError.passphraseTooShort(minimumLength: minimumPassphraseLength)
     }
 
-    let archiveData = try exportArchive(payload: payload, passphrase: passphrase)
-    try withScopedAccess(to: archiveURL) {
-      try archiveData.write(to: archiveURL, options: .atomic)
+    DiagnosticLogger.shared.log(
+      .info,
+      .cloud,
+      "Cloud credential archive export started",
+      context: [
+        "provider": payload.configuration.providerType.rawValue,
+        "destination": archiveURL.lastPathComponent,
+      ]
+    )
+    do {
+      let archiveData = try exportArchive(payload: payload, passphrase: passphrase)
+      try withScopedAccess(to: archiveURL) {
+        try archiveData.write(to: archiveURL, options: .atomic)
+      }
+      DiagnosticLogger.shared.log(
+        .info,
+        .cloud,
+        "Cloud credential archive exported",
+        context: [
+          "provider": payload.configuration.providerType.rawValue,
+          "destination": archiveURL.lastPathComponent,
+          "bytes": "\(archiveData.count)",
+        ]
+      )
+    } catch {
+      DiagnosticLogger.shared.logError(
+        .cloud,
+        error,
+        "Cloud credential archive export failed",
+        context: [
+          "provider": payload.configuration.providerType.rawValue,
+          "destination": archiveURL.lastPathComponent,
+        ]
+      )
+      throw error
     }
   }
 
@@ -68,16 +106,53 @@ enum CloudCredentialTransferService {
     from archiveURL: URL,
     passphrase: String
   ) throws -> CloudCredentialTransferPayload {
-    let archiveData = try withScopedAccess(to: archiveURL) {
-      try Data(contentsOf: archiveURL)
+    DiagnosticLogger.shared.log(
+      .info,
+      .cloud,
+      "Cloud credential archive import started",
+      context: ["source": archiveURL.lastPathComponent]
+    )
+    do {
+      let archiveData = try withScopedAccess(to: archiveURL) {
+        try Data(contentsOf: archiveURL)
+      }
+      let payload = try importArchive(from: archiveData, passphrase: passphrase)
+      DiagnosticLogger.shared.log(
+        .info,
+        .cloud,
+        "Cloud credential archive imported",
+        context: [
+          "source": archiveURL.lastPathComponent,
+          "provider": payload.configuration.providerType.rawValue,
+          "bytes": "\(archiveData.count)",
+        ]
+      )
+      return payload
+    } catch {
+      DiagnosticLogger.shared.logError(
+        .cloud,
+        error,
+        "Cloud credential archive import failed",
+        context: ["source": archiveURL.lastPathComponent]
+      )
+      throw error
     }
-    return try importArchive(from: archiveData, passphrase: passphrase)
   }
 
   static func exportArchive(
     payload: CloudCredentialTransferPayload,
     passphrase: String
   ) throws -> Data {
+    DiagnosticLogger.shared.log(
+      .debug,
+      .cloud,
+      "Cloud credential archive envelope encoding started",
+      context: [
+        "provider": payload.configuration.providerType.rawValue,
+        "schemaVersion": "\(schemaVersion)",
+        "algorithm": algorithm,
+      ]
+    )
     let payloadData = try JSONEncoder().encode(payload)
     let salt = try randomData(count: saltLength)
     let key = try deriveKey(passphrase: passphrase, salt: salt, iterations: iterationCount)
@@ -96,7 +171,14 @@ enum CloudCredentialTransferService {
 
     let encoder = JSONEncoder()
     encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-    return try encoder.encode(envelope)
+    let data = try encoder.encode(envelope)
+    DiagnosticLogger.shared.log(
+      .debug,
+      .cloud,
+      "Cloud credential archive envelope encoded",
+      context: ["payloadBytes": "\(payloadData.count)", "archiveBytes": "\(data.count)"]
+    )
+    return data
   }
 
   static func importArchive(
@@ -107,13 +189,31 @@ enum CloudCredentialTransferService {
     do {
       envelope = try JSONDecoder().decode(CloudCredentialTransferEnvelope.self, from: archiveData)
     } catch {
+      DiagnosticLogger.shared.logError(
+        .cloud,
+        error,
+        "Cloud credential archive envelope decode failed",
+        context: ["archiveBytes": "\(archiveData.count)"]
+      )
       throw CloudCredentialTransferError.invalidArchive
     }
 
     guard envelope.schemaVersion == schemaVersion else {
+      DiagnosticLogger.shared.log(
+        .warning,
+        .cloud,
+        "Cloud credential archive schema unsupported",
+        context: ["schemaVersion": "\(envelope.schemaVersion)"]
+      )
       throw CloudCredentialTransferError.unsupportedSchemaVersion(envelope.schemaVersion)
     }
     guard envelope.algorithm == algorithm, envelope.kdf == keyDerivation else {
+      DiagnosticLogger.shared.log(
+        .warning,
+        .cloud,
+        "Cloud credential archive format unsupported",
+        context: ["algorithm": envelope.algorithm, "kdf": envelope.kdf]
+      )
       throw CloudCredentialTransferError.unsupportedArchiveFormat
     }
     guard
@@ -122,6 +222,7 @@ enum CloudCredentialTransferService {
       let ciphertext = Data(base64Encoded: envelope.ciphertext),
       let tag = Data(base64Encoded: envelope.tag)
     else {
+      DiagnosticLogger.shared.log(.warning, .cloud, "Cloud credential archive contains invalid base64 fields")
       throw CloudCredentialTransferError.invalidArchive
     }
 
@@ -137,6 +238,7 @@ enum CloudCredentialTransferService {
       let sealedBox = try AES.GCM.SealedBox(nonce: nonce, ciphertext: ciphertext, tag: tag)
       plaintext = try AES.GCM.open(sealedBox, using: key)
     } catch {
+      DiagnosticLogger.shared.logError(.cloud, error, "Cloud credential archive unlock failed")
       throw CloudCredentialTransferError.unlockFailed
     }
 
@@ -144,6 +246,7 @@ enum CloudCredentialTransferService {
     do {
       payload = try JSONDecoder().decode(CloudCredentialTransferPayload.self, from: plaintext)
     } catch {
+      DiagnosticLogger.shared.logError(.cloud, error, "Cloud credential archive payload decode failed")
       throw CloudCredentialTransferError.invalidArchive
     }
 
@@ -152,9 +255,16 @@ enum CloudCredentialTransferService {
       !payload.accessKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
       !payload.secretKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     else {
+      DiagnosticLogger.shared.log(.warning, .cloud, "Cloud credential archive payload validation failed")
       throw CloudCredentialTransferError.invalidArchive
     }
 
+    DiagnosticLogger.shared.log(
+      .debug,
+      .cloud,
+      "Cloud credential archive payload validated",
+      context: ["provider": payload.configuration.providerType.rawValue]
+    )
     return payload
   }
 
@@ -198,6 +308,12 @@ enum CloudCredentialTransferService {
       SecRandomCopyBytes(kSecRandomDefault, count, bytes.baseAddress!)
     }
     guard status == errSecSuccess else {
+      DiagnosticLogger.shared.log(
+        .error,
+        .cloud,
+        "Cloud credential archive random data generation failed",
+        context: ["status": "\(status)", "bytes": "\(count)"]
+      )
       throw CloudCredentialTransferError.randomizationFailed(status)
     }
     return data

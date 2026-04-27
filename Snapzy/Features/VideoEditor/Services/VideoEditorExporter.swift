@@ -67,6 +67,7 @@ enum VideoEditorExporter {
       asset: state.asset,
       presetName: state.exportSettings.quality.exportPreset
     ) else {
+      DiagnosticLogger.shared.log(.error, .export, "Standard video export session creation failed")
       throw ExportError.sessionCreationFailed
     }
 
@@ -128,6 +129,12 @@ enum VideoEditorExporter {
     progressTask.cancel()
 
     print("📹 [Export] Export status: \(exportSession.status.rawValue)")
+    DiagnosticLogger.shared.log(
+      .debug,
+      .export,
+      "Standard video export finished",
+      context: ["status": "\(exportSession.status.rawValue)"]
+    )
     if let error = exportSession.error {
       print("📹 [Export] Export error: \(error)")
       DiagnosticLogger.shared.logError(.export, error, "Standard export failed")
@@ -140,6 +147,12 @@ enum VideoEditorExporter {
     // Verify exported file exists
     let fileExists = FileManager.default.fileExists(atPath: outputURL.path)
     print("📹 [Export] Exported file exists: \(fileExists)")
+    DiagnosticLogger.shared.log(
+      fileExists ? .info : .error,
+      .export,
+      "Standard video export completed",
+      context: ["output": outputURL.lastPathComponent, "fileExists": fileExists ? "true" : "false"]
+    )
   }
 
   /// Export with zoom effects applied
@@ -217,6 +230,7 @@ enum VideoEditorExporter {
       preferredTrackID: kCMPersistentTrackID_Invalid
     ) else {
       print("❌ [ZoomExport] ERROR: Failed to add video track to composition")
+      DiagnosticLogger.shared.log(.error, .export, "Zoom export failed to add video track to composition")
       throw ExportError.exportFailed
     }
     print("🔍 [ZoomExport] Composition video track ID: \(compositionVideoTrack.trackID)")
@@ -269,6 +283,7 @@ enum VideoEditorExporter {
     // Verify composition has video tracks before proceeding
     guard let composedVideoTrack = composition.tracks(withMediaType: .video).first else {
       print("❌ [ZoomExport] ERROR: Composition has no video tracks after insertion")
+      DiagnosticLogger.shared.log(.error, .export, "Zoom export composition has no video tracks after insertion")
       throw ExportError.exportFailed
     }
     print("🔍 [ZoomExport] Verified composed video track ID: \(composedVideoTrack.trackID)")
@@ -326,6 +341,7 @@ enum VideoEditorExporter {
       presetName: state.exportSettings.quality.exportPreset
     ) else {
       print("❌ [ZoomExport] ERROR: Failed to create export session")
+      DiagnosticLogger.shared.log(.error, .export, "Zoom export session creation failed")
       throw ExportError.sessionCreationFailed
     }
     print("🔍 [ZoomExport] Created export session")
@@ -356,6 +372,12 @@ enum VideoEditorExporter {
     if let error = exportSession.error {
       print("❌ [ZoomExport] Export error: \(error)")
       print("❌ [ZoomExport] Error localized: \(error.localizedDescription)")
+      DiagnosticLogger.shared.logError(
+        .export,
+        error,
+        "Zoom export failed",
+        context: ["status": "\(exportSession.status.rawValue)"]
+      )
       if let nsError = error as NSError? {
         print("❌ [ZoomExport] Error domain: \(nsError.domain)")
         print("❌ [ZoomExport] Error code: \(nsError.code)")
@@ -365,6 +387,12 @@ enum VideoEditorExporter {
 
     guard exportSession.status == .completed else {
       print("❌ [ZoomExport] Export failed with status: \(exportSession.status.rawValue)")
+      DiagnosticLogger.shared.log(
+        .error,
+        .export,
+        "Zoom export failed with non-completed status",
+        context: ["status": "\(exportSession.status.rawValue)"]
+      )
       throw exportSession.error ?? ExportError.exportFailed
     }
 
@@ -378,11 +406,18 @@ enum VideoEditorExporter {
     to outputURL: URL,
     progress: @escaping (Float) -> Void
   ) async throws {
+    DiagnosticLogger.shared.log(
+      .info,
+      .export,
+      "Video-only export started",
+      context: ["output": outputURL.lastPathComponent]
+    )
     let timeRange = CMTimeRange(start: state.trimStart, end: state.trimEnd)
     let composition = AVMutableComposition()
 
     // Add only video track
     guard let videoTrack = try await state.asset.loadTracks(withMediaType: .video).first else {
+      DiagnosticLogger.shared.log(.error, .export, "Video-only export failed; source video track missing")
       throw ExportError.exportFailed
     }
     let sourceFrameDuration = try await sourceFrameDuration(for: videoTrack)
@@ -391,6 +426,7 @@ enum VideoEditorExporter {
       withMediaType: .video,
       preferredTrackID: kCMPersistentTrackID_Invalid
     ) else {
+      DiagnosticLogger.shared.log(.error, .export, "Video-only export failed to add video track")
       throw ExportError.exportFailed
     }
 
@@ -438,6 +474,7 @@ enum VideoEditorExporter {
       asset: composition,
       presetName: state.exportSettings.quality.exportPreset
     ) else {
+      DiagnosticLogger.shared.log(.error, .export, "Video-only export session creation failed")
       throw ExportError.sessionCreationFailed
     }
 
@@ -459,8 +496,19 @@ enum VideoEditorExporter {
     progressTask.cancel()
 
     guard exportSession.status == .completed else {
+      if let error = exportSession.error {
+        DiagnosticLogger.shared.logError(.export, error, "Video-only export failed")
+      } else {
+        DiagnosticLogger.shared.log(
+          .error,
+          .export,
+          "Video-only export failed with non-completed status",
+          context: ["status": "\(exportSession.status.rawValue)"]
+        )
+      }
       throw exportSession.error ?? ExportError.exportFailed
     }
+    DiagnosticLogger.shared.log(.info, .export, "Video-only export completed", context: ["output": outputURL.lastPathComponent])
   }
 
   /// Replace original file with trimmed version
@@ -506,10 +554,12 @@ enum VideoEditorExporter {
       // Move original to backup
       try FileManager.default.moveItem(at: targetURL, to: backupURL)
       print("📹 [ReplaceOriginal] Moved original to backup")
+      DiagnosticLogger.shared.log(.debug, .export, "Original video moved to backup before replacement")
 
       // Move temp to original location
       try FileManager.default.moveItem(at: tempURL, to: targetURL)
       print("📹 [ReplaceOriginal] Moved temp to original location")
+      DiagnosticLogger.shared.log(.debug, .export, "Trimmed video moved to original location")
 
       try? RecordingMetadataStore.delete(for: targetURL)
 

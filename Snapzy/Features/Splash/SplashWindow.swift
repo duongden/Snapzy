@@ -100,13 +100,17 @@ final class SplashWindowController: NSObject, NSWindowDelegate {
   /// Show splash with integrated onboarding flow.
   /// - Parameter forceOnboarding: When true, always show onboarding steps (used by "Restart Onboarding")
   func show(forceOnboarding: Bool = false) {
-    guard let screen = NSScreen.main else { return }
+    guard let screen = NSScreen.main else {
+      DiagnosticLogger.shared.log(.warning, .ui, "Splash skipped because main screen is unavailable")
+      return
+    }
     let defaults = UserDefaults.standard
 
     if !forceOnboarding,
        defaults.bool(forKey: PreferencesKeys.splashSkipOnceAfterOnboardingRelaunch),
        OnboardingFlowView.hasCompletedOnboarding,
        defaults.bool(forKey: PreferencesKeys.sponsorPromptSeen) {
+      DiagnosticLogger.shared.log(.debug, .ui, "Splash skipped once after onboarding relaunch")
       defaults.removeObject(forKey: PreferencesKeys.splashSkipOnceAfterOnboardingRelaunch)
       return
     }
@@ -116,6 +120,7 @@ final class SplashWindowController: NSObject, NSWindowDelegate {
        OnboardingFlowView.hasCompletedOnboarding,
        defaults.bool(forKey: PreferencesKeys.sponsorPromptSeen),
        defaults.bool(forKey: PreferencesKeys.splashSkipped) {
+      DiagnosticLogger.shared.log(.debug, .ui, "Splash skipped by user preference")
       return
     }
 
@@ -127,11 +132,22 @@ final class SplashWindowController: NSObject, NSWindowDelegate {
     self.splashWindow = window
 
     let needsOnboarding = forceOnboarding || !OnboardingFlowView.hasCompletedOnboarding
+    let showSponsorPrompt = forceOnboarding
+      || !defaults.bool(forKey: PreferencesKeys.sponsorPromptSeen)
+    DiagnosticLogger.shared.log(
+      .info,
+      .ui,
+      "Splash window presenting",
+      context: [
+        "forceOnboarding": forceOnboarding ? "true" : "false",
+        "needsOnboarding": needsOnboarding ? "true" : "false",
+        "showSponsorPrompt": showSponsorPrompt ? "true" : "false",
+      ]
+    )
 
     let rootView = SplashOnboardingRootView(
       needsOnboarding: needsOnboarding,
-      showSponsorPrompt: forceOnboarding
-        || !defaults.bool(forKey: PreferencesKeys.sponsorPromptSeen),
+      showSponsorPrompt: showSponsorPrompt,
       onDismiss: { [weak self] in
         self?.dismiss()
       }
@@ -160,6 +176,7 @@ final class SplashWindowController: NSObject, NSWindowDelegate {
   /// Fade out splash window and clean up
   func dismiss() {
     guard let window = splashWindow else { return }
+    DiagnosticLogger.shared.log(.info, .ui, "Splash window dismiss requested")
 
     NSAnimationContext.runAnimationGroup({ context in
       context.duration = 0.4
@@ -173,6 +190,7 @@ final class SplashWindowController: NSObject, NSWindowDelegate {
 
         // Revert to menu-bar-only mode (hide from Cmd+Tab switcher)
         NSApp.setActivationPolicy(.accessory)
+        DiagnosticLogger.shared.log(.debug, .ui, "Splash window dismissed")
       }
     })
   }
@@ -183,6 +201,7 @@ final class SplashWindowController: NSObject, NSWindowDelegate {
     MainActor.assumeIsolated {
       self.splashWindow = nil
       NSApp.setActivationPolicy(.accessory)
+      DiagnosticLogger.shared.log(.debug, .ui, "Splash window closed")
     }
   }
 }

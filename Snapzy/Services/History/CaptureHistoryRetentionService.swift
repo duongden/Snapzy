@@ -33,12 +33,14 @@ final class CaptureHistoryRetentionService {
         await self.sweep()
       }
     }
+    DiagnosticLogger.shared.log(.info, .history, "Capture history retention service started")
   }
 
   /// Stop periodic sweeps
   func stop() {
     timer?.invalidate()
     timer = nil
+    DiagnosticLogger.shared.log(.debug, .history, "Capture history retention service stopped")
   }
 
   /// Perform a single retention sweep based on current preferences
@@ -46,17 +48,32 @@ final class CaptureHistoryRetentionService {
     let defaults = UserDefaults.standard
 
     // Only sweep if history is enabled
-    guard defaults.bool(forKey: PreferencesKeys.historyEnabled) else { return }
+    guard defaults.bool(forKey: PreferencesKeys.historyEnabled) else {
+      DiagnosticLogger.shared.log(.debug, .history, "Capture history retention sweep skipped; history disabled")
+      return
+    }
 
     let retentionDays = defaults.integer(forKey: PreferencesKeys.historyRetentionDays)
     let maxCount = defaults.integer(forKey: PreferencesKeys.historyMaxCount)
 
     logger.info("Starting retention sweep (days: \(retentionDays), maxCount: \(maxCount))")
+    DiagnosticLogger.shared.log(
+      .info,
+      .history,
+      "Capture history retention sweep started",
+      context: ["days": "\(retentionDays)", "maxCount": "\(maxCount)"]
+    )
 
     // Collect temp file paths before deleting records so we can clean them up afterward
     let tempPathsToDelete = collectTempFilePathsForRecordsToDelete(
       retentionDays: retentionDays,
       maxCount: maxCount
+    )
+    DiagnosticLogger.shared.log(
+      .debug,
+      .history,
+      "Capture history retention collected temp files",
+      context: ["fileCount": "\(tempPathsToDelete.count)"]
     )
 
     // Age-based cleanup
@@ -76,6 +93,12 @@ final class CaptureHistoryRetentionService {
     await cleanupOrphanedThumbnails()
 
     logger.info("Retention sweep completed")
+    DiagnosticLogger.shared.log(
+      .info,
+      .history,
+      "Capture history retention sweep completed",
+      context: ["tempFileCandidates": "\(tempPathsToDelete.count)"]
+    )
   }
 
   /// Collect temp file paths for records that will be deleted by retention.
@@ -130,8 +153,20 @@ final class CaptureHistoryRetentionService {
       do {
         try fm.removeItem(atPath: path)
         logger.debug("Deleted temp file after retention: \(path)")
+        DiagnosticLogger.shared.log(
+          .debug,
+          .history,
+          "Capture history retention deleted temp file",
+          context: ["fileName": (path as NSString).lastPathComponent]
+        )
       } catch {
         logger.error("Failed to delete temp file \(path): \(error.localizedDescription)")
+        DiagnosticLogger.shared.logError(
+          .history,
+          error,
+          "Capture history retention temp file delete failed",
+          context: ["fileName": (path as NSString).lastPathComponent]
+        )
       }
     }
   }
@@ -141,6 +176,7 @@ final class CaptureHistoryRetentionService {
     CaptureHistoryStore.shared.removeAll()
     HistoryThumbnailGenerator.shared.clearAllThumbnails()
     logger.info("All history cleared by user request")
+    DiagnosticLogger.shared.log(.info, .history, "All capture history cleared by user request")
   }
 
   // MARK: - Private
@@ -152,7 +188,13 @@ final class CaptureHistoryRetentionService {
 
     let fm = FileManager.default
     let thumbsDir = generator.thumbnailsDirectory
-    guard let contents = try? fm.contentsOfDirectory(at: thumbsDir, includingPropertiesForKeys: nil) else { return }
+    let contents: [URL]
+    do {
+      contents = try fm.contentsOfDirectory(at: thumbsDir, includingPropertiesForKeys: nil)
+    } catch {
+      DiagnosticLogger.shared.logError(.history, error, "Capture history orphan thumbnail cleanup listing failed")
+      return
+    }
 
     let activeRecordIds = Set(store.records.map(\.id.uuidString))
 
@@ -160,13 +202,28 @@ final class CaptureHistoryRetentionService {
     for url in contents {
       let filename = url.deletingPathExtension().lastPathComponent
       if !activeRecordIds.contains(filename) {
-        try? fm.removeItem(at: url)
-        removedCount += 1
+        do {
+          try fm.removeItem(at: url)
+          removedCount += 1
+        } catch {
+          DiagnosticLogger.shared.logError(
+            .history,
+            error,
+            "Capture history orphan thumbnail delete failed",
+            context: ["fileName": url.lastPathComponent]
+          )
+        }
       }
     }
 
     if removedCount > 0 {
       logger.info("Cleaned up \(removedCount) orphaned thumbnail(s)")
+      DiagnosticLogger.shared.log(
+        .info,
+        .history,
+        "Capture history orphan thumbnails cleaned",
+        context: ["thumbnailCount": "\(removedCount)"]
+      )
     }
   }
 }

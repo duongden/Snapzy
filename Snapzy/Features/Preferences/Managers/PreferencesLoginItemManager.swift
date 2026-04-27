@@ -18,8 +18,19 @@ struct LoginItemManager {
       } else {
         try SMAppService.mainApp.unregister()
       }
+      DiagnosticLogger.shared.log(
+        .info,
+        .preferences,
+        "Launch at login preference updated",
+        context: ["enabled": enabled ? "true" : "false"]
+      )
     } catch {
-      print("LoginItemManager: Failed to update login item - \(error.localizedDescription)")
+      DiagnosticLogger.shared.logError(
+        .preferences,
+        error,
+        "Launch at login preference update failed",
+        context: ["enabled": enabled ? "true" : "false"]
+      )
     }
   }
 

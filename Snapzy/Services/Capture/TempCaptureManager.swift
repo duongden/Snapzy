@@ -56,16 +56,24 @@ final class TempCaptureManager {
     let typeLabel = captureType == .screenshot ? "screenshot" : "recording"
 
     if autoSaveEnabled {
-      print("[Snapzy:TempCapture] Auto-save ON (\(typeLabel)) → export dir")
       logger.info("Auto-save ON for \(typeLabel), using export directory")
-      DiagnosticLogger.shared.log(.info, .capture, "[TempCapture] Auto-save ON (\(typeLabel)) → export dir")
+      DiagnosticLogger.shared.log(
+        .info,
+        .capture,
+        "Temp capture resolved to export directory",
+        context: ["captureType": typeLabel, "autoSave": "true"]
+      )
       return exportDirectory
     }
 
     // Auto-save OFF: use temp directory
-    print("[Snapzy:TempCapture] Auto-save OFF (\(typeLabel)) → temp dir")
     logger.info("Auto-save OFF for \(typeLabel), using temp directory")
-    DiagnosticLogger.shared.log(.info, .capture, "[TempCapture] Auto-save OFF (\(typeLabel)) → temp dir")
+    DiagnosticLogger.shared.log(
+      .info,
+      .capture,
+      "Temp capture resolved to temp directory",
+      context: ["captureType": typeLabel, "autoSave": "false"]
+    )
     return tempCaptureDirectory
   }
 
@@ -74,6 +82,12 @@ final class TempCaptureManager {
   func saveToExportLocation(tempURL: URL) -> URL? {
     guard isTempFile(tempURL) else {
       logger.warning("saveToExportLocation called on non-temp file: \(tempURL.lastPathComponent)")
+      DiagnosticLogger.shared.log(
+        .warning,
+        .fileAccess,
+        "Temp capture save skipped; source is not a temp file",
+        context: ["fileName": tempURL.lastPathComponent]
+      )
       return nil
     }
 
@@ -96,14 +110,22 @@ final class TempCaptureManager {
       // Also move recording metadata if it exists (for video files)
       moveRecordingMetadataIfNeeded(from: tempURL, to: destinationURL)
 
-      print("[Snapzy:TempCapture] Saved to export: \(destinationURL.lastPathComponent)")
       logger.info("Saved temp file to export: \(destinationURL.lastPathComponent)")
-      DiagnosticLogger.shared.log(.info, .action, "[TempCapture] Saved to export: \(destinationURL.lastPathComponent)")
+      DiagnosticLogger.shared.log(
+        .info,
+        .fileAccess,
+        "Temp capture saved to export",
+        context: ["fileName": destinationURL.lastPathComponent]
+      )
       return destinationURL
     } catch {
-      print("[Snapzy:TempCapture] Save failed: \(error.localizedDescription)")
       logger.error("Failed to save temp file: \(error.localizedDescription)")
-      DiagnosticLogger.shared.log(.error, .action, "[TempCapture] Save failed: \(error.localizedDescription)")
+      DiagnosticLogger.shared.logError(
+        .fileAccess,
+        error,
+        "Temp capture save to export failed",
+        context: ["fileName": tempURL.lastPathComponent]
+      )
       return nil
     }
   }
@@ -116,13 +138,21 @@ final class TempCaptureManager {
       try FileManager.default.removeItem(at: url)
       // Also clean up recording metadata if exists
       try? RecordingMetadataStore.delete(for: url)
-      print("[Snapzy:TempCapture] Deleted temp: \(url.lastPathComponent)")
       logger.debug("Deleted temp file: \(url.lastPathComponent)")
-      DiagnosticLogger.shared.log(.info, .action, "[TempCapture] Deleted temp: \(url.lastPathComponent)")
+      DiagnosticLogger.shared.log(
+        .info,
+        .fileAccess,
+        "Temp capture deleted",
+        context: ["fileName": url.lastPathComponent]
+      )
     } catch {
-      print("[Snapzy:TempCapture] Delete failed: \(url.lastPathComponent) — \(error.localizedDescription)")
       logger.error("Failed to delete temp file: \(error.localizedDescription)")
-      DiagnosticLogger.shared.log(.error, .action, "[TempCapture] Delete failed: \(url.lastPathComponent) — \(error.localizedDescription)")
+      DiagnosticLogger.shared.logError(
+        .fileAccess,
+        error,
+        "Temp capture delete failed",
+        context: ["fileName": url.lastPathComponent]
+      )
     }
   }
 
@@ -138,10 +168,16 @@ final class TempCaptureManager {
   /// will delete them when the history record ages out.
   func cleanupOrphanedFiles() {
     let fm = FileManager.default
-    guard let contents = try? fm.contentsOfDirectory(
-      at: tempCaptureDirectory,
-      includingPropertiesForKeys: nil
-    ) else { return }
+    let contents: [URL]
+    do {
+      contents = try fm.contentsOfDirectory(
+        at: tempCaptureDirectory,
+        includingPropertiesForKeys: nil
+      )
+    } catch {
+      DiagnosticLogger.shared.logError(.fileAccess, error, "Temp capture startup cleanup failed to list directory")
+      return
+    }
 
     let historyEnabled = defaults.object(forKey: PreferencesKeys.historyEnabled) as? Bool ?? true
     var count = 0
@@ -169,24 +205,40 @@ final class TempCaptureManager {
         count += 1
       } catch {
         logger.error("Failed to cleanup orphan: \(fileURL.lastPathComponent)")
+        DiagnosticLogger.shared.logError(
+          .fileAccess,
+          error,
+          "Temp capture startup cleanup failed to delete orphan",
+          context: ["fileName": fileURL.lastPathComponent]
+        )
       }
     }
 
     if count > 0 {
-      print("[Snapzy:TempCapture] Startup cleanup: removed \(count) orphaned file(s)")
       logger.info("Cleaned up \(count) orphaned temp capture file(s)")
-      DiagnosticLogger.shared.log(.info, .lifecycle, "[TempCapture] Startup cleanup: removed \(count) orphaned file(s)")
+      DiagnosticLogger.shared.log(
+        .info,
+        .lifecycle,
+        "Temp capture startup cleanup removed orphaned files",
+        context: ["fileCount": "\(count)"]
+      )
     }
     if skipped > 0 {
       logger.info("Preserved \(skipped) temp file(s) with active history records")
-      DiagnosticLogger.shared.log(.info, .lifecycle, "[TempCapture] Preserved \(skipped) temp file(s) with active history records")
+      DiagnosticLogger.shared.log(
+        .info,
+        .lifecycle,
+        "Temp capture startup cleanup preserved files with history records",
+        context: ["fileCount": "\(skipped)"]
+      )
     }
     if preservedForRetention > 0 {
       logger.info("Preserved \(preservedForRetention) recent temp file(s) within history retention window")
       DiagnosticLogger.shared.log(
         .info,
         .lifecycle,
-        "[TempCapture] Preserved \(preservedForRetention) recent temp file(s) within history retention window"
+        "Temp capture startup cleanup preserved recent files within history retention window",
+        context: ["fileCount": "\(preservedForRetention)"]
       )
     }
   }
@@ -198,8 +250,23 @@ final class TempCaptureManager {
     // RecordingMetadataStore keeps metadata in App Support and maps it by file bookmark/path.
     // Re-save using destination URL so association follows the moved video.
     if let metadata = RecordingMetadataStore.load(for: sourceURL) {
-      try? RecordingMetadataStore.save(metadata, for: destinationURL)
-      try? RecordingMetadataStore.delete(for: sourceURL)
+      do {
+        try RecordingMetadataStore.save(metadata, for: destinationURL)
+        try RecordingMetadataStore.delete(for: sourceURL)
+        DiagnosticLogger.shared.log(
+          .debug,
+          .recording,
+          "Recording metadata moved with temp capture",
+          context: ["fileName": destinationURL.lastPathComponent]
+        )
+      } catch {
+        DiagnosticLogger.shared.logError(
+          .recording,
+          error,
+          "Recording metadata move failed for temp capture",
+          context: ["fileName": destinationURL.lastPathComponent]
+        )
+      }
     }
   }
 

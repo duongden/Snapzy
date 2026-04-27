@@ -55,7 +55,6 @@ enum WebPEncoderService {
       bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue  // RGBA
     ) else {
       DiagnosticLogger.shared.log(.error, .export, "WebP: failed to create bitmap context", context: ["width": "\(width)", "height": "\(height)"])
-      print("[WebPEncoderService] Failed to create bitmap context")
       return nil
     }
 
@@ -63,7 +62,6 @@ enum WebPEncoderService {
 
     guard let pixelData = context.data else {
       DiagnosticLogger.shared.log(.error, .export, "WebP: failed to get pixel data from context")
-      print("[WebPEncoderService] Failed to get pixel data from context")
       return nil
     }
 
@@ -87,7 +85,6 @@ enum WebPEncoderService {
       )
     } catch {
       DiagnosticLogger.shared.logError(.export, error, "WebP encoding failed")
-      print("[WebPEncoderService] Encoding failed: \(error)")
       return nil
     }
   }
@@ -102,7 +99,6 @@ enum WebPEncoderService {
   static func write(_ image: CGImage, to url: URL, quality: CGFloat = 0.85) -> Bool {
     guard let data = encode(image, quality: quality) else {
       DiagnosticLogger.shared.log(.error, .export, "WebP: failed to encode data")
-      print("[WebPEncoderService] Failed to encode WebP data")
       return false
     }
     do {
@@ -110,7 +106,6 @@ enum WebPEncoderService {
       return true
     } catch {
       DiagnosticLogger.shared.logError(.export, error, "WebP file write failed")
-      print("[WebPEncoderService] Failed to write WebP file: \(error.localizedDescription)")
       return false
     }
   }

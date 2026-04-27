@@ -41,16 +41,26 @@ final class CaptureStorageManager {
   /// Ensures the captures directory exists, creating it if needed.
   @discardableResult
   func ensureCapturesDirectory() -> URL? {
-    guard let url = capturesDirectoryURL else { return nil }
+    guard let url = capturesDirectoryURL else {
+      DiagnosticLogger.shared.log(.error, .fileAccess, "Captures directory unavailable; Application Support URL missing")
+      return nil
+    }
 
     if !fileManager.fileExists(atPath: url.path) {
       do {
         try fileManager.createDirectory(
           at: url, withIntermediateDirectories: true, attributes: nil)
         logger.info("Created captures directory at \(url.path, privacy: .public)")
+        DiagnosticLogger.shared.log(
+          .info,
+          .fileAccess,
+          "Captures directory created",
+          context: ["directory": url.lastPathComponent]
+        )
       } catch {
         logger.error(
           "Failed to create captures directory: \(error.localizedDescription, privacy: .public)")
+        DiagnosticLogger.shared.logError(.fileAccess, error, "Captures directory creation failed")
         return nil
       }
     }
@@ -126,15 +136,18 @@ final class CaptureStorageManager {
   func clearCache() async throws -> Int {
     guard isSafeToCleanup else {
       logger.warning("Cannot clear cache: capture or recording is in progress")
+      DiagnosticLogger.shared.log(.warning, .fileAccess, "Cache cleanup blocked by active capture or recording")
       throw CacheCleanupError.operationInProgress
     }
 
     guard let dirURL = capturesDirectoryURL,
       fileManager.fileExists(atPath: dirURL.path)
     else {
+      DiagnosticLogger.shared.log(.debug, .fileAccess, "Cache cleanup skipped; captures directory missing")
       return 0
     }
 
+    DiagnosticLogger.shared.log(.info, .fileAccess, "Cache cleanup started")
     let deletedPaths = await Task.detached(priority: .utility) { () -> [String] in
       let fm = FileManager.default
       var deletedPaths: [String] = []
@@ -145,6 +158,7 @@ final class CaptureStorageManager {
         includingPropertiesForKeys: nil,
         options: [.skipsHiddenFiles]
       ) else {
+        DiagnosticLogger.shared.log(.error, .fileAccess, "Cache cleanup failed to list captures directory")
         return []
       }
 
@@ -156,6 +170,12 @@ final class CaptureStorageManager {
           // Skip files that can't be deleted (in-use, locked, etc.)
           backgroundLogger.warning(
             "Skipped deleting \(fileURL.lastPathComponent, privacy: .public): \(error.localizedDescription, privacy: .public)"
+          )
+          DiagnosticLogger.shared.logError(
+            .fileAccess,
+            error,
+            "Cache cleanup skipped file",
+            context: ["fileName": fileURL.lastPathComponent]
           )
         }
       }
@@ -169,6 +189,12 @@ final class CaptureStorageManager {
     }
 
     logger.info("Cache cleared: \(deletedPaths.count) item(s) removed")
+    DiagnosticLogger.shared.log(
+      .info,
+      .fileAccess,
+      "Cache cleanup completed",
+      context: ["deletedCount": "\(deletedPaths.count)"]
+    )
     return deletedPaths.count
   }
 }

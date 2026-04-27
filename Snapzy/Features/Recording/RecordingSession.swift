@@ -39,7 +39,11 @@ final class RecordingSession: @unchecked Sendable {
   private var _videoFramesFailedAppend = 0
   private var _expectedVideoWidth: Int?
   private var _expectedVideoHeight: Int?
+  private var _didLogMissingPixelBuffer = false
   private var _didLogFrameDimensionMismatch = false
+  private var _didLogVideoAppendFailure = false
+  private var _didLogAudioAppendFailure = false
+  private var _didLogMicrophoneAppendFailure = false
 
   init() {}
   
@@ -125,8 +129,18 @@ final class RecordingSession: @unchecked Sendable {
 
     // Get pixel buffer from sample buffer
     guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else {
-      // Complete frame should have pixel buffer - this is unexpected
-      print("[RecordingSession] Complete frame missing pixel buffer")
+      let shouldLog = lock.withLock {
+        if _didLogMissingPixelBuffer { return false }
+        _didLogMissingPixelBuffer = true
+        return true
+      }
+      if shouldLog {
+        DiagnosticLogger.shared.log(
+          .warning,
+          .recording,
+          "Complete recording frame missing pixel buffer"
+        )
+      }
       return
     }
 
@@ -138,9 +152,10 @@ final class RecordingSession: @unchecked Sendable {
        (pixelWidth != expectedWidth || pixelHeight != expectedHeight),
        !expectedDimensions.2 {
       lock.withLock { _didLogFrameDimensionMismatch = true }
-      print(
-        "[RecordingSession] Frame dimension mismatch. expected=\(expectedWidth)x\(expectedHeight), actual=\(pixelWidth)x\(pixelHeight)"
-      )
+      DiagnosticLogger.shared.log(.warning, .recording, "Recording frame dimension mismatch", context: [
+        "expected": "\(expectedWidth)x\(expectedHeight)",
+        "actual": "\(pixelWidth)x\(pixelHeight)",
+      ])
     }
 
     let timestamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
@@ -171,7 +186,9 @@ final class RecordingSession: @unchecked Sendable {
     // This avoids rewriting every audio sample (large per-buffer allocations).
     if shouldStartSession {
       writer.startSession(atSourceTime: timestamp)
-      print("[RecordingSession] Session started, first frame timestamp: \(timestamp.seconds)s")
+      DiagnosticLogger.shared.log(.debug, .recording, "Recording writer session started", context: [
+        "firstFrameTimestampSeconds": String(format: "%.3f", timestamp.seconds)
+      ])
       onFirstVideoFrame?()
     }
 
@@ -181,10 +198,18 @@ final class RecordingSession: @unchecked Sendable {
     if videoInput.isReadyForMoreMediaData {
       let success = adaptor.append(pixelBuffer, withPresentationTime: timestamp)
       if !success {
-        lock.withLock { _videoFramesFailedAppend += 1 }
-        print("[RecordingSession] Failed to append pixel buffer at \(timestamp.seconds)s")
-        if let error = writer.error {
-          print("[RecordingSession] Writer error: \(error.localizedDescription)")
+        let shouldLog = lock.withLock {
+          _videoFramesFailedAppend += 1
+          if _didLogVideoAppendFailure { return false }
+          _didLogVideoAppendFailure = true
+          return true
+        }
+        if shouldLog {
+          logWriterIssue(
+            "Failed to append recording video frame",
+            writer: writer,
+            context: ["timestampSeconds": String(format: "%.3f", timestamp.seconds)]
+          )
         }
       } else {
         lock.withLock { _videoFramesAppended += 1 }
@@ -219,9 +244,17 @@ final class RecordingSession: @unchecked Sendable {
     if audioInput.isReadyForMoreMediaData {
       let success = audioInput.append(sampleBuffer)
       if !success {
-        print("[RecordingSession] Failed to append audio sample")
-        if let error = writer.error {
-          print("[RecordingSession] Writer error: \(error.localizedDescription)")
+        let shouldLog = lock.withLock {
+          if _didLogAudioAppendFailure { return false }
+          _didLogAudioAppendFailure = true
+          return true
+        }
+        if shouldLog {
+          logWriterIssue(
+            "Failed to append recording system audio sample",
+            writer: writer,
+            context: ["timestampSeconds": String(format: "%.3f", timestamp.seconds)]
+          )
         }
       }
     }
@@ -252,9 +285,17 @@ final class RecordingSession: @unchecked Sendable {
     if microphoneInput.isReadyForMoreMediaData {
       let success = microphoneInput.append(sampleBuffer)
       if !success {
-        print("[RecordingSession] Failed to append microphone sample")
-        if let error = writer.error {
-          print("[RecordingSession] Writer error: \(error.localizedDescription)")
+        let shouldLog = lock.withLock {
+          if _didLogMicrophoneAppendFailure { return false }
+          _didLogMicrophoneAppendFailure = true
+          return true
+        }
+        if shouldLog {
+          logWriterIssue(
+            "Failed to append recording microphone sample",
+            writer: writer,
+            context: ["timestampSeconds": String(format: "%.3f", timestamp.seconds)]
+          )
         }
       }
     }
@@ -280,23 +321,25 @@ final class RecordingSession: @unchecked Sendable {
   func finishWriting() async {
     let writer = lock.withLock { _assetWriter }
     guard let writer = writer else {
-      print("[RecordingSession] No asset writer to finish")
+      DiagnosticLogger.shared.log(.warning, .recording, "Recording finish requested without asset writer")
       return
     }
 
-    print("[RecordingSession] Finishing writing, status: \(writer.status.rawValue)")
+    DiagnosticLogger.shared.log(.debug, .recording, "Finishing recording writer", context: [
+      "writerStatus": writerStatusLabel(writer.status)
+    ])
 
     if writer.status == .writing {
       await writer.finishWriting()
-      print("[RecordingSession] Finish writing completed, final status: \(writer.status.rawValue)")
       if let error = writer.error {
-        print("[RecordingSession] Writer error: \(error.localizedDescription)")
+        logWriterIssue("Recording writer finished with error", writer: writer)
+      } else {
+        DiagnosticLogger.shared.log(.debug, .recording, "Recording writer finished", context: [
+          "writerStatus": writerStatusLabel(writer.status)
+        ])
       }
     } else {
-      print("[RecordingSession] Writer not in writing state, cannot finish")
-      if let error = writer.error {
-        print("[RecordingSession] Writer error: \(error.localizedDescription)")
-      }
+      logWriterIssue("Recording writer not in writing state during finish", writer: writer)
     }
   }
   
@@ -318,7 +361,39 @@ final class RecordingSession: @unchecked Sendable {
       _videoFramesFailedAppend = 0
       _expectedVideoWidth = nil
       _expectedVideoHeight = nil
+      _didLogMissingPixelBuffer = false
       _didLogFrameDimensionMismatch = false
+      _didLogVideoAppendFailure = false
+      _didLogAudioAppendFailure = false
+      _didLogMicrophoneAppendFailure = false
+    }
+  }
+
+  private func logWriterIssue(
+    _ message: String,
+    writer: AVAssetWriter?,
+    context: [String: String] = [:]
+  ) {
+    var context = context
+    if let writer {
+      context["writerStatus"] = writerStatusLabel(writer.status)
+    }
+
+    if let error = writer?.error {
+      DiagnosticLogger.shared.logError(.recording, error, message, context: context)
+    } else {
+      DiagnosticLogger.shared.log(.error, .recording, message, context: context)
+    }
+  }
+
+  private func writerStatusLabel(_ status: AVAssetWriter.Status) -> String {
+    switch status {
+    case .unknown: return "unknown"
+    case .writing: return "writing"
+    case .completed: return "completed"
+    case .failed: return "failed"
+    case .cancelled: return "cancelled"
+    @unknown default: return "unknown"
     }
   }
 }

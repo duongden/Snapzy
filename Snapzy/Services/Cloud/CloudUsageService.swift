@@ -93,6 +93,16 @@ private actor CloudUsageWorker {
         logger.error(
           "ListObjectsV2 failed: status=\(statusCode), provider=\(config.providerType.rawValue), region=\(region), endpoint=\(endpoint), body=\(body)"
         )
+        DiagnosticLogger.shared.log(
+          .error,
+          .cloud,
+          "Cloud usage ListObjects request failed",
+          context: [
+            "provider": config.providerType.rawValue,
+            "status": "\(statusCode)",
+            "responseBytes": "\(data.count)",
+          ]
+        )
         throw CloudError.uploadFailed(
           statusCode: statusCode,
           message: usageErrorMessage(
@@ -263,11 +273,18 @@ final class CloudUsageService: ObservableObject {
     guard let config = CloudManager.shared.loadConfiguration() else {
       usageInfo = nil
       error = L10n.CloudUsage.notConfigured
+      DiagnosticLogger.shared.log(.warning, .cloud, "Cloud usage fetch skipped; configuration missing")
       return
     }
     guard let credentials = loadCredentials() else {
       usageInfo = nil
       error = L10n.CloudUsage.notConfigured
+      DiagnosticLogger.shared.log(
+        .warning,
+        .cloud,
+        "Cloud usage fetch skipped; credentials unavailable",
+        context: usageContext(for: config)
+      )
       return
     }
 
@@ -276,16 +293,34 @@ final class CloudUsageService: ObservableObject {
 
     if hasFreshCache && !forceRefresh {
       error = nil
+      DiagnosticLogger.shared.log(
+        .debug,
+        .cloud,
+        "Cloud usage served from fresh cache",
+        context: usageContext(for: config)
+      )
       return
     }
 
     if let inFlightTask {
+      DiagnosticLogger.shared.log(
+        .debug,
+        .cloud,
+        "Cloud usage fetch joined in-flight request",
+        context: usageContext(for: config)
+      )
       await inFlightTask.value
       return
     }
 
     isLoading = true
     error = nil
+    DiagnosticLogger.shared.log(
+      .info,
+      .cloud,
+      "Cloud usage fetch started",
+      context: usageContext(for: config, extra: ["forceRefresh": forceRefresh ? "true" : "false"])
+    )
 
     let task = Task { [weak self] in
       guard let self else { return }
@@ -314,9 +349,26 @@ final class CloudUsageService: ObservableObject {
           self.memoryCache = cacheEntry
           self.persistCacheEntry(cacheEntry)
           logger.info("Usage fetched: \(info.formattedStorage), \(info.objectCount) objects")
+          DiagnosticLogger.shared.log(
+            .info,
+            .cloud,
+            "Cloud usage fetch completed",
+            context: [
+              "provider": info.providerType.rawValue,
+              "storageBytes": "\(info.totalStorageBytes)",
+              "objectCount": "\(info.objectCount)",
+              "lifecycleDays": info.lifecycleRuleDays.map { "\($0)" } ?? "none",
+            ]
+          )
         }
       } catch is CancellationError {
         logger.debug("Usage fetch cancelled")
+        DiagnosticLogger.shared.log(
+          .debug,
+          .cloud,
+          "Cloud usage fetch cancelled",
+          context: usageContext(for: config)
+        )
       } catch {
         await MainActor.run {
           if self.usageInfo == nil {
@@ -325,6 +377,12 @@ final class CloudUsageService: ObservableObject {
             self.error = L10n.CloudUsage.couldntRefreshShowingCached
           }
           logger.error("Usage fetch failed: \(error.localizedDescription)")
+          DiagnosticLogger.shared.logError(
+            .cloud,
+            error,
+            "Cloud usage fetch failed",
+            context: usageContext(for: config)
+          )
         }
       }
     }
@@ -341,6 +399,7 @@ final class CloudUsageService: ObservableObject {
     error = nil
     memoryCache = nil
     defaults.removeObject(forKey: PreferencesKeys.cloudUsageStatsCache)
+    DiagnosticLogger.shared.log(.debug, .cloud, "Cloud usage cache invalidated")
   }
 
   // MARK: - Helpers
@@ -349,11 +408,18 @@ final class CloudUsageService: ObservableObject {
     guard let config = CloudManager.shared.loadConfiguration() else {
       usageInfo = nil
       error = nil
+      DiagnosticLogger.shared.log(.debug, .cloud, "Cloud usage cache hydrate skipped; configuration missing")
       return
     }
 
     let fingerprint = Self.makeConfigFingerprint(config: config)
-    _ = applyCachedUsageIfAvailable(fingerprint: fingerprint)
+    let didHydrate = applyCachedUsageIfAvailable(fingerprint: fingerprint)
+    DiagnosticLogger.shared.log(
+      .debug,
+      .cloud,
+      "Cloud usage cache hydration checked",
+      context: usageContext(for: config, extra: ["hydrated": didHydrate ? "true" : "false"])
+    )
     error = nil
   }
 
@@ -380,12 +446,24 @@ final class CloudUsageService: ObservableObject {
       let entry = try JSONDecoder().decode(CloudUsageCacheEntry.self, from: data)
       guard entry.schemaVersion == CloudUsageCacheEntry.currentSchemaVersion else {
         defaults.removeObject(forKey: PreferencesKeys.cloudUsageStatsCache)
+        DiagnosticLogger.shared.log(
+          .warning,
+          .cloud,
+          "Cloud usage cache discarded due schema mismatch",
+          context: ["schemaVersion": "\(entry.schemaVersion)"]
+        )
         return
       }
       memoryCache = entry
     } catch {
       defaults.removeObject(forKey: PreferencesKeys.cloudUsageStatsCache)
       logger.error("Failed to decode usage cache at startup: \(error.localizedDescription)")
+      DiagnosticLogger.shared.logError(
+        .cloud,
+        error,
+        "Cloud usage cache decode failed at startup",
+        context: ["dataBytes": "\(data.count)"]
+      )
     }
   }
 
@@ -402,6 +480,12 @@ final class CloudUsageService: ObservableObject {
       let entry = try JSONDecoder().decode(CloudUsageCacheEntry.self, from: data)
       guard entry.schemaVersion == CloudUsageCacheEntry.currentSchemaVersion else {
         defaults.removeObject(forKey: PreferencesKeys.cloudUsageStatsCache)
+        DiagnosticLogger.shared.log(
+          .warning,
+          .cloud,
+          "Cloud usage cache discarded due schema mismatch",
+          context: ["schemaVersion": "\(entry.schemaVersion)"]
+        )
         return nil
       }
       guard entry.configFingerprint == fingerprint else { return nil }
@@ -410,6 +494,12 @@ final class CloudUsageService: ObservableObject {
     } catch {
       defaults.removeObject(forKey: PreferencesKeys.cloudUsageStatsCache)
       logger.error("Failed to decode usage cache: \(error.localizedDescription)")
+      DiagnosticLogger.shared.logError(
+        .cloud,
+        error,
+        "Cloud usage cache decode failed",
+        context: ["dataBytes": "\(data.count)"]
+      )
       return nil
     }
   }
@@ -420,7 +510,18 @@ final class CloudUsageService: ObservableObject {
       defaults.set(data, forKey: PreferencesKeys.cloudUsageStatsCache)
     } catch {
       logger.error("Failed to encode usage cache: \(error.localizedDescription)")
+      DiagnosticLogger.shared.logError(.cloud, error, "Cloud usage cache encode failed")
     }
+  }
+
+  private func usageContext(
+    for config: CloudConfiguration,
+    extra: [String: String] = [:]
+  ) -> [String: String] {
+    var context = extra
+    context["provider"] = config.providerType.rawValue
+    context["hasEndpoint"] = config.endpoint?.isEmpty == false ? "true" : "false"
+    return context
   }
 
   private static func makeConfigFingerprint(config: CloudConfiguration) -> String {

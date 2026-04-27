@@ -368,11 +368,15 @@ struct AnnotateBottomBarView: View {
 
   private func handleCloudUpload() {
     guard cloudManager.isConfigured else {
+      DiagnosticLogger.shared.log(.warning, .cloud, "Annotate cloud upload skipped; cloud not configured")
       showCloudNotConfiguredAlert = true
       return
     }
 
-    guard let sourceURL = state.sourceURL else { return }
+    guard let sourceURL = state.sourceURL else {
+      DiagnosticLogger.shared.log(.warning, .cloud, "Annotate cloud upload skipped; source URL missing")
+      return
+    }
 
     // Step 1: Render flattened image with annotations BEFORE uploading
     let renderedImage = AnnotateExporter.renderFinalImage(state: state)
@@ -384,6 +388,12 @@ struct AnnotateBottomBarView: View {
 
     isCloudUploading = true
     cloudUploadProgress = 0
+    DiagnosticLogger.shared.log(
+      .info,
+      .cloud,
+      "Annotate cloud upload started",
+      context: ["fileName": sourceURL.lastPathComponent, "hasOldCloudKey": state.cloudKey == nil ? "false" : "true"]
+    )
 
     // Animate to 80% quickly to show activity
     withAnimation(.easeOut(duration: 0.4)) {
@@ -404,7 +414,11 @@ struct AnnotateBottomBarView: View {
         // Delete the old cloud file in background (no garbage)
         if let oldKey = oldCloudKey {
           Task.detached(priority: .utility) {
-            try? await CloudManager.shared.deleteByKey(key: oldKey)
+            do {
+              try await CloudManager.shared.deleteByKey(key: oldKey)
+            } catch {
+              DiagnosticLogger.shared.logError(.cloud, error, "Annotate old cloud object cleanup failed")
+            }
           }
         }
 
@@ -442,6 +456,12 @@ struct AnnotateBottomBarView: View {
           // Set cloud URL AFTER thumbnail update to ensure isCloudStale = false
           QuickAccessManager.shared.setCloudURL(id: itemId, url: result.publicURL, key: result.key)
         }
+        DiagnosticLogger.shared.log(
+          .info,
+          .cloud,
+          "Annotate cloud upload completed",
+          context: ["fileName": sourceURL.lastPathComponent]
+        )
 
         // Close window
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
@@ -451,7 +471,12 @@ struct AnnotateBottomBarView: View {
         isCloudUploading = false
         cloudUploadProgress = 0
         cloudUploadError = error.localizedDescription
-        print("[Snapzy:Cloud] Annotate upload failed: \(error.localizedDescription)")
+        DiagnosticLogger.shared.logError(
+          .cloud,
+          error,
+          "Annotate cloud upload failed",
+          context: ["fileName": sourceURL.lastPathComponent]
+        )
       }
     }
   }

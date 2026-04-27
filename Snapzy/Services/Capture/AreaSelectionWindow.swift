@@ -150,7 +150,12 @@ final class AreaSelectionController: NSObject {
         if window.frame != screen.frame {
           window.setFrame(screen.frame, display: true)
           window.overlayView.updateBounds(screen.frame)
-          print("[Snapzy:AreaSelection] activatePooledWindows() — resynced stale frame for display \(displayID)")
+          DiagnosticLogger.shared.log(
+            .debug,
+            .capture,
+            "Area selection pooled window frame resynced",
+            context: ["displayID": "\(displayID)"]
+          )
         }
         // Reset and show existing pooled window without stealing focus
         window.updateSelectionMode(selectionMode)
@@ -254,7 +259,16 @@ final class AreaSelectionController: NSObject {
     // Always clean up prior session's monitors to prevent orphaned leaks
     removeEscapeMonitors()
     cancelWindowSelectionTask()
-    print("[Snapzy:AreaSelection] startSelection(mode: \(mode)) — monitors cleaned, starting")
+    DiagnosticLogger.shared.log(
+      .info,
+      .capture,
+      "Area selection session started",
+      context: [
+        "mode": "\(mode)",
+        "backdropCount": "\(backdrops.count)",
+        "applicationSelection": applicationConfiguration == nil ? "false" : "true",
+      ]
+    )
 
     selectionMode = mode
     selectionBackdrops = backdrops
@@ -388,7 +402,16 @@ final class AreaSelectionController: NSObject {
     let displayID = target.windowTarget?.displayID
       ?? window.displayID
       ?? NSScreen.screens.first(where: { $0.frame.intersects(rect) })?.displayID
-    print("[Snapzy:AreaSelection] completeSelection(rect: \(rect))")
+    DiagnosticLogger.shared.log(
+      .info,
+      .capture,
+      "Area selection completed",
+      context: [
+        "mode": "\(selectionMode)",
+        "displayID": displayID.map { "\($0)" } ?? "unknown",
+        "target": target.windowTarget == nil ? "region" : "window",
+      ]
+    )
     removeEscapeMonitors()
     cancelWindowSelectionTask()
     deactivatePooledWindows()
@@ -404,7 +427,7 @@ final class AreaSelectionController: NSObject {
 
   /// Cancel the current selection
   func cancelSelection() {
-    print("[Snapzy:AreaSelection] cancelSelection() called")
+    DiagnosticLogger.shared.log(.info, .capture, "Area selection cancelled", context: ["mode": "\(selectionMode)"])
     removeEscapeMonitors()
     cancelWindowSelectionTask()
     deactivatePooledWindows()

@@ -36,8 +36,14 @@ final class CloudPasswordService {
   /// Hash and store a new protection password in the Keychain.
   func savePassword(_ password: String) throws {
     let hash = sha256(password)
-    try CloudKeychainStore.upsert(item: .passwordHash, value: hash)
-    setPasswordConfigured(true)
+    do {
+      try CloudKeychainStore.upsert(item: .passwordHash, value: hash)
+      setPasswordConfigured(true)
+      DiagnosticLogger.shared.log(.info, .cloud, "Cloud credential password saved")
+    } catch {
+      DiagnosticLogger.shared.logError(.cloud, error, "Cloud credential password save failed")
+      throw error
+    }
   }
 
   /// Explicit check used when the user taps Edit.
@@ -50,17 +56,31 @@ final class CloudPasswordService {
     switch loadHash(context: "shouldRequirePasswordForEdit") {
     case .success:
       setPasswordConfigured(true)
+      DiagnosticLogger.shared.log(.debug, .cloud, "Cloud credential password required for edit")
       return true
     case .itemNotFound:
       return false
     case .authRequired(let status):
       logger.notice("Keychain auth required (\(status, privacy: .public)) [shouldRequirePasswordForEdit]")
+      DiagnosticLogger.shared.log(
+        .warning,
+        .cloud,
+        "Cloud credential password check requires keychain authentication",
+        context: ["status": "\(status)"]
+      )
       return true
     case .interactionNotAllowed:
       logger.notice("Keychain interaction not allowed [shouldRequirePasswordForEdit]")
+      DiagnosticLogger.shared.log(.warning, .cloud, "Cloud credential password check interaction not allowed")
       return true
     case .error(let status):
       logger.error("Keychain read failed (\(status, privacy: .public)) [shouldRequirePasswordForEdit]")
+      DiagnosticLogger.shared.log(
+        .error,
+        .cloud,
+        "Cloud credential password check failed",
+        context: ["status": "\(status)"]
+      )
       return true
     }
   }
@@ -70,23 +90,40 @@ final class CloudPasswordService {
     switch loadHash(context: "verifyPassword") {
     case .success(let storedHash):
       setPasswordConfigured(true)
-      return sha256(password) == storedHash ? .verified : .incorrectPassword
+      let didMatch = sha256(password) == storedHash
+      DiagnosticLogger.shared.log(
+        didMatch ? .info : .warning,
+        .cloud,
+        "Cloud credential password verification completed",
+        context: ["verified": didMatch ? "true" : "false"]
+      )
+      return didMatch ? .verified : .incorrectPassword
     case .itemNotFound:
       setPasswordConfigured(false)
+      DiagnosticLogger.shared.log(.warning, .cloud, "Cloud credential password verification skipped; hash missing")
       return .unavailable(L10n.CloudPassword.notConfigured)
     case .authRequired:
+      DiagnosticLogger.shared.log(.warning, .cloud, "Cloud credential password verification requires keychain authentication")
       return .unavailable(L10n.CloudPassword.keychainAccessDenied)
     case .interactionNotAllowed:
+      DiagnosticLogger.shared.log(.warning, .cloud, "Cloud credential password verification keychain interaction unavailable")
       return .unavailable(L10n.CloudPassword.keychainInteractionUnavailable)
     case .error:
+      DiagnosticLogger.shared.log(.error, .cloud, "Cloud credential password verification failed to read saved hash")
       return .unavailable(L10n.CloudPassword.couldntReadSavedPassword)
     }
   }
 
   /// Remove the stored password hash from the Keychain.
   func removePassword() {
-    CloudKeychainStore.delete(item: .passwordHash)
+    let issues = CloudKeychainStore.delete(item: .passwordHash)
     setPasswordConfigured(false)
+    DiagnosticLogger.shared.log(
+      issues.isEmpty ? .info : .warning,
+      .cloud,
+      "Cloud credential password removed",
+      context: ["deleteIssueCount": "\(issues.count)"]
+    )
   }
 
   // MARK: - Hashing

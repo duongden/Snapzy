@@ -54,6 +54,15 @@ final class CloudManager: ObservableObject {
     }
     cachedConfiguration = loadConfiguration()
     cachedMaskedAccessKey = isConfigured ? DisplayStrings.storedSecurely : DisplayStrings.hidden
+    DiagnosticLogger.shared.log(
+      .debug,
+      .cloud,
+      "Cloud state loaded",
+      context: [
+        "configured": isConfigured ? "true" : "false",
+        "provider": providerType?.rawValue ?? "none",
+      ]
+    )
   }
 
   // MARK: - Configuration
@@ -65,6 +74,12 @@ final class CloudManager: ObservableObject {
     accessKey: String,
     secretKey: String
   ) throws {
+    DiagnosticLogger.shared.log(
+      .info,
+      .cloud,
+      "Cloud configuration save started",
+      context: cloudContext(for: config)
+    )
     let accessKeySnapshot = snapshotCredential(item: .accessKey, context: "saveConfiguration.snapshot.accessKey")
     let secretKeySnapshot = snapshotCredential(item: .secretKey, context: "saveConfiguration.snapshot.secretKey")
 
@@ -75,6 +90,12 @@ final class CloudManager: ObservableObject {
       rollbackCredentialWrite(
         accessKeySnapshot: accessKeySnapshot,
         secretKeySnapshot: secretKeySnapshot
+      )
+      DiagnosticLogger.shared.logError(
+        .cloud,
+        error,
+        "Cloud credential save failed; rollback attempted",
+        context: cloudContext(for: config)
       )
       throw error
     }
@@ -96,6 +117,12 @@ final class CloudManager: ObservableObject {
     CloudUsageService.shared.invalidateCache()
 
     logger.info("Cloud configuration saved: \(config.providerType.displayName)")
+    DiagnosticLogger.shared.log(
+      .info,
+      .cloud,
+      "Cloud configuration saved",
+      context: cloudContext(for: config)
+    )
   }
 
   /// Apply lifecycle expiration rule using explicit credentials before persistence.
@@ -105,12 +132,34 @@ final class CloudManager: ObservableObject {
     secretKey: String
   ) async throws {
     let provider = createProvider(config: config, accessKey: accessKey, secretKey: secretKey)
-    if let days = config.expireTime.days {
-      try await provider.setExpiration(days: days)
-      logger.info("Lifecycle rule applied: \(days) days")
-    } else {
-      try await provider.removeExpiration()
-      logger.info("Lifecycle rule removed (permanent)")
+    do {
+      if let days = config.expireTime.days {
+        try await provider.setExpiration(days: days)
+        logger.info("Lifecycle rule applied: \(days) days")
+        DiagnosticLogger.shared.log(
+          .info,
+          .cloud,
+          "Cloud lifecycle rule applied",
+          context: cloudContext(for: config, extra: ["days": "\(days)"])
+        )
+      } else {
+        try await provider.removeExpiration()
+        logger.info("Lifecycle rule removed (permanent)")
+        DiagnosticLogger.shared.log(
+          .info,
+          .cloud,
+          "Cloud lifecycle rule removed",
+          context: cloudContext(for: config)
+        )
+      }
+    } catch {
+      DiagnosticLogger.shared.logError(
+        .cloud,
+        error,
+        "Cloud lifecycle rule update failed",
+        context: cloudContext(for: config)
+      )
+      throw error
     }
   }
 
@@ -122,7 +171,15 @@ final class CloudManager: ObservableObject {
     guard
       let typeRaw = defaults.string(forKey: PreferencesKeys.cloudProviderType),
       let type = CloudProviderType(rawValue: typeRaw)
-    else { return nil }
+    else {
+      DiagnosticLogger.shared.log(
+        .warning,
+        .cloud,
+        "Cloud configuration could not be loaded because provider type is missing or invalid",
+        context: ["configured": isConfigured ? "true" : "false"]
+      )
+      return nil
+    }
 
     let bucket = defaults.string(forKey: PreferencesKeys.cloudBucket) ?? ""
     let region = defaults.string(forKey: PreferencesKeys.cloudRegion) ?? ""
@@ -204,9 +261,16 @@ final class CloudManager: ObservableObject {
     guard let configuration = loadConfiguration(),
       let credentials = loadCredentialPair(context: "exportTransferPayload")
     else {
+      DiagnosticLogger.shared.log(.warning, .cloud, "Cloud credential export failed because cloud is not configured")
       throw CloudError.notConfigured
     }
 
+    DiagnosticLogger.shared.log(
+      .info,
+      .cloud,
+      "Cloud credential export payload prepared",
+      context: cloudContext(for: configuration)
+    )
     return CloudCredentialTransferPayload(
       configuration: configuration,
       accessKey: credentials.accessKey,
@@ -238,15 +302,27 @@ final class CloudManager: ObservableObject {
     CloudUsageService.shared.invalidateCache()
 
     logger.info("Cloud configuration cleared")
+    DiagnosticLogger.shared.log(.info, .cloud, "Cloud configuration cleared")
   }
 
   // MARK: - Provider Factory
 
   /// Create the active cloud provider from saved configuration.
   func createProvider() -> CloudProvider? {
-    guard let config = loadConfiguration() else { return nil }
+    guard let config = loadConfiguration() else {
+      DiagnosticLogger.shared.log(.warning, .cloud, "Cloud provider creation skipped; configuration missing")
+      return nil
+    }
     guard let credentials = loadCredentialPair(context: "createProvider")
-    else { return nil }
+    else {
+      DiagnosticLogger.shared.log(
+        .warning,
+        .cloud,
+        "Cloud provider creation skipped; credentials unavailable",
+        context: cloudContext(for: config)
+      )
+      return nil
+    }
 
     return createProvider(
       config: config,
@@ -281,6 +357,12 @@ final class CloudManager: ObservableObject {
       logger.error(
         "Cloud configuration references missing credentials [\(context, privacy: .public)]. Clearing stale configuration."
       )
+      DiagnosticLogger.shared.log(
+        .error,
+        .cloud,
+        "Cloud configuration references missing credentials; clearing stale configuration",
+        context: ["operation": context]
+      )
       clearConfiguration()
       return nil
     }
@@ -306,12 +388,30 @@ final class CloudManager: ObservableObject {
       return .missing
     case .authRequired(let status):
       logger.notice("Keychain auth required (\(status, privacy: .public)) [\(context, privacy: .public)]")
+      DiagnosticLogger.shared.log(
+        .warning,
+        .cloud,
+        "Cloud keychain snapshot requires authentication",
+        context: ["operation": context, "status": "\(status)"]
+      )
       return .unavailable
     case .interactionNotAllowed:
       logger.notice("Keychain interaction not allowed [\(context, privacy: .public)]")
+      DiagnosticLogger.shared.log(
+        .warning,
+        .cloud,
+        "Cloud keychain snapshot interaction not allowed",
+        context: ["operation": context]
+      )
       return .unavailable
     case .error(let status):
       logger.error("Keychain read failed (\(status, privacy: .public)) [\(context, privacy: .public)]")
+      DiagnosticLogger.shared.log(
+        .error,
+        .cloud,
+        "Cloud keychain snapshot read failed",
+        context: ["operation": context, "status": "\(status)"]
+      )
       return .unavailable
     }
   }
@@ -337,11 +437,23 @@ final class CloudManager: ObservableObject {
         logger.error(
           "Keychain rollback write failed [\(context, privacy: .public)]: \(error.localizedDescription)"
         )
+        DiagnosticLogger.shared.logError(
+          .cloud,
+          error,
+          "Cloud keychain rollback write failed",
+          context: ["operation": context, "item": keychainItemName(item)]
+        )
       }
     case .missing:
       deleteFromKeychain(item: item, context: context)
     case .unavailable:
       logger.notice("Keychain rollback skipped due unavailable snapshot [\(context, privacy: .public)]")
+      DiagnosticLogger.shared.log(
+        .warning,
+        .cloud,
+        "Cloud keychain rollback skipped due unavailable snapshot",
+        context: ["operation": context, "item": keychainItemName(item)]
+      )
     }
   }
 
@@ -352,7 +464,29 @@ final class CloudManager: ObservableObject {
     secretKey: String
   ) async throws {
     let provider = createProvider(config: config, accessKey: accessKey, secretKey: secretKey)
-    try await provider.validate()
+    DiagnosticLogger.shared.log(
+      .info,
+      .cloud,
+      "Cloud credential validation started",
+      context: cloudContext(for: config)
+    )
+    do {
+      try await provider.validate()
+      DiagnosticLogger.shared.log(
+        .info,
+        .cloud,
+        "Cloud credential validation succeeded",
+        context: cloudContext(for: config)
+      )
+    } catch {
+      DiagnosticLogger.shared.logError(
+        .cloud,
+        error,
+        "Cloud credential validation failed",
+        context: cloudContext(for: config)
+      )
+      throw error
+    }
   }
 
   // MARK: - Upload
@@ -364,10 +498,29 @@ final class CloudManager: ObservableObject {
     guard let provider = createProvider(),
       let config = loadConfiguration()
     else {
+      DiagnosticLogger.shared.log(
+        .warning,
+        .cloud,
+        "Cloud upload requested while provider is not configured",
+        context: ["fileName": fileURL.lastPathComponent]
+      )
       throw CloudError.notConfigured
     }
 
     let contentType = mimeType(for: fileURL)
+    DiagnosticLogger.shared.log(
+      .info,
+      .cloud,
+      "Cloud upload started",
+      context: cloudContext(
+        for: config,
+        extra: [
+          "fileName": fileURL.lastPathComponent,
+          "contentType": contentType,
+          "hasExistingKey": existingKey == nil ? "false" : "true",
+        ]
+      )
+    )
 
     isUploading = true
     uploadProgress = 0
@@ -409,9 +562,35 @@ final class CloudManager: ObservableObject {
       }
 
       logger.info("Upload completed: \(result.publicURL.absoluteString)")
+      DiagnosticLogger.shared.log(
+        .info,
+        .cloud,
+        "Cloud upload completed",
+        context: cloudContext(
+          for: config,
+          extra: [
+            "fileName": fileURL.lastPathComponent,
+            "contentType": contentType,
+            "fileSize": "\(result.fileSize)",
+          ]
+        )
+      )
       return result
     } catch {
       logger.error("Upload failed: \(error.localizedDescription)")
+      DiagnosticLogger.shared.logError(
+        .cloud,
+        error,
+        "Cloud upload failed",
+        context: cloudContext(
+          for: config,
+          extra: [
+            "fileName": fileURL.lastPathComponent,
+            "contentType": contentType,
+            "hasExistingKey": existingKey == nil ? "false" : "true",
+          ]
+        )
+      )
       throw error
     }
   }
@@ -421,13 +600,40 @@ final class CloudManager: ObservableObject {
   /// Delete a single object from cloud storage and remove local record.
   func deleteFromCloud(record: CloudUploadRecord) async throws {
     guard let provider = createProvider() else {
+      DiagnosticLogger.shared.log(.warning, .cloud, "Cloud delete requested while provider is not configured")
       throw CloudError.notConfigured
     }
 
-    try await provider.delete(key: record.key)
-    CloudUploadHistoryStore.shared.remove(id: record.id)
-    cleanupThumbnail(recordId: record.id)
-    logger.info("Deleted from cloud: \(record.key)")
+    DiagnosticLogger.shared.log(
+      .info,
+      .cloud,
+      "Cloud delete started",
+      context: [
+        "provider": record.providerType.rawValue,
+        "fileName": record.fileName,
+        "contentType": record.contentType ?? "unknown",
+      ]
+    )
+    do {
+      try await provider.delete(key: record.key)
+      CloudUploadHistoryStore.shared.remove(id: record.id)
+      cleanupThumbnail(recordId: record.id)
+      logger.info("Deleted from cloud: \(record.key)")
+      DiagnosticLogger.shared.log(
+        .info,
+        .cloud,
+        "Cloud delete completed",
+        context: ["provider": record.providerType.rawValue, "fileName": record.fileName]
+      )
+    } catch {
+      DiagnosticLogger.shared.logError(
+        .cloud,
+        error,
+        "Cloud delete failed",
+        context: ["provider": record.providerType.rawValue, "fileName": record.fileName]
+      )
+      throw error
+    }
   }
 
   /// Delete a cloud object by key only.
@@ -435,26 +641,48 @@ final class CloudManager: ObservableObject {
   /// Used for background cleanup when re-uploading with a new key.
   func deleteByKey(key: String) async throws {
     guard let provider = createProvider() else {
+      DiagnosticLogger.shared.log(.warning, .cloud, "Cloud delete-by-key requested while provider is not configured")
       throw CloudError.notConfigured
     }
-    try await provider.delete(key: key)
-    CloudUploadHistoryStore.shared.removeByKey(key)
-    logger.info("Deleted old cloud object: \(key)")
+    do {
+      try await provider.delete(key: key)
+      CloudUploadHistoryStore.shared.removeByKey(key)
+      logger.info("Deleted old cloud object: \(key)")
+      DiagnosticLogger.shared.log(.info, .cloud, "Cloud delete-by-key completed")
+    } catch {
+      DiagnosticLogger.shared.logError(.cloud, error, "Cloud delete-by-key failed")
+      throw error
+    }
   }
 
   /// Delete all objects from cloud storage and clear local records.
   /// Continues on individual failures to delete as many as possible.
   func deleteAllFromCloud(records: [CloudUploadRecord]) async throws {
     guard let provider = createProvider() else {
+      DiagnosticLogger.shared.log(.warning, .cloud, "Bulk cloud delete requested while provider is not configured")
       throw CloudError.notConfigured
     }
 
+    DiagnosticLogger.shared.log(
+      .info,
+      .cloud,
+      "Bulk cloud delete started",
+      context: ["recordCount": "\(records.count)"]
+    )
     var lastError: Error?
+    var failedCount = 0
     for record in records {
       do {
         try await provider.delete(key: record.key)
       } catch {
         logger.error("Failed to delete \(record.key): \(error.localizedDescription)")
+        failedCount += 1
+        DiagnosticLogger.shared.logError(
+          .cloud,
+          error,
+          "Cloud item delete failed during bulk delete",
+          context: ["provider": record.providerType.rawValue, "fileName": record.fileName]
+        )
         lastError = error
       }
     }
@@ -463,6 +691,12 @@ final class CloudManager: ObservableObject {
     }
     CloudUploadHistoryStore.shared.removeAll()
     logger.info("Bulk delete completed: \(records.count) records")
+    DiagnosticLogger.shared.log(
+      failedCount == 0 ? .info : .warning,
+      .cloud,
+      "Bulk cloud delete completed",
+      context: ["recordCount": "\(records.count)", "failedCount": "\(failedCount)"]
+    )
 
     if let lastError = lastError {
       throw lastError
@@ -499,7 +733,15 @@ final class CloudManager: ObservableObject {
 
   /// Generate a 200px max-dimension JPEG thumbnail for image uploads
   private func saveThumbnail(from fileURL: URL, recordId: UUID) {
-    guard let image = NSImage(contentsOf: fileURL) else { return }
+    guard let image = NSImage(contentsOf: fileURL) else {
+      DiagnosticLogger.shared.log(
+        .warning,
+        .cloud,
+        "Cloud upload thumbnail skipped; image could not be loaded",
+        context: ["fileName": fileURL.lastPathComponent]
+      )
+      return
+    }
     let maxDimension: CGFloat = 200
     let size = image.size
     let scale = min(maxDimension / size.width, maxDimension / size.height, 1.0)
@@ -518,18 +760,55 @@ final class CloudManager: ObservableObject {
     guard let tiffData = thumbImage.tiffRepresentation,
       let bitmap = NSBitmapImageRep(data: tiffData),
       let jpegData = bitmap.representation(using: .jpeg, properties: [.compressionFactor: 0.7])
-    else { return }
+    else {
+      DiagnosticLogger.shared.log(
+        .warning,
+        .cloud,
+        "Cloud upload thumbnail encoding failed",
+        context: ["fileName": fileURL.lastPathComponent]
+      )
+      return
+    }
 
     let dir = thumbnailsDirectory
-    try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    do {
+      try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    } catch {
+      DiagnosticLogger.shared.logError(
+        .cloud,
+        error,
+        "Cloud upload thumbnail directory creation failed",
+        context: ["fileName": fileURL.lastPathComponent]
+      )
+      return
+    }
     let thumbURL = dir.appendingPathComponent("\(recordId.uuidString).jpg")
-    try? jpegData.write(to: thumbURL, options: .atomic)
+    do {
+      try jpegData.write(to: thumbURL, options: .atomic)
+    } catch {
+      DiagnosticLogger.shared.logError(
+        .cloud,
+        error,
+        "Cloud upload thumbnail write failed",
+        context: ["fileName": fileURL.lastPathComponent]
+      )
+    }
   }
 
   /// Remove thumbnail file when a record is deleted
   private func cleanupThumbnail(recordId: UUID) {
     let thumbURL = thumbnailsDirectory.appendingPathComponent("\(recordId.uuidString).jpg")
-    try? FileManager.default.removeItem(at: thumbURL)
+    guard FileManager.default.fileExists(atPath: thumbURL.path) else { return }
+    do {
+      try FileManager.default.removeItem(at: thumbURL)
+    } catch {
+      DiagnosticLogger.shared.logError(
+        .cloud,
+        error,
+        "Cloud upload thumbnail cleanup failed",
+        context: ["recordId": recordId.uuidString]
+      )
+    }
   }
 
   // MARK: - Keychain Operations
@@ -550,12 +829,30 @@ final class CloudManager: ObservableObject {
       return nil
     case .authRequired(let status):
       logger.notice("Keychain auth required (\(status, privacy: .public)) [\(context, privacy: .public)]")
+      DiagnosticLogger.shared.log(
+        .warning,
+        .cloud,
+        "Cloud keychain read requires authentication",
+        context: ["operation": context, "status": "\(status)"]
+      )
       return nil
     case .interactionNotAllowed:
       logger.notice("Keychain interaction not allowed [\(context, privacy: .public)]")
+      DiagnosticLogger.shared.log(
+        .warning,
+        .cloud,
+        "Cloud keychain interaction not allowed",
+        context: ["operation": context]
+      )
       return nil
     case .error(let status):
       logger.error("Keychain read failed (\(status, privacy: .public)) [\(context, privacy: .public)]")
+      DiagnosticLogger.shared.log(
+        .error,
+        .cloud,
+        "Cloud keychain read failed",
+        context: ["operation": context, "status": "\(status)"]
+      )
       return nil
     }
   }
@@ -569,6 +866,40 @@ final class CloudManager: ObservableObject {
       logger.error(
         "Keychain delete failed (\(issue.status, privacy: .public)) [\(contextLabel, privacy: .public)] at \(issue.locationDescription, privacy: .public)"
       )
+      DiagnosticLogger.shared.log(
+        .error,
+        .cloud,
+        "Cloud keychain delete failed",
+        context: [
+          "operation": contextLabel,
+          "item": keychainItemName(item),
+          "status": "\(issue.status)",
+          "location": issue.locationDescription,
+        ]
+      )
+    }
+  }
+
+  private func cloudContext(
+    for config: CloudConfiguration,
+    extra: [String: String] = [:]
+  ) -> [String: String] {
+    var context = extra
+    context["provider"] = config.providerType.rawValue
+    context["expireTime"] = config.expireTime.rawValue
+    context["hasEndpoint"] = config.endpoint?.isEmpty == false ? "true" : "false"
+    context["hasCustomDomain"] = config.customDomain?.isEmpty == false ? "true" : "false"
+    return context
+  }
+
+  private func keychainItemName(_ item: CloudKeychainItem) -> String {
+    switch item {
+    case .accessKey:
+      return "accessKey"
+    case .secretKey:
+      return "secretKey"
+    case .passwordHash:
+      return "passwordHash"
     }
   }
 }

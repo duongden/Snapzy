@@ -683,13 +683,23 @@ final class AnnotateWindowController: NSWindowController, NSWindowDelegate {
       do {
         let fileAccess = SandboxFileAccessManager.shared.beginAccessingURL(sourceURL)
         defer { fileAccess.stop() }
+        DiagnosticLogger.shared.log(
+          .info,
+          .cloud,
+          "Annotate cloud re-upload started",
+          context: ["fileName": sourceURL.lastPathComponent, "mode": "save"]
+        )
 
         let result = try await CloudManager.shared.upload(fileURL: sourceURL)
 
         // Delete old cloud file in background
         if let oldKey = oldCloudKey {
           Task.detached(priority: .utility) {
-            try? await CloudManager.shared.deleteByKey(key: oldKey)
+            do {
+              try await CloudManager.shared.deleteByKey(key: oldKey)
+            } catch {
+              DiagnosticLogger.shared.logError(.cloud, error, "Annotate old cloud object cleanup failed")
+            }
           }
         }
 
@@ -713,9 +723,20 @@ final class AnnotateWindowController: NSWindowController, NSWindowDelegate {
         pasteboard.setString(result.publicURL.absoluteString, forType: .string)
 
         SoundManager.play("Pop")
+        DiagnosticLogger.shared.log(
+          .info,
+          .cloud,
+          "Annotate cloud re-upload completed",
+          context: ["fileName": sourceURL.lastPathComponent, "mode": "save"]
+        )
         self.forceClose()
       } catch {
-        print("[Snapzy:Cloud] Overwrite re-upload failed: \(error.localizedDescription)")
+        DiagnosticLogger.shared.logError(
+          .cloud,
+          error,
+          "Annotate cloud re-upload failed; falling back to local save",
+          context: ["fileName": sourceURL.lastPathComponent, "mode": "save"]
+        )
         // Fall back to local save only
         capturedState.markAsSaved()
         if let renderedImage = renderedImage, let itemId = itemId {
@@ -752,13 +773,23 @@ final class AnnotateWindowController: NSWindowController, NSWindowDelegate {
       do {
         let fileAccess = SandboxFileAccessManager.shared.beginAccessingURL(sourceURL)
         defer { fileAccess.stop() }
+        DiagnosticLogger.shared.log(
+          .info,
+          .cloud,
+          "Annotate cloud re-upload started",
+          context: ["fileName": sourceURL.lastPathComponent, "mode": "copy"]
+        )
 
         let result = try await CloudManager.shared.upload(fileURL: sourceURL)
 
         // Delete old cloud file
         if let oldKey = oldCloudKey {
           Task.detached(priority: .utility) {
-            try? await CloudManager.shared.deleteByKey(key: oldKey)
+            do {
+              try await CloudManager.shared.deleteByKey(key: oldKey)
+            } catch {
+              DiagnosticLogger.shared.logError(.cloud, error, "Annotate old cloud object cleanup failed")
+            }
           }
         }
 
@@ -782,9 +813,20 @@ final class AnnotateWindowController: NSWindowController, NSWindowDelegate {
         pasteboard.setString(result.publicURL.absoluteString, forType: .string)
 
         SoundManager.play("Pop")
+        DiagnosticLogger.shared.log(
+          .info,
+          .cloud,
+          "Annotate cloud re-upload completed",
+          context: ["fileName": sourceURL.lastPathComponent, "mode": "copy"]
+        )
         self.forceClose()
       } catch {
-        print("[Snapzy:Cloud] Overwrite re-upload (copy) failed: \(error.localizedDescription)")
+        DiagnosticLogger.shared.logError(
+          .cloud,
+          error,
+          "Annotate cloud re-upload failed; falling back to image clipboard",
+          context: ["fileName": sourceURL.lastPathComponent, "mode": "copy"]
+        )
         // Fall back: copy image to clipboard, close
         if let renderedImage = renderedImage {
           ClipboardHelper.copyImage(renderedImage)

@@ -227,6 +227,21 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
     error = nil
     session.sessionStarted = false
 
+    DiagnosticLogger.shared.log(.info, .recording, "Recording prepare started", context: [
+      "rect": "\(Int(rect.width))x\(Int(rect.height))",
+      "origin": "\(Int(rect.origin.x)),\(Int(rect.origin.y))",
+      "format": format.rawValue,
+      "quality": quality.rawValue,
+      "fps": "\(fps)",
+      "systemAudio": "\(captureSystemAudio)",
+      "microphone": "\(captureMicrophone)",
+      "excludeOwnApp": "\(excludeOwnApplication)",
+      "excludeDesktopIcons": "\(excludeDesktopIcons)",
+      "excludeDesktopWidgets": "\(excludeDesktopWidgets)",
+      "excludedWindows": "\(excludedWindowIDs.count)",
+      "saveDirectory": saveDirectory.lastPathComponent,
+    ])
+
     self.videoFormat = format
     self.videoQuality = quality
     self.fps = fps
@@ -247,10 +262,14 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
 
     switch captureManager.permissionStatus {
     case .notGranted:
+      DiagnosticLogger.shared.log(.warning, .recording, "Recording permission denied")
       state = .idle
       self.error = .permissionDenied
       throw RecordingError.permissionDenied
     case .grantedButUnavailableDueToAppIdentity(let reason):
+      DiagnosticLogger.shared.log(.warning, .recording, "Recording permission unavailable for app identity", context: [
+        "reason": reason
+      ])
       state = .idle
       self.error = .setupFailed(reason)
       throw RecordingError.setupFailed(reason)
@@ -293,6 +312,11 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
     guard let display = content.displays.first(where: { $0.displayID == Int(targetDisplayID) })
             ?? content.displays.first
     else {
+      DiagnosticLogger.shared.log(.error, .recording, "Recording display resolution failed", context: [
+        "targetDisplayID": "\(targetDisplayID)",
+        "availableDisplays": "\(content.displays.count)",
+        "screens": "\(NSScreen.screens.count)",
+      ])
       state = .idle
       self.error = .noDisplayFound
       throw RecordingError.noDisplayFound
@@ -319,10 +343,26 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
         scaleFactor: scaleFactor
       )
     } catch {
+      DiagnosticLogger.shared.logError(.recording, error, "Recording geometry resolution failed", context: [
+        "displayID": "\(display.displayID)",
+        "scaleFactor": String(format: "%.2f", scaleFactor),
+        "requestedRect": "\(Int(rect.width))x\(Int(rect.height))",
+      ])
       cleanup()
       throw error
     }
     self.recordingRect = captureGeometry.globalCaptureRect
+    DiagnosticLogger.shared.log(.debug, .recording, "Recording geometry resolved", context: [
+      "displayID": "\(display.displayID)",
+      "sourceRect": String(
+        format: "%.2f,%.2f %.2fx%.2f",
+        captureGeometry.sourceRect.origin.x,
+        captureGeometry.sourceRect.origin.y,
+        captureGeometry.sourceRect.size.width,
+        captureGeometry.sourceRect.size.height
+      ),
+      "outputSize": "\(captureGeometry.outputWidth)x\(captureGeometry.outputHeight)",
+    ])
 
     // Generate output URL using user-configurable template (with legacy fallback).
     let resolvedFileName = CaptureOutputNaming.resolveBaseName(
@@ -351,6 +391,9 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
       baseName: resolvedFileName,
       fileExtension: format.fileExtension
     )
+    DiagnosticLogger.shared.log(.debug, .recording, "Recording output file prepared", context: [
+      "file": outputURL?.lastPathComponent ?? "nil"
+    ])
 
     do {
       // Setup AVAssetWriter
@@ -370,7 +413,14 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
       )
 
       mouseTracker = RecordingMouseTracker(recordingRect: captureGeometry.globalCaptureRect, fps: fps)
+      DiagnosticLogger.shared.log(.info, .recording, "Recording prepare completed", context: [
+        "file": outputURL?.lastPathComponent ?? "nil",
+        "outputSize": "\(captureGeometry.outputWidth)x\(captureGeometry.outputHeight)",
+      ])
     } catch {
+      DiagnosticLogger.shared.logError(.recording, error, "Recording preparation failed", context: [
+        "stage": "writer-or-stream"
+      ])
       cleanup()
       throw error
     }
@@ -385,11 +435,19 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
       throw RecordingError.alreadyActive
     }
 
+    DiagnosticLogger.shared.log(.debug, .recording, "Recording writer start requested")
     session.assetWriter?.startWriting()
 
     // Validate writer status
     guard session.assetWriter?.status == .writing else {
       let errorMsg = session.assetWriter?.error?.localizedDescription ?? L10n.Recording.failedToStartWriting
+      if let writerError = session.assetWriter?.error {
+        DiagnosticLogger.shared.logError(.recording, writerError, "Recording writer failed to start")
+      } else {
+        DiagnosticLogger.shared.log(.error, .recording, "Recording writer failed to start", context: [
+          "writerStatus": "\(session.assetWriter?.status.rawValue ?? -1)"
+        ])
+      }
       state = .idle
       self.error = .setupFailed(errorMsg)
       throw RecordingError.setupFailed(errorMsg)
@@ -421,7 +479,13 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
     }
 
     state = .recording
-    DiagnosticLogger.shared.log(.info, .recording, "Recording started \(Int(recordingRect.width))x\(Int(recordingRect.height)) \(fps)fps \(videoFormat.rawValue)")
+    DiagnosticLogger.shared.log(.info, .recording, "Recording started", context: [
+      "rect": "\(Int(recordingRect.width))x\(Int(recordingRect.height))",
+      "fps": "\(fps)",
+      "format": videoFormat.rawValue,
+      "systemAudio": "\(captureSystemAudio)",
+      "microphone": "\(captureMicrophone)",
+    ])
     self.startTime = Date()
     elapsedSeconds = 0
     pausedDuration = 0
@@ -430,7 +494,10 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
 
   /// Pause the recording
   func pauseRecording() {
-    guard state == .recording else { return }
+    guard state == .recording else {
+      DiagnosticLogger.shared.log(.debug, .recording, "pauseRecording ignored", context: ["state": "\(state)"])
+      return
+    }
     session.isCapturing = false
     mouseTracker?.pause()
     pauseStartTime = Date()
@@ -440,7 +507,10 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
 
   /// Resume the recording
   func resumeRecording() {
-    guard state == .paused, let pauseStart = pauseStartTime else { return }
+    guard state == .paused, let pauseStart = pauseStartTime else {
+      DiagnosticLogger.shared.log(.debug, .recording, "resumeRecording ignored", context: ["state": "\(state)"])
+      return
+    }
     pausedDuration += Date().timeIntervalSince(pauseStart)
     pauseStartTime = nil
     session.isCapturing = true
@@ -459,22 +529,70 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
   }
 
   func addRuntimeExcludedWindow(windowID: CGWindowID) async {
-    guard state != .idle else { return }
-    guard excludedWindowIDs.insert(windowID).inserted else { return }
-    guard let activeStream = stream else { return }
+    guard state != .idle else {
+      DiagnosticLogger.shared.log(.debug, .recording, "Runtime window exclusion ignored: recorder idle", context: [
+        "windowID": "\(windowID)"
+      ])
+      return
+    }
+    guard excludedWindowIDs.insert(windowID).inserted else {
+      DiagnosticLogger.shared.log(.debug, .recording, "Runtime window exclusion already present", context: [
+        "windowID": "\(windowID)"
+      ])
+      return
+    }
+    guard let activeStream = stream else {
+      DiagnosticLogger.shared.log(.warning, .recording, "Runtime window exclusion skipped: no active stream", context: [
+        "windowID": "\(windowID)",
+        "state": "\(state)",
+      ])
+      return
+    }
+    DiagnosticLogger.shared.log(.debug, .recording, "Runtime window exclusion added", context: [
+      "windowID": "\(windowID)",
+      "excludedWindows": "\(excludedWindowIDs.count)",
+    ])
     await updateContentFilter(for: activeStream)
   }
 
   func removeRuntimeExcludedWindow(windowID: CGWindowID) async {
-    guard state != .idle else { return }
-    guard excludedWindowIDs.remove(windowID) != nil else { return }
-    guard let activeStream = stream else { return }
+    guard state != .idle else {
+      DiagnosticLogger.shared.log(.debug, .recording, "Runtime window exclusion removal ignored: recorder idle", context: [
+        "windowID": "\(windowID)"
+      ])
+      return
+    }
+    guard excludedWindowIDs.remove(windowID) != nil else {
+      DiagnosticLogger.shared.log(.debug, .recording, "Runtime window exclusion removal skipped: unknown window", context: [
+        "windowID": "\(windowID)"
+      ])
+      return
+    }
+    guard let activeStream = stream else {
+      DiagnosticLogger.shared.log(.warning, .recording, "Runtime window exclusion removal skipped: no active stream", context: [
+        "windowID": "\(windowID)",
+        "state": "\(state)",
+      ])
+      return
+    }
+    DiagnosticLogger.shared.log(.debug, .recording, "Runtime window exclusion removed", context: [
+      "windowID": "\(windowID)",
+      "excludedWindows": "\(excludedWindowIDs.count)",
+    ])
     await updateContentFilter(for: activeStream)
   }
 
   /// Stop the recording and save the file
   func stopRecording() async -> URL? {
-    guard state == .recording || state == .paused else { return nil }
+    guard state == .recording || state == .paused else {
+      DiagnosticLogger.shared.log(.debug, .recording, "stopRecording ignored", context: ["state": "\(state)"])
+      return nil
+    }
+    DiagnosticLogger.shared.log(.info, .recording, "Recording stop requested", context: [
+      "state": "\(state)",
+      "elapsedSeconds": "\(elapsedSeconds)",
+      "outputFile": outputURL?.lastPathComponent ?? "nil",
+    ])
 
     session.isCapturing = false
     session.setOnFirstVideoFrame(nil)
@@ -507,10 +625,17 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
             mouseSamples: mouseSamples
           )
           try RecordingMetadataStore.save(metadata, for: url)
+          DiagnosticLogger.shared.log(.info, .recording, "Mouse tracking metadata saved", context: [
+            "file": url.lastPathComponent,
+            "samples": "\(mouseSamples.count)",
+          ])
         } catch {
           DiagnosticLogger.shared.logError(.recording, error, "Failed to save mouse tracking data")
-          print("[RecordingMetadata] Failed to save mouse tracking data: \(error.localizedDescription)")
         }
+      } else {
+        DiagnosticLogger.shared.log(.debug, .recording, "Mouse tracking metadata skipped", context: [
+          "samples": "\(mouseSamples.count)"
+        ])
       }
       if let diagnostics = mouseTracker?.diagnostics {
         DiagnosticLogger.shared.log(.info, .recording, "Mouse tracking diagnostics", context: [
@@ -522,6 +647,8 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
         ])
       }
       DiagnosticLogger.shared.log(.info, .recording, "Recording stopped: \(url.lastPathComponent) (\(elapsedSeconds)s)")
+    } else {
+      DiagnosticLogger.shared.log(.error, .recording, "Recording stopped without output URL")
     }
 
     // Reset state
@@ -532,7 +659,14 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
 
   /// Cancel the recording without saving
   func cancelRecording() async {
-    guard state != .idle else { return }
+    guard state != .idle else {
+      DiagnosticLogger.shared.log(.debug, .recording, "cancelRecording ignored: recorder idle")
+      return
+    }
+    DiagnosticLogger.shared.log(.info, .recording, "Recording cancel requested", context: [
+      "state": "\(state)",
+      "outputFile": outputURL?.lastPathComponent ?? "nil",
+    ])
 
     timer?.invalidate()
     timer = nil
@@ -546,7 +680,23 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
     mouseTracker?.reset()
     DiagnosticLogger.shared.log(.info, .recording, "Recording cancelled")
     if let url = outputURL {
-      try? FileManager.default.removeItem(at: url)
+      guard FileManager.default.fileExists(atPath: url.path) else {
+        DiagnosticLogger.shared.log(.debug, .recording, "Cancelled recording output was not created", context: [
+          "file": url.lastPathComponent
+        ])
+        cleanup()
+        return
+      }
+      do {
+        try FileManager.default.removeItem(at: url)
+        DiagnosticLogger.shared.log(.debug, .recording, "Cancelled recording output removed", context: [
+          "file": url.lastPathComponent
+        ])
+      } catch {
+        DiagnosticLogger.shared.logError(.recording, error, "Failed to remove cancelled recording output", context: [
+          "file": url.lastPathComponent
+        ])
+      }
     }
 
     cleanup()
@@ -556,11 +706,20 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
 
   private func setupAssetWriter(width: Int, height: Int, captureSystemAudio: Bool, captureMicrophone: Bool) throws {
     guard let url = outputURL else {
+      DiagnosticLogger.shared.log(.error, .recording, "Asset writer setup failed: missing output URL")
       throw RecordingError.setupFailed(L10n.Recording.noOutputURL)
     }
 
     // Remove existing file if any
-    try? FileManager.default.removeItem(at: url)
+    if FileManager.default.fileExists(atPath: url.path) {
+      do {
+        try FileManager.default.removeItem(at: url)
+      } catch {
+        DiagnosticLogger.shared.logError(.recording, error, "Failed to remove existing recording output", context: [
+          "file": url.lastPathComponent
+        ])
+      }
+    }
 
     let writer = try AVAssetWriter(outputURL: url, fileType: videoFormat.fileType)
     writer.shouldOptimizeForNetworkUse = videoFormat == .mp4
@@ -579,6 +738,10 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
     var videoIn = AVAssetWriterInput(mediaType: .video, outputSettings: videoSettings)
     // If HEVC cannot be added (unsupported path), fallback to H.264.
     if !writer.canAdd(videoIn), selectedCodec == .hevc {
+      DiagnosticLogger.shared.log(.warning, .recording, "HEVC writer input unavailable; falling back to H.264", context: [
+        "outputSize": "\(width)x\(height)",
+        "format": videoFormat.rawValue,
+      ])
       selectedCodec = .h264
       selectedBitrate = calculatedVideoBitrate(width: width, height: height, codec: selectedCodec)
       videoSettings = makeVideoSettings(
@@ -591,6 +754,10 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
     }
 
     guard writer.canAdd(videoIn) else {
+      DiagnosticLogger.shared.log(.error, .recording, "Cannot add recording video writer input", context: [
+        "outputSize": "\(width)x\(height)",
+        "format": videoFormat.rawValue,
+      ])
       throw RecordingError.setupFailed(L10n.Recording.cannotAddVideoWriterInput)
     }
 
@@ -628,6 +795,7 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
       let audioIn = AVAssetWriterInput(mediaType: .audio, outputSettings: audioSettings)
       audioIn.expectsMediaDataInRealTime = true
       guard writer.canAdd(audioIn) else {
+        DiagnosticLogger.shared.log(.error, .recording, "Cannot add system audio writer input")
         throw RecordingError.setupFailed(L10n.Recording.cannotAddSystemAudioWriterInput)
       }
       session.audioInput = audioIn
@@ -645,6 +813,7 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
       let micIn = AVAssetWriterInput(mediaType: .audio, outputSettings: micSettings)
       micIn.expectsMediaDataInRealTime = true
       guard writer.canAdd(micIn) else {
+        DiagnosticLogger.shared.log(.error, .recording, "Cannot add microphone writer input")
         throw RecordingError.setupFailed(L10n.Recording.cannotAddMicrophoneWriterInput)
       }
       session.microphoneInput = micIn
@@ -712,6 +881,10 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
       Int($0.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID ?? 0)
         == display.displayID
     }) else {
+      DiagnosticLogger.shared.log(.error, .recording, "Recording geometry failed: no matching NSScreen", context: [
+        "displayID": "\(display.displayID)",
+        "screens": "\(NSScreen.screens.count)",
+      ])
       throw RecordingError.noDisplayFound
     }
 
@@ -726,11 +899,20 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
     let screenBounds = CGRect(x: 0, y: 0, width: screenFrame.width, height: screenFrame.height)
     let clampedRect = relativeRect.intersection(screenBounds)
     guard !clampedRect.isEmpty else {
+      DiagnosticLogger.shared.log(.error, .recording, "Recording geometry failed: selection outside display bounds", context: [
+        "displayID": "\(display.displayID)",
+        "relativeRect": "\(Int(relativeRect.width))x\(Int(relativeRect.height))",
+        "screenBounds": "\(Int(screenBounds.width))x\(Int(screenBounds.height))",
+      ])
       throw RecordingError.setupFailed(L10n.Recording.selectionOutsideDisplayBounds)
     }
 
     let alignedRect = pixelAlignedRect(clampedRect, scaleFactor: scaleFactor, bounds: screenBounds)
     guard !alignedRect.isEmpty else {
+      DiagnosticLogger.shared.log(.error, .recording, "Recording geometry failed: pixel-aligned rect empty", context: [
+        "displayID": "\(display.displayID)",
+        "scaleFactor": String(format: "%.2f", scaleFactor),
+      ])
       throw RecordingError.setupFailed(L10n.Recording.selectionOutsideDisplayBounds)
     }
 
@@ -817,25 +999,37 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
       let micStatus = AVCaptureDevice.authorizationStatus(for: .audio)
       switch micStatus {
       case .notDetermined:
+        DiagnosticLogger.shared.log(.debug, .recording, "Requesting microphone permission for recording")
         let granted = await AVCaptureDevice.requestAccess(for: .audio)
         if !granted {
+          DiagnosticLogger.shared.log(.warning, .recording, "Microphone permission denied during request")
           throw RecordingError.microphonePermissionDenied
         }
       case .denied, .restricted:
+        DiagnosticLogger.shared.log(.warning, .recording, "Microphone permission unavailable", context: [
+          "status": audioAuthorizationStatusLabel(micStatus)
+        ])
         throw RecordingError.microphonePermissionDenied
       case .authorized:
         break
       @unknown default:
+        DiagnosticLogger.shared.log(.warning, .recording, "Unknown microphone permission status")
         break
       }
 
       if #available(macOS 15.0, *) {
         config.captureMicrophone = true
         config.microphoneCaptureDeviceID = AVCaptureDevice.default(for: .audio)?.uniqueID
+      } else {
+        DiagnosticLogger.shared.log(
+          .warning,
+          .recording,
+          "Microphone capture requested but ScreenCaptureKit microphone output requires macOS 15"
+        )
       }
     }
 
-    stream = SCStream(filter: filter, configuration: config, delegate: nil)
+    stream = SCStream(filter: filter, configuration: config, delegate: self)
     registeredOutputTypes.removeAll()
     try stream?.addStreamOutput(self, type: .screen, sampleHandlerQueue: videoProcessingQueue)
     registeredOutputTypes.insert(.screen)
@@ -867,6 +1061,9 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
         captureGeometry.sourceRect.size.width,
         captureGeometry.sourceRect.size.height
       ),
+      "systemAudio": "\(captureSystemAudio)",
+      "microphone": "\(captureMicrophone)",
+      "outputTypes": registeredOutputTypes.map { streamOutputTypeLabel($0) }.sorted().joined(separator: "+"),
     ])
   }
 
@@ -976,12 +1173,22 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
   private func updateContentFilter(for activeStream: SCStream) async {
     do {
       let content = try await loadShareableContentForCurrentFilters()
-      guard let display = currentDisplay(from: content) else { return }
+      guard let display = currentDisplay(from: content) else {
+        DiagnosticLogger.shared.log(.warning, .recording, "Recording content filter update skipped: no current display", context: [
+          "displays": "\(content.displays.count)",
+          "windows": "\(content.windows.count)",
+        ])
+        return
+      }
       let filter = makeContentFilter(display: display, content: content)
       try await activeStream.updateContentFilter(filter)
+      DiagnosticLogger.shared.log(.debug, .recording, "Recording content filter updated", context: [
+        "displayID": "\(display.displayID)",
+        "excludedWindows": "\(excludedWindowIDs.count)",
+        "exceptedWindows": "\(exceptedWindowIDs.count)",
+      ])
     } catch {
       DiagnosticLogger.shared.logError(.recording, error, "Failed to update recording content filter")
-      print("Failed to update recording filter: \(error.localizedDescription)")
     }
   }
 
@@ -1016,6 +1223,11 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
     ]
 
     if let outputURL {
+      context["outputFile"] = outputURL.lastPathComponent
+      context["outputExists"] = "\(FileManager.default.fileExists(atPath: outputURL.path))"
+      if let size = try? FileManager.default.attributesOfItem(atPath: outputURL.path)[.size] as? Int {
+        context["outputSizeBytes"] = "\(size)"
+      }
       let asset = AVURLAsset(url: outputURL)
       if let track = try? await asset.loadTracks(withMediaType: .video).first {
         let nominalFrameRate = (try? await track.load(.nominalFrameRate)) ?? 0
@@ -1063,7 +1275,9 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
       do {
         try activeStream.removeStreamOutput(self, type: outputType)
       } catch {
-        // Non-fatal: continue best-effort teardown.
+        DiagnosticLogger.shared.logError(.recording, error, "Failed to remove recording stream output", context: [
+          "type": streamOutputTypeLabel(outputType)
+        ])
       }
     }
     registeredOutputTypes.removeAll()
@@ -1071,7 +1285,7 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
     do {
       try await activeStream.stopCapture()
     } catch {
-      // Ignore error if stream already stopped.
+      DiagnosticLogger.shared.logError(.recording, error, "Failed to stop recording stream during teardown")
     }
 
     stream = nil
@@ -1080,11 +1294,44 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
   /// Add a window to the capture filter's exceptingWindows list
   /// Used to include annotation overlay in recording despite app being excluded
   func addExceptedWindow(windowID: CGWindowID) async {
-    guard let activeStream = stream else { return }
-    guard excludeOwnApplicationFromCapture else { return }
+    guard let activeStream = stream else {
+      DiagnosticLogger.shared.log(.warning, .recording, "Excepted recording window skipped: no active stream", context: [
+        "windowID": "\(windowID)"
+      ])
+      return
+    }
+    guard excludeOwnApplicationFromCapture else {
+      DiagnosticLogger.shared.log(.debug, .recording, "Excepted recording window skipped: own app is included", context: [
+        "windowID": "\(windowID)"
+      ])
+      return
+    }
 
     exceptedWindowIDs.insert(windowID)
+    DiagnosticLogger.shared.log(.debug, .recording, "Excepted recording window added", context: [
+      "windowID": "\(windowID)",
+      "exceptedWindows": "\(exceptedWindowIDs.count)",
+    ])
     await updateContentFilter(for: activeStream)
+  }
+
+  private func audioAuthorizationStatusLabel(_ status: AVAuthorizationStatus) -> String {
+    switch status {
+    case .notDetermined: return "notDetermined"
+    case .restricted: return "restricted"
+    case .denied: return "denied"
+    case .authorized: return "authorized"
+    @unknown default: return "unknown"
+    }
+  }
+
+  private func streamOutputTypeLabel(_ type: SCStreamOutputType) -> String {
+    switch type {
+    case .screen: return "screen"
+    case .audio: return "audio"
+    case .microphone: return "microphone"
+    @unknown default: return "unknown"
+    }
   }
 }
 
@@ -1111,5 +1358,13 @@ extension ScreenRecordingManager: SCStreamOutput {
         break
       }
     }
+  }
+}
+
+// MARK: - SCStreamDelegate
+
+extension ScreenRecordingManager: SCStreamDelegate {
+  nonisolated func stream(_ stream: SCStream, didStopWithError error: Error) {
+    DiagnosticLogger.shared.logError(.recording, error, "Screen recording stream stopped unexpectedly")
   }
 }

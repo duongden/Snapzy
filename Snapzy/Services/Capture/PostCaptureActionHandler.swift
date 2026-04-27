@@ -37,7 +37,15 @@ final class PostCaptureActionHandler {
 
   /// Add a screenshot to capture history
   private func addScreenshotToHistory(url: URL) async {
-    guard FileManager.default.fileExists(atPath: url.path) else { return }
+    guard FileManager.default.fileExists(atPath: url.path) else {
+      DiagnosticLogger.shared.log(
+        .warning,
+        .history,
+        "Screenshot history add skipped; file missing",
+        context: ["fileName": url.lastPathComponent]
+      )
+      return
+    }
 
     let imageSource = CGImageSourceCreateWithURL(url as CFURL, nil)
     var width: Int?
@@ -59,6 +67,16 @@ final class PostCaptureActionHandler {
       width: width,
       height: height
     )
+    DiagnosticLogger.shared.log(
+      .debug,
+      .history,
+      "Screenshot queued for history",
+      context: [
+        "fileName": url.lastPathComponent,
+        "width": width.map { "\($0)" } ?? "unknown",
+        "height": height.map { "\($0)" } ?? "unknown",
+      ]
+    )
   }
 
   /// Execute all enabled post-capture actions for a video recording
@@ -72,7 +90,15 @@ final class PostCaptureActionHandler {
 
   /// Add a video or GIF to capture history
   private func addVideoToHistory(url: URL) async {
-    guard FileManager.default.fileExists(atPath: url.path) else { return }
+    guard FileManager.default.fileExists(atPath: url.path) else {
+      DiagnosticLogger.shared.log(
+        .warning,
+        .history,
+        "Video history add skipped; file missing",
+        context: ["fileName": url.lastPathComponent]
+      )
+      return
+    }
 
     let isGIF = url.pathExtension.lowercased() == "gif"
     let captureType: CaptureHistoryType = isGIF ? .gif : .video
@@ -119,17 +145,42 @@ final class PostCaptureActionHandler {
       width: width,
       height: height
     )
+    DiagnosticLogger.shared.log(
+      .debug,
+      .history,
+      "Video queued for history",
+      context: [
+        "fileName": url.lastPathComponent,
+        "type": captureType.rawValue,
+        "duration": duration.map { "\($0)" } ?? "unknown",
+        "width": width.map { "\($0)" } ?? "unknown",
+        "height": height.map { "\($0)" } ?? "unknown",
+      ]
+    )
   }
 
   /// Re-run clipboard automation after an in-place edit save succeeds.
   func copyEditedCaptureToClipboardIfEnabled(for captureType: CaptureType, url: URL) {
-    guard preferencesManager.isActionEnabled(.copyFile, for: captureType) else { return }
+    guard preferencesManager.isActionEnabled(.copyFile, for: captureType) else {
+      DiagnosticLogger.shared.log(
+        .debug,
+        .clipboard,
+        "Edited capture clipboard copy skipped by preference",
+        context: ["captureType": captureType.rawValue, "fileName": url.lastPathComponent]
+      )
+      return
+    }
 
     copyToClipboard(url: url, isVideo: captureType == .recording)
 
     let label = captureType == .screenshot ? "screenshot" : "recording"
     logger.debug("Clipboard re-copy executed for edited \(url.lastPathComponent)")
-    DiagnosticLogger.shared.log(.info, .action, "Clipboard re-copy: \(label) \(url.lastPathComponent)")
+    DiagnosticLogger.shared.log(
+      .info,
+      .clipboard,
+      "Edited capture copied to clipboard",
+      context: ["captureType": label, "fileName": url.lastPathComponent]
+    )
   }
 
   // MARK: - Private
@@ -141,6 +192,12 @@ final class PostCaptureActionHandler {
     // Validate file exists before processing
     guard FileManager.default.fileExists(atPath: url.path) else {
       logger.error("Capture file missing at \(url.lastPathComponent), skipping post-capture actions")
+      DiagnosticLogger.shared.log(
+        .error,
+        .action,
+        "Post-capture actions skipped; file missing",
+        context: ["captureType": captureType.rawValue, "fileName": url.lastPathComponent]
+      )
       return
     }
 
@@ -148,8 +205,17 @@ final class PostCaptureActionHandler {
     let isTempCapture = TempCaptureManager.shared.isTempFile(url)
     let locationLabel = isTempCapture ? "temp" : "export"
     let typeLabel = captureType == .screenshot ? "screenshot" : "recording"
-    print("[Snapzy:PostCapture] \(typeLabel) \(url.lastPathComponent) [location=\(locationLabel)]")
-    DiagnosticLogger.shared.log(.info, .action, "Post-capture: \(typeLabel) \(url.lastPathComponent) [location=\(locationLabel)]")
+    DiagnosticLogger.shared.log(
+      .info,
+      .action,
+      "Post-capture actions started",
+      context: [
+        "captureType": typeLabel,
+        "fileName": url.lastPathComponent,
+        "location": locationLabel,
+        "skipQuickAccess": skipQuickAccess ? "true" : "false",
+      ]
+    )
 
     // Show Quick Access Overlay
     if !skipQuickAccess && preferencesManager.isActionEnabled(.showQuickAccess, for: captureType) {
@@ -160,6 +226,23 @@ final class PostCaptureActionHandler {
         await quickAccessManager.addVideo(url: url)
       }
       logger.debug("Quick access overlay shown for \(url.lastPathComponent)")
+      DiagnosticLogger.shared.log(
+        .info,
+        .action,
+        "Post-capture quick access action executed",
+        context: ["captureType": typeLabel, "fileName": url.lastPathComponent]
+      )
+    } else {
+      DiagnosticLogger.shared.log(
+        .debug,
+        .action,
+        "Post-capture quick access action skipped",
+        context: [
+          "captureType": typeLabel,
+          "fileName": url.lastPathComponent,
+          "skipQuickAccess": skipQuickAccess ? "true" : "false",
+        ]
+      )
     }
 
     // Copy file to clipboard
@@ -167,14 +250,24 @@ final class PostCaptureActionHandler {
       copyToClipboard(url: url, isVideo: captureType == .recording)
       let label = captureType == .screenshot ? "screenshot" : "recording"
       logger.debug("Clipboard copy executed for \(url.lastPathComponent)")
-      DiagnosticLogger.shared.log(.info, .action, "Clipboard copy: \(label) \(url.lastPathComponent)")
+      DiagnosticLogger.shared.log(
+        .info,
+        .clipboard,
+        "Post-capture clipboard action executed",
+        context: ["captureType": label, "fileName": url.lastPathComponent]
+      )
     }
 
     // Open Annotate Editor (screenshots only)
     if captureType == .screenshot && preferencesManager.isActionEnabled(.openAnnotate, for: captureType) {
       AnnotateManager.shared.openAnnotation(url: url)
       logger.debug("Annotate editor opened for \(url.lastPathComponent)")
-      DiagnosticLogger.shared.log(.info, .action, "Annotate editor: \(url.lastPathComponent)")
+      DiagnosticLogger.shared.log(
+        .info,
+        .annotate,
+        "Post-capture annotate action executed",
+        context: ["fileName": url.lastPathComponent]
+      )
     }
   }
 
@@ -186,8 +279,20 @@ final class PostCaptureActionHandler {
       let pasteboard = NSPasteboard.general
       pasteboard.clearContents()
       pasteboard.writeObjects([url as NSURL])
+      DiagnosticLogger.shared.log(
+        .debug,
+        .clipboard,
+        "File URL written to clipboard",
+        context: ["fileName": url.lastPathComponent, "kind": "video"]
+      )
     } else {
       ClipboardHelper.copyImage(from: url)
+      DiagnosticLogger.shared.log(
+        .debug,
+        .clipboard,
+        "Image written to clipboard",
+        context: ["fileName": url.lastPathComponent]
+      )
     }
   }
 }

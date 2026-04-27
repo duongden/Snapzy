@@ -47,11 +47,13 @@ final class CaptureHistoryStore: ObservableObject {
       scheduling: .async(onQueue: DispatchQueue.main),
       onError: { error in
         logger.error("Database observation error: \(error.localizedDescription)")
+        DiagnosticLogger.shared.logError(.history, error, "Capture history database observation failed")
       },
       onChange: { [weak self] newRecords in
         self?.records = newRecords
       }
     )
+    DiagnosticLogger.shared.log(.debug, .history, "Capture history observation started")
   }
 
   // MARK: - Public API
@@ -61,6 +63,12 @@ final class CaptureHistoryStore: ObservableObject {
   func add(_ record: CaptureHistoryRecord) {
     guard UserDefaults.standard.bool(forKey: PreferencesKeys.historyEnabled) else {
       logger.debug("History disabled, skipping record for \(record.fileName)")
+      DiagnosticLogger.shared.log(
+        .debug,
+        .history,
+        "Capture history add skipped; history disabled",
+        context: ["fileName": record.fileName, "type": record.captureType.rawValue]
+      )
       return
     }
 
@@ -69,8 +77,24 @@ final class CaptureHistoryStore: ObservableObject {
         try record.insert(db)
       }
       logger.info("Capture history record added: \(record.fileName)")
+      DiagnosticLogger.shared.log(
+        .info,
+        .history,
+        "Capture history record added",
+        context: [
+          "fileName": record.fileName,
+          "type": record.captureType.rawValue,
+          "fileSize": "\(record.fileSize)",
+        ]
+      )
     } catch {
       logger.error("Failed to add capture history record: \(error.localizedDescription)")
+      DiagnosticLogger.shared.logError(
+        .history,
+        error,
+        "Capture history record add failed",
+        context: ["fileName": record.fileName, "type": record.captureType.rawValue]
+      )
     }
   }
 
@@ -102,15 +126,36 @@ final class CaptureHistoryStore: ObservableObject {
 
       // Clean up stored thumbnail files
       for thumbnailPath in thumbnailPaths {
-        try? FileManager.default.removeItem(atPath: thumbnailPath)
+        do {
+          try FileManager.default.removeItem(atPath: thumbnailPath)
+        } catch {
+          DiagnosticLogger.shared.logError(
+            .history,
+            error,
+            "Capture history thumbnail cleanup failed",
+            context: ["fileName": (thumbnailPath as NSString).lastPathComponent]
+          )
+        }
       }
 
       if removedCount > 0 {
         refreshRecords()
         logger.info("Capture history records removed: \(removedCount)")
+        DiagnosticLogger.shared.log(
+          .info,
+          .history,
+          "Capture history records removed",
+          context: ["recordCount": "\(removedCount)"]
+        )
       }
     } catch {
       logger.error("Failed to remove capture history records: \(error.localizedDescription)")
+      DiagnosticLogger.shared.logError(
+        .history,
+        error,
+        "Capture history records remove failed",
+        context: ["requestedCount": "\(uniqueIds.count)"]
+      )
     }
   }
 
@@ -131,14 +176,35 @@ final class CaptureHistoryStore: ObservableObject {
       }
 
       for thumbnailPath in thumbnailPaths {
-        try? FileManager.default.removeItem(atPath: thumbnailPath)
+        do {
+          try FileManager.default.removeItem(atPath: thumbnailPath)
+        } catch {
+          DiagnosticLogger.shared.logError(
+            .history,
+            error,
+            "Capture history thumbnail cleanup failed",
+            context: ["fileName": (thumbnailPath as NSString).lastPathComponent]
+          )
+        }
       }
 
       if count > 0 {
         logger.info("Removed history record for file: \(filePath)")
+        DiagnosticLogger.shared.log(
+          .info,
+          .history,
+          "Capture history record removed by file path",
+          context: ["fileName": (filePath as NSString).lastPathComponent, "recordCount": "\(count)"]
+        )
       }
     } catch {
       logger.error("Failed to remove record by path: \(error.localizedDescription)")
+      DiagnosticLogger.shared.logError(
+        .history,
+        error,
+        "Capture history remove by file path failed",
+        context: ["fileName": (filePath as NSString).lastPathComponent]
+      )
     }
   }
 
@@ -160,12 +226,28 @@ final class CaptureHistoryStore: ObservableObject {
 
       // Clean up thumbnail files
       for path in thumbnailPaths {
-        try? FileManager.default.removeItem(atPath: path)
+        do {
+          try FileManager.default.removeItem(atPath: path)
+        } catch {
+          DiagnosticLogger.shared.logError(
+            .history,
+            error,
+            "Capture history thumbnail cleanup failed",
+            context: ["fileName": (path as NSString).lastPathComponent]
+          )
+        }
       }
 
       logger.info("All capture history records removed")
+      DiagnosticLogger.shared.log(
+        .info,
+        .history,
+        "All capture history records removed",
+        context: ["thumbnailCount": "\(thumbnailPaths.count)"]
+      )
     } catch {
       logger.error("Failed to remove all records: \(error.localizedDescription)")
+      DiagnosticLogger.shared.logError(.history, error, "Capture history remove all failed")
     }
   }
 
@@ -180,6 +262,12 @@ final class CaptureHistoryStore: ObservableObject {
       }
     } catch {
       logger.error("Failed to update thumbnail path: \(error.localizedDescription)")
+      DiagnosticLogger.shared.logError(
+        .history,
+        error,
+        "Capture history thumbnail path update failed",
+        context: ["recordId": id.uuidString]
+      )
     }
   }
 
@@ -194,8 +282,20 @@ final class CaptureHistoryStore: ObservableObject {
         }
       }
       logger.info("Updated file path for record \(id): \(newPath)")
+      DiagnosticLogger.shared.log(
+        .info,
+        .history,
+        "Capture history file path updated",
+        context: ["recordId": id.uuidString, "fileName": (newPath as NSString).lastPathComponent]
+      )
     } catch {
       logger.error("Failed to update file path: \(error.localizedDescription)")
+      DiagnosticLogger.shared.logError(
+        .history,
+        error,
+        "Capture history file path update failed",
+        context: ["recordId": id.uuidString, "fileName": (newPath as NSString).lastPathComponent]
+      )
     }
   }
 
@@ -219,10 +319,29 @@ final class CaptureHistoryStore: ObservableObject {
 
       if updatedCount > 0 {
         logger.info("Updated \(updatedCount) history record path(s) from \(oldPath) to \(newPath)")
+        DiagnosticLogger.shared.log(
+          .info,
+          .history,
+          "Capture history file paths updated after move",
+          context: [
+            "recordCount": "\(updatedCount)",
+            "oldFileName": (oldPath as NSString).lastPathComponent,
+            "newFileName": (newPath as NSString).lastPathComponent,
+          ]
+        )
       }
       return updatedCount
     } catch {
       logger.error("Failed to update file path by old path: \(error.localizedDescription)")
+      DiagnosticLogger.shared.logError(
+        .history,
+        error,
+        "Capture history file path update after move failed",
+        context: [
+          "oldFileName": (oldPath as NSString).lastPathComponent,
+          "newFileName": (newPath as NSString).lastPathComponent,
+        ]
+      )
       return 0
     }
   }
@@ -266,9 +385,21 @@ final class CaptureHistoryStore: ObservableObject {
       )
 
       logger.info("Marked \(updatedIds.count) history thumbnail(s) stale for file: \(fileName)")
+      DiagnosticLogger.shared.log(
+        .info,
+        .history,
+        "Capture history records marked stale after file change",
+        context: ["fileName": fileName, "recordCount": "\(updatedIds.count)"]
+      )
       return updatedIds
     } catch {
       logger.error("Failed to mark history file changed: \(error.localizedDescription)")
+      DiagnosticLogger.shared.logError(
+        .history,
+        error,
+        "Capture history mark file changed failed",
+        context: ["fileName": fileName]
+      )
       return []
     }
   }
@@ -284,6 +415,12 @@ final class CaptureHistoryStore: ObservableObject {
       return count > 0
     } catch {
       logger.error("Failed to check record existence: \(error.localizedDescription)")
+      DiagnosticLogger.shared.logError(
+        .history,
+        error,
+        "Capture history record existence check failed",
+        context: ["fileName": (filePath as NSString).lastPathComponent]
+      )
       return false
     }
   }
@@ -302,9 +439,21 @@ final class CaptureHistoryStore: ObservableObject {
       }
       if count > 0 {
         logger.info("Removed \(count) record(s) older than \(days) days")
+        DiagnosticLogger.shared.log(
+          .info,
+          .history,
+          "Capture history age retention removed records",
+          context: ["days": "\(days)", "recordCount": "\(count)"]
+        )
       }
     } catch {
       logger.error("Failed to remove old records: \(error.localizedDescription)")
+      DiagnosticLogger.shared.logError(
+        .history,
+        error,
+        "Capture history age retention failed",
+        context: ["days": "\(days)"]
+      )
     }
   }
 
@@ -336,8 +485,20 @@ final class CaptureHistoryStore: ObservableObject {
       }
 
       logger.info("Trimmed \(idsToDelete.count) oldest record(s) to stay within max count \(maxCount)")
+      DiagnosticLogger.shared.log(
+        .info,
+        .history,
+        "Capture history count retention trimmed records",
+        context: ["maxCount": "\(maxCount)", "recordCount": "\(idsToDelete.count)"]
+      )
     } catch {
       logger.error("Failed to trim records: \(error.localizedDescription)")
+      DiagnosticLogger.shared.logError(
+        .history,
+        error,
+        "Capture history count retention failed",
+        context: ["maxCount": "\(maxCount)"]
+      )
     }
   }
 
@@ -355,6 +516,12 @@ final class CaptureHistoryStore: ObservableObject {
       fileSize = (attrs[.size] as? NSNumber)?.int64Value ?? 0
     } catch {
       fileSize = 0
+      DiagnosticLogger.shared.logError(
+        .history,
+        error,
+        "Capture history file attributes unavailable",
+        context: ["fileName": url.lastPathComponent, "type": captureType.rawValue]
+      )
     }
 
     let record = CaptureHistoryRecord(
@@ -388,6 +555,7 @@ final class CaptureHistoryStore: ObservableObject {
       }
     } catch {
       logger.error("Failed to clear thumbnail paths: \(error.localizedDescription)")
+      DiagnosticLogger.shared.logError(.history, error, "Capture history clear thumbnail paths failed")
     }
   }
 
@@ -405,6 +573,7 @@ final class CaptureHistoryStore: ObservableObject {
       }
     } catch {
       logger.error("Failed to refresh capture history records: \(error.localizedDescription)")
+      DiagnosticLogger.shared.logError(.history, error, "Capture history refresh failed")
     }
   }
 
@@ -414,6 +583,12 @@ final class CaptureHistoryStore: ObservableObject {
         let attrs = try FileManager.default.attributesOfItem(atPath: url.path)
         return (attrs[.size] as? NSNumber)?.int64Value ?? 0
       } catch {
+        DiagnosticLogger.shared.logError(
+          .history,
+          error,
+          "Capture history current file size failed",
+          context: ["fileName": url.lastPathComponent]
+        )
         return 0
       }
     }

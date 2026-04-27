@@ -121,12 +121,31 @@ final class HistoryFloatingManager: ObservableObject {
     autoClearDays = UserDefaults.standard.object(forKey: Keys.autoClearDays) as? Int ?? 0
     panelScale = HistoryFloatingLayout.storedScale()
     expandedFilter = defaultFilter
+    DiagnosticLogger.shared.log(
+      .debug,
+      .history,
+      "Floating history settings loaded",
+      context: [
+        "enabled": isEnabled ? "true" : "false",
+        "position": position.rawValue,
+        "maxDisplayedItems": "\(maxDisplayedItems)",
+      ]
+    )
   }
 
   // MARK: - Public Methods
 
   /// Toggle the floating history panel visibility
   func toggle() {
+    DiagnosticLogger.shared.log(
+      .info,
+      .history,
+      "Floating history toggled",
+      context: [
+        "isPresenting": panelController.isPresenting ? "true" : "false",
+        "enabled": isEnabled ? "true" : "false",
+      ]
+    )
     if panelController.isPresenting {
       hide()
     } else {
@@ -136,7 +155,10 @@ final class HistoryFloatingManager: ObservableObject {
 
   /// Show the floating history panel
   func show() {
-    guard isEnabled else { return }
+    guard isEnabled else {
+      DiagnosticLogger.shared.log(.debug, .history, "Floating history show skipped; disabled")
+      return
+    }
     showCompact()
   }
 
@@ -144,10 +166,14 @@ final class HistoryFloatingManager: ObservableObject {
   func hide() {
     removeEscapeMonitors()
     panelController.hide()
+    DiagnosticLogger.shared.log(.debug, .history, "Floating history hidden")
   }
 
   func showCompact() {
-    guard isEnabled else { return }
+    guard isEnabled else {
+      DiagnosticLogger.shared.log(.debug, .history, "Floating history compact show skipped; disabled")
+      return
+    }
     presentationMode = .compact
     presentCurrentMode()
   }
@@ -155,21 +181,35 @@ final class HistoryFloatingManager: ObservableObject {
   func showExpanded(initialFilter: CaptureHistoryType? = nil) {
     resetExpandedState(initialFilter: initialFilter ?? expandedFilter ?? defaultFilter)
     presentationMode = .expanded
+    DiagnosticLogger.shared.log(
+      .info,
+      .history,
+      "Floating history expanded",
+      context: ["filter": (initialFilter ?? expandedFilter ?? defaultFilter)?.rawValue ?? "all"]
+    )
     presentCurrentMode()
   }
 
   func collapse() {
     guard isEnabled else {
+      DiagnosticLogger.shared.log(.debug, .history, "Floating history collapse routed to hide; disabled")
       hide()
       return
     }
     presentationMode = .compact
+    DiagnosticLogger.shared.log(.debug, .history, "Floating history collapsed")
     presentCurrentMode()
   }
 
   /// Refresh panel content if visible
   func refreshPanel() {
     guard panelController.isVisible else { return }
+    DiagnosticLogger.shared.log(
+      .debug,
+      .history,
+      "Floating history refreshed",
+      context: ["mode": "\(presentationMode)"]
+    )
     presentCurrentMode()
   }
 
@@ -180,16 +220,29 @@ final class HistoryFloatingManager: ObservableObject {
 
   func focusPanel() {
     panelController.focusPanel()
+    DiagnosticLogger.shared.log(.debug, .history, "Floating history focused")
   }
 
   func performModalInteraction<Result>(_ action: () -> Result) -> Result {
     modalInteractionSuppressionCount += 1
+    DiagnosticLogger.shared.log(
+      .debug,
+      .history,
+      "Floating history modal interaction began",
+      context: ["depth": "\(modalInteractionSuppressionCount)"]
+    )
     let result = action()
 
     DispatchQueue.main.async { [weak self] in
       MainActor.assumeIsolated {
         guard let self else { return }
         self.modalInteractionSuppressionCount = max(0, self.modalInteractionSuppressionCount - 1)
+        DiagnosticLogger.shared.log(
+          .debug,
+          .history,
+          "Floating history modal interaction ended",
+          context: ["depth": "\(self.modalInteractionSuppressionCount)"]
+        )
         if self.panelController.isPresenting {
           self.focusPanel()
         }
@@ -227,10 +280,22 @@ final class HistoryFloatingManager: ObservableObject {
       cornerRadius: preferredCornerRadius
     )
     setupEscapeMonitors()
+    DiagnosticLogger.shared.log(
+      .debug,
+      .history,
+      "Floating history presented",
+      context: [
+        "mode": "\(presentationMode)",
+        "position": preferredPosition.rawValue,
+      ]
+    )
   }
 
   private func handlePanelDidResignKey() {
-    guard !isModalInteractionActive else { return }
+    guard !isModalInteractionActive else {
+      DiagnosticLogger.shared.log(.debug, .history, "Floating history resign-key ignored during modal interaction")
+      return
+    }
     hide()
   }
 

@@ -265,7 +265,12 @@ struct QuickAccessCardView: View {
       event: currentEvent,
       source: dragSource
     )
-    print("[QuickAccessDrag] Started drag for \(item.url.lastPathComponent)")
+    DiagnosticLogger.shared.log(
+      .info,
+      .action,
+      "Quick access drag started",
+      context: ["fileName": item.url.lastPathComponent]
+    )
     dragSession.animatesToStartingPositionsOnCancelOrFail = true
 
     // Reset dragging state after a delay
@@ -484,19 +489,39 @@ struct QuickAccessCardView: View {
   /// Upload the current item to cloud storage
   private func uploadToCloud() {
     let alreadyUploaded = item.cloudURL != nil && !item.isCloudStale
-    guard !isCloudUploading, !alreadyUploaded else { return }
+    guard !isCloudUploading, !alreadyUploaded else {
+      DiagnosticLogger.shared.log(
+        .debug,
+        .cloud,
+        "Quick access cloud upload skipped",
+        context: [
+          "fileName": item.url.lastPathComponent,
+          "isUploading": isCloudUploading ? "true" : "false",
+          "alreadyUploaded": alreadyUploaded ? "true" : "false",
+        ]
+      )
+      return
+    }
 
     isCloudUploading = true
     cloudUploadProgress = 0
     manager.pauseCountdownForActivity(item.id)
+    let uploadStartTime = Date()
+    let oldCloudKey = item.cloudKey  // Save old key for cleanup
+    DiagnosticLogger.shared.log(
+      .info,
+      .cloud,
+      "Quick access cloud upload started",
+      context: [
+        "fileName": item.url.lastPathComponent,
+        "hasOldCloudKey": oldCloudKey == nil ? "false" : "true",
+      ]
+    )
 
     // Animate to 80% quickly to show activity
     withAnimation(.easeOut(duration: 0.4)) {
       cloudUploadProgress = 0.8
     }
-
-    let uploadStartTime = Date()
-    let oldCloudKey = item.cloudKey  // Save old key for cleanup
 
     Task {
       defer {
@@ -513,7 +538,11 @@ struct QuickAccessCardView: View {
         // Delete old cloud file in background (no garbage)
         if let oldKey = oldCloudKey {
           Task.detached(priority: .utility) {
-            try? await CloudManager.shared.deleteByKey(key: oldKey)
+            do {
+              try await CloudManager.shared.deleteByKey(key: oldKey)
+            } catch {
+              DiagnosticLogger.shared.logError(.cloud, error, "Quick access old cloud object cleanup failed")
+            }
           }
         }
 
@@ -539,10 +568,21 @@ struct QuickAccessCardView: View {
 
         isCloudUploading = false
         SoundManager.play("Pop")
+        DiagnosticLogger.shared.log(
+          .info,
+          .cloud,
+          "Quick access cloud upload completed",
+          context: ["fileName": item.url.lastPathComponent]
+        )
       } catch {
         isCloudUploading = false
         cloudUploadProgress = 0
-        print("[Snapzy:Cloud] Upload failed: \(error.localizedDescription)")
+        DiagnosticLogger.shared.logError(
+          .cloud,
+          error,
+          "Quick access cloud upload failed",
+          context: ["fileName": item.url.lastPathComponent]
+        )
       }
     }
   }
@@ -582,7 +622,15 @@ private final class DragSource: NSObject, NSDraggingSource {
     sourceAccess?.stop()
     sourceAccess = nil
     QuickAccessDragRegistry.release(for: dragID)
-    print("[QuickAccessDrag] Drag ended with operation rawValue=\(operation.rawValue)")
+    DiagnosticLogger.shared.log(
+      .info,
+      .action,
+      "Quick access drag ended",
+      context: [
+        "operation": "\(operation.rawValue)",
+        "success": operation != [] ? "true" : "false",
+      ]
+    )
     onEnded(operation != [])
   }
 
