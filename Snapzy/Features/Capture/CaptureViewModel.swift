@@ -737,8 +737,7 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
               AppToastManager.shared.show(
                 message: L10n.ScreenCapture.unableToCaptureSelectedArea,
                 style: .error,
-                position: .bottomCenter,
-                variant: .compact
+                position: .bottomCenter
               )
               QuickAccessSound.failed.play()
               return
@@ -773,16 +772,14 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
                 AppToastManager.shared.show(
                   message: L10n.OCR.qrTextOnlyUnsupported,
                   style: .warning,
-                  position: .bottomCenter,
-                  variant: .compact
+                  position: .bottomCenter
                 )
               } else {
                 DiagnosticLogger.shared.log(.warning, .ocr, "OCR capture failed: no text or QR payload found", context: performanceContext)
                 AppToastManager.shared.show(
                   message: L10n.OCR.noTextFound,
                   style: .warning,
-                  position: .bottomCenter,
-                  variant: .compact
+                  position: .bottomCenter
                 )
               }
               QuickAccessSound.failed.play()
@@ -801,8 +798,7 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
             AppToastManager.shared.show(
               message: L10n.Common.copiedToClipboard,
               style: .success,
-              position: .bottomCenter,
-              variant: .compact
+              position: .bottomCenter
             )
             QuickAccessSound.complete.play()
 
@@ -813,8 +809,7 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
             AppToastManager.shared.show(
               message: error.localizedDescription,
               style: .error,
-              position: .bottomCenter,
-              variant: .compact
+              position: .bottomCenter
             )
             QuickAccessSound.failed.play()
           }
