@@ -6,6 +6,22 @@
     <description>Snapzy application updates</description>
     <language>en</language>
     <item>
+      <title>Version 1.11.2</title>
+      <sparkle:version>80</sparkle:version>
+      <sparkle:shortVersionString>1.11.2</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <pubDate>Tue, 28 Apr 2026 17:49:01 +0000</pubDate>
+      <description><![CDATA[
+        <style>:root { color-scheme: light dark; } body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 13px; line-height: 1.5; padding: 8px 16px; } h3 { font-size: 14px; margin: 12px 0 6px; } ul { padding-left: 20px; margin: 4px 0; } li { margin: 3px 0; }</style>
+        <h3>🐛 Bug Fixes</h3><ul><li>Increase frozen snapshot window hide settle delay and add option to exclude own application in capture</li></ul>
+      ]]></description>
+      <enclosure
+        url="https://github.com/duongductrong/Snapzy/releases/download/v1.11.2/Snapzy-v1.11.2.dmg"
+        sparkle:edSignature="E3fnBIfzEv0v9BfjI3OM9mOxg8Cib723z85QGR5AH8seYg5nsnl/k1oTrJpCnV7rQK+3uCQHlPKSWCIdzwvkAw=="
+        length="44927779"
+        type="application/octet-stream"/>
+    </item>
+    <item>
       <title>Version 1.11.0</title>
       <sparkle:version>78</sparkle:version>
       <sparkle:shortVersionString>1.11.0</sparkle:shortVersionString>
