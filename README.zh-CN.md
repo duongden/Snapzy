@@ -22,6 +22,7 @@
     <a href="#features">功能</a> •
     <a href="#install">安装</a> •
     <a href="#shortcuts">快捷键</a> •
+    <a href="#automation">自动化</a> •
     <a href="#development">Development</a> •
     <a href="#documentation">文档</a> •
     <a href="#community">社区</a> •
@@ -31,7 +32,7 @@
 
   <p>
     <a href="https://deepwiki.com/duongductrong/Snapzy"><img alt="询问 DeepWiki" src="https://deepwiki.com/badge.svg" /></a>
-    <a href="https://discord.gg/6CRdUKaC"><img alt="加入 Discord 社区" src="https://img.shields.io/badge/Discord-Join%20Community-5865F2?style=flat&amp;logo=discord&amp;logoColor=white" /></a>
+    <a href="https://discord.gg/xkWDAuJkZu"><img alt="加入 Discord 社区" src="https://img.shields.io/badge/Discord-Join%20Community-5865F2?style=flat&amp;logo=discord&amp;logoColor=white" /></a>
     <a href="#featured-on"><img alt="已收录平台" src="https://img.shields.io/badge/Featured%20On-Product%20Hunt%20%2B%20Unikorn-111827?style=flat&amp;logo=producthunt&amp;logoColor=white" /></a>
   </p>
 </div>
@@ -71,7 +72,7 @@ brew install --cask snapzy
 
 ```bash
 # 安装指定版本
-curl -fsSL https://raw.githubusercontent.com/duongductrong/Snapzy/v1.7.0/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/duongductrong/Snapzy/v1.9.8/install.sh | bash
 ```
 
 ### 下载发行版
@@ -118,6 +119,28 @@ curl -fsSL https://raw.githubusercontent.com/duongductrong/Snapzy/master/uninsta
 | 打开云上传                                           | `⇧⌘L`  |
 | 显示快捷键列表                                       | `⇧⌘K`  |
 
+<a id="automation"></a>
+
+## 自动化
+
+Snapzy 注册了 `snapzy://` URL scheme，因此 launcher 和自动化工具可以直接触发各类捕获动作。
+
+| 操作         | URL |
+| ------------ | --- |
+| 全屏截图     | `snapzy://capture/fullscreen` |
+| 选区截图     | `snapzy://capture/area` |
+| 滚动截图     | `snapzy://capture/scrolling` |
+| OCR 文字识别 | `snapzy://capture/ocr` |
+| 对象抠图截图 | `snapzy://capture/object-cutout` |
+| 屏幕录制     | `snapzy://record/screen` |
+| 打开标注编辑器 | `snapzy://open/annotate` |
+| 打开视频编辑器 | `snapzy://open/video-editor` |
+| 打开云上传   | `snapzy://open/cloud-uploads` |
+| 打开捕获历史 | `snapzy://open/history` |
+| 显示快捷键列表 | `snapzy://show/shortcuts` |
+| 打开设置     | `snapzy://settings` |
+| 打开设置标签页 | `snapzy://settings?tab=shortcuts` |
+
 <a id="development"></a>
 
 ## Development
@@ -142,7 +165,7 @@ curl -fsSL https://raw.githubusercontent.com/duongductrong/Snapzy/master/uninsta
 
 ## 社区
 
-- 加入 Snapzy Discord 社区，获取支持、反馈与讨论：[https://discord.gg/6CRdUKaC](https://discord.gg/6CRdUKaC)
+- 加入 Snapzy Discord 社区，获取支持、反馈与讨论：[https://discord.gg/xkWDAuJkZu](https://discord.gg/xkWDAuJkZu)
 
 <a id="featured-on"></a>
 

@@ -22,6 +22,7 @@
     <a href="#features">Tính năng</a> •
     <a href="#install">Cài đặt</a> •
     <a href="#shortcuts">Phím tắt</a> •
+    <a href="#automation">Tự động hóa</a> •
     <a href="#development">Development</a> •
     <a href="#documentation">Tài liệu</a> •
     <a href="#community">Cộng đồng</a> •
@@ -31,7 +32,7 @@
 
   <p>
     <a href="https://deepwiki.com/duongductrong/Snapzy"><img alt="Hỏi DeepWiki" src="https://deepwiki.com/badge.svg" /></a>
-    <a href="https://discord.gg/6CRdUKaC"><img alt="Tham gia cộng đồng Discord" src="https://img.shields.io/badge/Discord-Join%20Community-5865F2?style=flat&amp;logo=discord&amp;logoColor=white" /></a>
+    <a href="https://discord.gg/xkWDAuJkZu"><img alt="Tham gia cộng đồng Discord" src="https://img.shields.io/badge/Discord-Join%20Community-5865F2?style=flat&amp;logo=discord&amp;logoColor=white" /></a>
     <a href="#featured-on"><img alt="Được giới thiệu trên" src="https://img.shields.io/badge/Featured%20On-Product%20Hunt%20%2B%20Unikorn-111827?style=flat&amp;logo=producthunt&amp;logoColor=white" /></a>
   </p>
 </div>
@@ -71,7 +72,7 @@ brew install --cask snapzy
 
 ```bash
 # Cài một phiên bản cụ thể
-curl -fsSL https://raw.githubusercontent.com/duongductrong/Snapzy/v1.7.0/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/duongductrong/Snapzy/v1.9.8/install.sh | bash
 ```
 
 ### Tải bản phát hành
@@ -118,6 +119,28 @@ Lệnh này sẽ xóa ứng dụng khỏi `/Applications`, xóa preferences và 
 | Mở Cloud Uploads                                                  | `⇧⌘L`    |
 | Hiện danh sách shortcut                                           | `⇧⌘K`    |
 
+<a id="automation"></a>
+
+## Tự động hóa
+
+Snapzy đăng ký URL scheme `snapzy://` để launcher và công cụ tự động hóa có thể kích hoạt các thao tác capture.
+
+| Tác vụ                  | URL |
+| ----------------------- | --- |
+| Chụp toàn màn hình      | `snapzy://capture/fullscreen` |
+| Chụp vùng               | `snapzy://capture/area` |
+| Chụp cuộn               | `snapzy://capture/scrolling` |
+| OCR văn bản             | `snapzy://capture/ocr` |
+| Chụp tách nền đối tượng | `snapzy://capture/object-cutout` |
+| Quay màn hình           | `snapzy://record/screen` |
+| Mở Annotate             | `snapzy://open/annotate` |
+| Mở Video Editor         | `snapzy://open/video-editor` |
+| Mở Cloud Uploads        | `snapzy://open/cloud-uploads` |
+| Mở Lịch sử capture      | `snapzy://open/history` |
+| Hiện danh sách shortcut | `snapzy://show/shortcuts` |
+| Mở Cài đặt              | `snapzy://settings` |
+| Mở tab Cài đặt          | `snapzy://settings?tab=shortcuts` |
+
 <a id="development"></a>
 
 ## Development
@@ -142,7 +165,7 @@ Nếu bạn cần lệnh archive, export, hoặc đóng gói DMG, xem [docs/BUIL
 
 ## Cộng đồng
 
-- Tham gia cộng đồng Snapzy trên Discord để nhận hỗ trợ, góp ý và thảo luận: [https://discord.gg/6CRdUKaC](https://discord.gg/6CRdUKaC)
+- Tham gia cộng đồng Snapzy trên Discord để nhận hỗ trợ, góp ý và thảo luận: [https://discord.gg/xkWDAuJkZu](https://discord.gg/xkWDAuJkZu)
 
 <a id="featured-on"></a>
 

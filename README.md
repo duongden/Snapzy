@@ -31,7 +31,7 @@
 
   <p>
     <a href="https://deepwiki.com/duongductrong/Snapzy"><img alt="Ask DeepWiki" src="https://deepwiki.com/badge.svg" /></a>
-    <a href="https://discord.gg/6CRdUKaC"><img alt="Join Discord Community" src="https://img.shields.io/badge/Discord-Join%20Community-5865F2?style=flat&amp;logo=discord&amp;logoColor=white" /></a>
+    <a href="https://discord.gg/xkWDAuJkZu"><img alt="Join Discord Community" src="https://img.shields.io/badge/Discord-Join%20Community-5865F2?style=flat&amp;logo=discord&amp;logoColor=white" /></a>
     <a href="#featured-on"><img alt="Featured On" src="https://img.shields.io/badge/Featured%20On-Product%20Hunt%20%2B%20Unikorn-111827?style=flat&amp;logo=producthunt&amp;logoColor=white" /></a>
   </p>
 </div>
@@ -150,7 +150,7 @@ If you need archive, export, or DMG packaging commands, see [docs/BUILD.md](docs
 
 ## Community
 
-- Join the Snapzy Discord community for support, feedback, and discussion: [https://discord.gg/6CRdUKaC](https://discord.gg/6CRdUKaC)
+- Join the Snapzy Discord community for support, feedback, and discussion: [https://discord.gg/xkWDAuJkZu](https://discord.gg/xkWDAuJkZu)
 
 ## Featured On
 
