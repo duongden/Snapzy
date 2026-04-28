@@ -19,6 +19,8 @@ final class RecordingCoordinator: ObservableObject {
   private var toolbarWindow: RecordingToolbarWindow?
   private var regionOverlayWindows: [RecordingRegionOverlayWindow] = []
   private var selectedRect: CGRect?
+  private var selectedWindowTarget: WindowCaptureTarget?
+  private let captureManager = ScreenCaptureManager.shared
   private let recorder = ScreenRecordingManager.shared
   private var isStartingRecording = false
   private var localEscapeMonitor: Any?
@@ -35,6 +37,16 @@ final class RecordingCoordinator: ObservableObject {
   // Keystroke overlay
   private var keystrokeOverlayWindow: KeystrokeOverlayWindow?
   private var keystrokeMonitorService: KeystrokeMonitorService?
+
+  private struct ToolbarConfiguration {
+    let format: VideoFormat
+    let quality: VideoQuality
+    let captureAudio: Bool
+    let captureMicrophone: Bool
+    let outputMode: RecordingOutputMode
+    let highlightClicks: Bool
+    let showKeystrokes: Bool
+  }
 
   private init() {}
 
@@ -125,74 +137,69 @@ final class RecordingCoordinator: ObservableObject {
   }
 
   /// Start recording flow after area selection
-  func showToolbar(for rect: CGRect) {
+  func showToolbar(
+    for rect: CGRect,
+    captureMode: RecordingCaptureMode = .area,
+    windowTarget: WindowCaptureTarget? = nil
+  ) {
     guard !isActive else {
       DiagnosticLogger.shared.log(.debug, .recording, "Recording toolbar request ignored: coordinator active")
       return
     }
     isActive = true
-    selectedRect = rect
-    DiagnosticLogger.shared.log(.info, .recording, "Recording toolbar shown", context: [
-      "rect": "\(Int(rect.width))x\(Int(rect.height))",
-      "origin": "\(Int(rect.origin.x)),\(Int(rect.origin.y))"
-    ])
-
-    // Save rect for next time
-    saveLastAreaRect(rect)
-
-    toolbarWindow = RecordingToolbarWindow(anchorRect: rect)
-    toolbarWindow?.onRecord = { [weak self] in
-      self?.startRecording()
-    }
-    toolbarWindow?.onCapture = { [weak self] in
-      self?.captureScreenshot()
-    }
-    toolbarWindow?.onCancel = { [weak self] in
-      self?.cancel()
-    }
-    toolbarWindow?.onDelete = { [weak self] in
-      self?.deleteRecording()
-    }
-    toolbarWindow?.onRestart = { [weak self] in
-      self?.restartRecording()
-    }
-    toolbarWindow?.onStop = { [weak self] in
-      self?.stopRecording()
-    }
-    toolbarWindow?.onCaptureModeChanged = { [weak self] mode in
-      self?.handleCaptureModeChange(mode)
-    }
-
-    // Load format from preferences
-    if let formatString = UserDefaults.standard.string(forKey: PreferencesKeys.recordingFormat),
-      let format = VideoFormat(rawValue: formatString)
-    {
-      toolbarWindow?.selectedFormat = format
-    }
-
-    // Show region overlay to highlight recording area
-    showRegionOverlay(for: rect)
-
-    // Set up escape key monitoring for cancel during prepare phase
-    setupEscapeMonitors()
+    presentToolbar(
+      for: rect,
+      captureMode: captureMode,
+      windowTarget: windowTarget,
+      configuration: nil
+    )
   }
 
   private func setupEscapeMonitors() {
+    removeEscapeMonitors()
+
     localEscapeMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-      if event.keyCode == 53 {  // Escape key
-        self?.handleEscapeKey()
+      if self?.handlePreRecordKeyEvent(event) == true {
         return nil
       }
       return event
     }
 
     globalEscapeMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
-      if event.keyCode == 53 {
-        DispatchQueue.main.async {
-          self?.handleEscapeKey()
-        }
+      guard self?.isPreRecordKeyEvent(event) == true else { return }
+      DispatchQueue.main.async {
+        _ = self?.handlePreRecordKeyEvent(event)
       }
     }
+  }
+
+  private func isPreRecordKeyEvent(_ event: NSEvent) -> Bool {
+    event.keyCode == 53 || isApplicationToggleEvent(event)
+  }
+
+  @discardableResult
+  private func handlePreRecordKeyEvent(_ event: NSEvent) -> Bool {
+    if event.keyCode == 53 {  // Escape key
+      handleEscapeKey()
+      return true
+    }
+
+    guard isApplicationToggleEvent(event) else { return false }
+    toggleApplicationCaptureMode()
+    return true
+  }
+
+  private func isApplicationToggleEvent(_ event: NSEvent) -> Bool {
+    guard recorder.state == .idle, !isStartingRecording else { return false }
+    guard toolbarWindow != nil else { return false }
+    return CaptureOverlayShortcutSettings.matchesRecordingApplicationCaptureShortcut(event)
+  }
+
+  private func toggleApplicationCaptureMode() {
+    guard let toolbarWindow else { return }
+    let nextMode: RecordingCaptureMode = toolbarWindow.captureMode == .application ? .area : .application
+    toolbarWindow.captureMode = nextMode
+    handleCaptureModeChange(nextMode)
   }
 
   /// Handle ESC key before recording starts.
@@ -222,21 +229,217 @@ final class RecordingCoordinator: ObservableObject {
     }
   }
 
+  private func presentToolbar(
+    for rect: CGRect,
+    captureMode: RecordingCaptureMode,
+    windowTarget: WindowCaptureTarget?,
+    configuration: ToolbarConfiguration?
+  ) {
+    DiagnosticLogger.shared.log(.info, .recording, "Recording toolbar shown", context: [
+      "mode": captureMode.rawValue,
+      "rect": "\(Int(rect.width))x\(Int(rect.height))",
+      "origin": "\(Int(rect.origin.x)),\(Int(rect.origin.y))",
+      "windowTarget": windowTarget == nil ? "false" : "true",
+    ])
+
+    updateSelectedTarget(
+      rect: rect,
+      captureMode: captureMode,
+      windowTarget: windowTarget,
+      syncToolbarMode: false
+    )
+
+    let toolbar = RecordingToolbarWindow(anchorRect: rect)
+    configureToolbarCallbacks(toolbar)
+    applyToolbarConfiguration(configuration, to: toolbar)
+    toolbar.captureMode = captureMode
+    toolbarWindow = toolbar
+
+    showRegionOverlay(for: rect, interactionEnabled: captureMode != .application)
+    setupEscapeMonitors()
+  }
+
+  private func configureToolbarCallbacks(_ toolbar: RecordingToolbarWindow) {
+    toolbar.onRecord = { [weak self] in
+      self?.startRecording()
+    }
+    toolbar.onCapture = { [weak self] in
+      self?.captureScreenshot()
+    }
+    toolbar.onCancel = { [weak self] in
+      self?.cancel()
+    }
+    toolbar.onDelete = { [weak self] in
+      self?.deleteRecording()
+    }
+    toolbar.onRestart = { [weak self] in
+      self?.restartRecording()
+    }
+    toolbar.onStop = { [weak self] in
+      self?.stopRecording()
+    }
+    toolbar.onCaptureModeChanged = { [weak self] mode in
+      self?.handleCaptureModeChange(mode)
+    }
+  }
+
+  private func currentToolbarConfiguration() -> ToolbarConfiguration? {
+    guard let toolbarWindow else { return nil }
+    return ToolbarConfiguration(
+      format: toolbarWindow.selectedFormat,
+      quality: toolbarWindow.selectedQuality,
+      captureAudio: toolbarWindow.captureAudio,
+      captureMicrophone: toolbarWindow.captureMicrophone,
+      outputMode: toolbarWindow.outputMode,
+      highlightClicks: toolbarWindow.state.highlightClicks,
+      showKeystrokes: toolbarWindow.state.showKeystrokes
+    )
+  }
+
+  private func applyToolbarConfiguration(
+    _ configuration: ToolbarConfiguration?,
+    to toolbar: RecordingToolbarWindow
+  ) {
+    if let configuration {
+      toolbar.selectedFormat = configuration.format
+      toolbar.selectedQuality = configuration.quality
+      toolbar.captureAudio = configuration.captureAudio
+      toolbar.captureMicrophone = configuration.captureMicrophone
+      toolbar.outputMode = configuration.outputMode
+      toolbar.state.highlightClicks = configuration.highlightClicks
+      toolbar.state.showKeystrokes = configuration.showKeystrokes
+      return
+    }
+
+    if let formatString = UserDefaults.standard.string(forKey: PreferencesKeys.recordingFormat),
+       let format = VideoFormat(rawValue: formatString) {
+      toolbar.selectedFormat = format
+    }
+  }
+
+  private func updateSelectedTarget(
+    rect: CGRect,
+    captureMode: RecordingCaptureMode,
+    windowTarget: WindowCaptureTarget?,
+    syncToolbarMode: Bool = true
+  ) {
+    selectedRect = rect
+    selectedWindowTarget = windowTarget
+    saveLastAreaRect(rect)
+
+    for overlay in regionOverlayWindows {
+      overlay.updateHighlightRect(rect)
+      overlay.setInteractionEnabled(captureMode != .application)
+    }
+
+    if syncToolbarMode {
+      toolbarWindow?.captureMode = captureMode
+      toolbarWindow?.updateAnchorRect(rect)
+    }
+  }
+
+  private func handleSelectionResult(
+    _ selection: AreaSelectionResult?,
+    configuration: ToolbarConfiguration?,
+    cancellationLog: String
+  ) {
+    guard let selection else {
+      DiagnosticLogger.shared.log(.info, .recording, cancellationLog)
+      cleanup()
+      return
+    }
+
+    let captureMode: RecordingCaptureMode
+    let windowTarget: WindowCaptureTarget?
+    switch selection.target {
+    case .rect:
+      captureMode = .area
+      windowTarget = nil
+    case .window(let target):
+      captureMode = .application
+      windowTarget = target
+    }
+
+    presentToolbar(
+      for: selection.rect,
+      captureMode: captureMode,
+      windowTarget: windowTarget,
+      configuration: configuration
+    )
+  }
+
+  private func restartSelection(for mode: RecordingCaptureMode) {
+    let configuration = currentToolbarConfiguration()
+    DiagnosticLogger.shared.log(.info, .recording, "Recording selection restart requested", context: [
+      "mode": mode.rawValue,
+      "hasToolbar": "\(toolbarWindow != nil)"
+    ])
+
+    removeEscapeMonitors()
+    closePreRecordUI()
+
+    let applicationConfiguration = AreaSelectionApplicationConfiguration(
+      prefetchedContentTask: captureManager.prefetchShareableContent(),
+      excludeOwnApplication: !includeOwnAppInRecordings
+    )
+
+    if mode == .fullscreen {
+      let fullscreenRect = ScreenUtility.activeScreen().frame
+      presentToolbar(
+        for: fullscreenRect,
+        captureMode: .fullscreen,
+        windowTarget: nil,
+        configuration: configuration
+      )
+      return
+    }
+
+    AreaSelectionController.shared.startSelection(
+      mode: .recording,
+      backdrops: [:],
+      applicationConfiguration: applicationConfiguration,
+      initialInteractionMode: mode == .application ? .applicationWindow : .manualRegion
+    ) { [weak self] selection in
+      guard let self else { return }
+      self.handleSelectionResult(
+        selection,
+        configuration: configuration,
+        cancellationLog: "Recording reselection cancelled"
+      )
+    }
+  }
+
+  private func closePreRecordUI() {
+    for overlay in regionOverlayWindows {
+      overlay.close()
+    }
+    regionOverlayWindows.removeAll()
+
+    toolbarWindow?.onRecord = nil
+    toolbarWindow?.onCapture = nil
+    toolbarWindow?.onCancel = nil
+    toolbarWindow?.onDelete = nil
+    toolbarWindow?.onRestart = nil
+    toolbarWindow?.onStop = nil
+    toolbarWindow?.onCaptureModeChanged = nil
+    toolbarWindow?.onAnnotateButtonOffsetChanged = nil
+    toolbarWindow?.close()
+    toolbarWindow = nil
+  }
+
   /// Handle capture mode toggle between area and fullscreen
   private func handleCaptureModeChange(_ mode: RecordingCaptureMode) {
     DiagnosticLogger.shared.log(.info, .recording, "Recording capture mode changed", context: [
       "mode": "\(mode)"
     ])
-    let screen = ScreenUtility.activeScreen()
 
     switch mode {
     case .fullscreen:
-      // Switch to fullscreen - use entire screen frame
-      let fullscreenRect = screen.frame
-      updateSelectedRect(fullscreenRect)
+      restartSelection(for: .fullscreen)
     case .area:
-      // Switch back to area selection - restart area selection flow
-      restartAreaSelection()
+      restartSelection(for: .area)
+    case .application:
+      restartSelection(for: .application)
     }
   }
 
@@ -299,6 +502,7 @@ final class RecordingCoordinator: ObservableObject {
 
         try await recorder.prepareRecording(
           rect: rect,
+          windowTarget: self.selectedWindowTarget,
           format: savedFormat,
           quality: savedQuality,
           fps: fps,
@@ -334,11 +538,11 @@ final class RecordingCoordinator: ObservableObject {
 
   // MARK: - Private
 
-  private func showRegionOverlay(for rect: CGRect) {
+  private func showRegionOverlay(for rect: CGRect, interactionEnabled: Bool) {
     for screen in NSScreen.screens {
       let overlay = RecordingRegionOverlayWindow(screen: screen, highlightRect: rect)
       overlay.interactionDelegate = self
-      overlay.setInteractionEnabled(true)
+      overlay.setInteractionEnabled(interactionEnabled)
       overlay.orderFrontRegardless()
       regionOverlayWindows.append(overlay)
     }
@@ -365,13 +569,7 @@ final class RecordingCoordinator: ObservableObject {
     let qualityString = UserDefaults.standard.string(forKey: PreferencesKeys.recordingQuality) ?? "high"
     let quality = VideoQuality(rawValue: qualityString) ?? .high
 
-    // Get audio setting (default true)
-    let captureSystemAudio: Bool
-    if UserDefaults.standard.object(forKey: PreferencesKeys.recordingCaptureAudio) != nil {
-      captureSystemAudio = UserDefaults.standard.bool(forKey: PreferencesKeys.recordingCaptureAudio)
-    } else {
-      captureSystemAudio = true
-    }
+    let captureSystemAudio = window.captureAudio
 
     // Get microphone setting from toolbar
     let captureMicrophone = window.captureMicrophone
@@ -408,6 +606,7 @@ final class RecordingCoordinator: ObservableObject {
 
         try await recorder.prepareRecording(
           rect: rect,
+          windowTarget: self.selectedWindowTarget,
           format: format,
           quality: quality,
           fps: fps,
@@ -514,12 +713,7 @@ final class RecordingCoordinator: ObservableObject {
     if fps == 0 { fps = 30 }
     let qualityString = UserDefaults.standard.string(forKey: PreferencesKeys.recordingQuality) ?? "high"
     let quality = VideoQuality(rawValue: qualityString) ?? .high
-    let captureSystemAudio: Bool
-    if UserDefaults.standard.object(forKey: PreferencesKeys.recordingCaptureAudio) != nil {
-      captureSystemAudio = UserDefaults.standard.bool(forKey: PreferencesKeys.recordingCaptureAudio)
-    } else {
-      captureSystemAudio = true
-    }
+    let captureSystemAudio = window.captureAudio
 
     guard let saveDirectory = resolveSaveDirectoryForOperation() else {
       DiagnosticLogger.shared.log(.warning, .recording, "Microphone retry blocked: no save directory access")
@@ -540,6 +734,7 @@ final class RecordingCoordinator: ObservableObject {
 
         try await recorder.prepareRecording(
           rect: rect,
+          windowTarget: self.selectedWindowTarget,
           format: format,
           quality: quality,
           fps: fps,
@@ -722,15 +917,28 @@ final class RecordingCoordinator: ObservableObject {
     Task {
       await Task.yield()
 
-      let result = await captureManager.captureArea(
-        rect: rect,
-        saveDirectory: actualSaveDirectory,
-        showCursor: showsCursorInScreenshots,
-        excludeDesktopIcons: excludeDesktopIcons,
-        excludeDesktopWidgets: excludeDesktopWidgets,
-        excludeOwnApplication: !includeOwnAppInScreenshots,
-        prefetchedContentTask: prefetchedContentTask
-      )
+      let result: CaptureResult
+      if let selectedWindowTarget {
+        result = await captureManager.captureWindow(
+          target: selectedWindowTarget,
+          saveDirectory: actualSaveDirectory,
+          showCursor: showsCursorInScreenshots,
+          excludeDesktopIcons: excludeDesktopIcons,
+          excludeDesktopWidgets: excludeDesktopWidgets,
+          excludeOwnApplication: !includeOwnAppInScreenshots,
+          prefetchedContentTask: prefetchedContentTask
+        )
+      } else {
+        result = await captureManager.captureArea(
+          rect: rect,
+          saveDirectory: actualSaveDirectory,
+          showCursor: showsCursorInScreenshots,
+          excludeDesktopIcons: excludeDesktopIcons,
+          excludeDesktopWidgets: excludeDesktopWidgets,
+          excludeOwnApplication: !includeOwnAppInScreenshots,
+          prefetchedContentTask: prefetchedContentTask
+        )
+      }
 
       switch result {
       case .success:
@@ -774,22 +982,9 @@ final class RecordingCoordinator: ObservableObject {
     cleanupAnnotationOverlay()
 
     // Close region overlay windows
-    for overlay in regionOverlayWindows {
-      overlay.close()
-    }
-    regionOverlayWindows.removeAll()
-
-    toolbarWindow?.onRecord = nil
-    toolbarWindow?.onCapture = nil
-    toolbarWindow?.onCancel = nil
-    toolbarWindow?.onDelete = nil
-    toolbarWindow?.onRestart = nil
-    toolbarWindow?.onStop = nil
-    toolbarWindow?.onCaptureModeChanged = nil
-    toolbarWindow?.onAnnotateButtonOffsetChanged = nil
-    toolbarWindow?.close()
-    toolbarWindow = nil
+    closePreRecordUI()
     selectedRect = nil
+    selectedWindowTarget = nil
     isActive = false
   }
 
@@ -974,56 +1169,8 @@ final class RecordingCoordinator: ObservableObject {
 
   /// Update the selected rect and sync all overlays + toolbar
   private func updateSelectedRect(_ rect: CGRect) {
-    selectedRect = rect
-    // Save updated rect for next time
-    saveLastAreaRect(rect)
-    for overlay in regionOverlayWindows {
-      overlay.updateHighlightRect(rect)
-    }
-    toolbarWindow?.updateAnchorRect(rect)
-  }
-
-  /// Restart area selection (preserves format)
-  private func restartAreaSelection() {
-    let savedFormat = toolbarWindow?.selectedFormat ?? .mov
-    DiagnosticLogger.shared.log(.info, .recording, "Recording area reselection started", context: [
-      "format": savedFormat.rawValue
-    ])
-
-    // Close current overlays and toolbar
-    for overlay in regionOverlayWindows {
-      overlay.close()
-    }
-    regionOverlayWindows.removeAll()
-
-    toolbarWindow?.close()
-    toolbarWindow = nil
-    selectedRect = nil
-
-    // Start new selection using shared controller
-    AreaSelectionController.shared.startSelection(mode: .recording) { [weak self] rect, _ in
-      guard let self = self else { return }
-
-      if let rect = rect {
-        self.selectedRect = rect
-        self.toolbarWindow = RecordingToolbarWindow(anchorRect: rect)
-        self.toolbarWindow?.selectedFormat = savedFormat
-        self.toolbarWindow?.onRecord = { [weak self] in self?.startRecording() }
-        self.toolbarWindow?.onCapture = { [weak self] in self?.captureScreenshot() }
-        self.toolbarWindow?.onCancel = { [weak self] in self?.cancel() }
-        self.toolbarWindow?.onDelete = { [weak self] in self?.deleteRecording() }
-        self.toolbarWindow?.onRestart = { [weak self] in self?.restartRecording() }
-        self.toolbarWindow?.onStop = { [weak self] in self?.stopRecording() }
-        self.toolbarWindow?.onCaptureModeChanged = { [weak self] mode in
-          self?.handleCaptureModeChange(mode)
-        }
-        self.showRegionOverlay(for: rect)
-      } else {
-        // User cancelled
-        DiagnosticLogger.shared.log(.info, .recording, "Recording area reselection cancelled")
-        self.cleanup()
-      }
-    }
+    let captureMode = toolbarWindow?.captureMode == .application ? RecordingCaptureMode.area : (toolbarWindow?.captureMode ?? .area)
+    updateSelectedTarget(rect: rect, captureMode: captureMode, windowTarget: nil)
   }
 }
 
@@ -1031,7 +1178,7 @@ final class RecordingCoordinator: ObservableObject {
 
 extension RecordingCoordinator: RecordingRegionOverlayDelegate {
   func overlayDidRequestReselection(_ overlay: RecordingRegionOverlayWindow) {
-    restartAreaSelection()
+    restartSelection(for: .area)
   }
 
   func overlay(_ overlay: RecordingRegionOverlayWindow, didMoveRegionTo rect: CGRect) {

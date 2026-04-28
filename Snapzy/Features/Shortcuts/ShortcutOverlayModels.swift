@@ -41,9 +41,7 @@ enum ShortcutOverlayContentBuilder {
       ShortcutOverlaySection(
         id: "recording",
         title: L10n.Onboarding.recordingSection,
-        items: [
-          globalItem(kind: .recording, icon: "record.circle", manager: keyboard),
-        ]
+        items: recordingItems(manager: keyboard)
       ),
       ShortcutOverlaySection(
         id: "tools",
@@ -129,7 +127,7 @@ enum ShortcutOverlayContentBuilder {
         icon: "rectangle.dashed",
         title: GlobalShortcutKind.area.displayName,
         subtitle: L10n.ShortcutOverlay.applicationCapture(
-          CaptureOverlayShortcutSettings.applicationCaptureShortcutDisplay
+          CaptureOverlayShortcutSettings.effectiveApplicationCaptureDisplay(parentShortcut: areaConfig)
         ),
         isEnabled: manager.isShortcutEnabled(for: .area),
         display: .keycaps(areaConfig.displayParts)
@@ -140,6 +138,22 @@ enum ShortcutOverlayContentBuilder {
     items.append(globalItem(kind: .objectCutout, icon: "person.crop.rectangle", manager: manager))
     items.append(globalItem(kind: .ocr, icon: "text.viewfinder", manager: manager))
     return items
+  }
+
+  private static func recordingItems(manager: KeyboardShortcutManager) -> [ShortcutOverlayItem] {
+    let recordingConfig = manager.shortcut(for: .recording)
+    return [
+      ShortcutOverlayItem(
+        id: "global-\(GlobalShortcutKind.recording.rawValue)",
+        icon: "record.circle",
+        title: GlobalShortcutKind.recording.displayName,
+        subtitle: L10n.ShortcutOverlay.applicationRecording(
+          CaptureOverlayShortcutSettings.effectiveRecordingApplicationCaptureDisplay(parentShortcut: recordingConfig)
+        ),
+        isEnabled: manager.isShortcutEnabled(for: .recording),
+        display: .keycaps(recordingConfig.displayParts)
+      ),
+    ]
   }
 
   private static func annotateActionMetadata(_ kind: AnnotateActionShortcutKind) -> (title: String, icon: String) {

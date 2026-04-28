@@ -1191,6 +1191,14 @@ enum L10n {
         shortcut
       )
     }
+    static func applicationRecording(_ shortcut: String) -> String {
+      format(
+        "shortcut-overlay.application-recording",
+        defaultValue: "Application Recording: %@",
+        comment: "Subtitle for the Record Video shortcut row in the overlay. %@ is the current single-key toggle used inside the recording selection and pre-record toolbar.",
+        shortcut
+      )
+    }
     static let saveDone = string(
       "shortcut-overlay.save-done",
       defaultValue: "Save (Done)",
@@ -2189,8 +2197,18 @@ enum L10n {
     )
     static let applicationCaptureDescription = string(
       "preferences-shortcuts.application-capture-description",
-      defaultValue: "Inside the Capture Area overlay.",
-      comment: "Description for the single-key shortcut that toggles application capture inside the area capture overlay"
+      defaultValue: "Single key (A) pairs with Capture Area; modifier combo (⇧⌘A)\nworks independently.",
+      comment: "Description for the shortcut that toggles or starts application capture"
+    )
+    static let applicationRecordingTitle = string(
+      "preferences-shortcuts.application-recording-title",
+      defaultValue: "Application Recording",
+      comment: "Title for the single-key shortcut that toggles application window recording inside the recording selection flow"
+    )
+    static let applicationRecordingDescription = string(
+      "preferences-shortcuts.application-recording-description",
+      defaultValue: "Single key (A) pairs with Record Screen; modifier combo (⇧⌘A)\nworks independently.",
+      comment: "Description for the shortcut that toggles or starts application recording"
     )
     static let captureTextDescription = string(
       "preferences-shortcuts.capture-text-description",
@@ -5568,7 +5586,7 @@ enum L10n {
     static func applicationModeHint(_ shortcut: String) -> String {
       format(
         "screen-capture.application-mode-hint",
-        defaultValue: "Press %@ to capture an app window",
+        defaultValue: "Press %@ to select an app window",
         comment: "Hint shown in screenshot area selection when manual mode is active and application mode can be toggled on. %@ is the current single-key shortcut.",
         shortcut
       )
@@ -5576,7 +5594,7 @@ enum L10n {
     static func manualModeHint(_ shortcut: String) -> String {
       format(
         "screen-capture.manual-mode-hint",
-        defaultValue: "Press %@ for manual area capture",
+        defaultValue: "Press %@ for manual area selection",
         comment: "Hint shown in screenshot area selection when application mode is active and manual mode can be toggled on. %@ is the current single-key shortcut.",
         shortcut
       )

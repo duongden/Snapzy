@@ -220,6 +220,8 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
       captureFullscreen()
     case .captureArea:
       captureArea()
+    case .captureApplication:
+      captureApplication()
     case .captureScrolling:
       captureScrolling()
     case .captureOCR:
@@ -228,6 +230,8 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
       captureObjectCutout()
     case .recordVideo:
       startRecordingFlow()
+    case .recordApplication:
+      startApplicationRecordingFlow()
     case .openAnnotate:
       AnnotateManager.shared.openEmptyAnnotation()
     case .openVideoEditor:
@@ -306,6 +310,14 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
   }
 
   func captureArea() {
+    startAreaCapture(initialInteractionMode: .manualRegion)
+  }
+
+  func captureApplication() {
+    startAreaCapture(initialInteractionMode: .applicationWindow)
+  }
+
+  private func startAreaCapture(initialInteractionMode: AreaSelectionInteractionMode) {
     // Prevent multiple area captures - only one at a time
     if isAreaSelectionActive {
       DiagnosticLogger.shared.log(.debug, .capture, "captureArea blocked: already active")
@@ -323,7 +335,10 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
 
     // Set flag BEFORE delay to close the race window
     isAreaSelectionActive = true
-    DiagnosticLogger.shared.log(.info, .capture, "Area capture flow started", context: ["format": resolvedFormat.fileExtension])
+    DiagnosticLogger.shared.log(.info, .capture, "Area capture flow started", context: [
+      "format": resolvedFormat.fileExtension,
+      "initialMode": initialInteractionMode == .applicationWindow ? "application" : "manual",
+    ])
     let targetDisplayID = ScreenUtility.activeDisplayID()
     let showCursor = showsCursorInScreenshots
     let excludeDesktopIcons = DesktopIconManager.shared.isIconHidingEnabled
@@ -406,7 +421,8 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
           showCursor: showCursor,
           excludeDesktopIcons: excludeDesktopIcons,
           excludeDesktopWidgets: excludeDesktopWidgets,
-          excludeOwnApplication: excludeOwnApplication
+          excludeOwnApplication: excludeOwnApplication,
+          initialInteractionMode: initialInteractionMode
         )
       }
     }
@@ -419,7 +435,8 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
     showCursor: Bool,
     excludeDesktopIcons: Bool,
     excludeDesktopWidgets: Bool,
-    excludeOwnApplication: Bool
+    excludeOwnApplication: Bool,
+    initialInteractionMode: AreaSelectionInteractionMode = .manualRegion
   ) {
     AreaSelectionController.shared.startSelection(
       mode: .screenshot,
@@ -427,7 +444,8 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
       applicationConfiguration: AreaSelectionApplicationConfiguration(
         prefetchedContentTask: prefetchedContentTask,
         excludeOwnApplication: excludeOwnApplication
-      )
+      ),
+      initialInteractionMode: initialInteractionMode
     ) { [weak self] selection in
       guard let self = self else {
         DiagnosticLogger.shared.log(.warning, .capture, "captureArea completion: self deallocated")
@@ -608,6 +626,14 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
   // MARK: - Recording
 
   func startRecordingFlow() {
+    startRecordingFlow(initialInteractionMode: .manualRegion)
+  }
+
+  func startApplicationRecordingFlow() {
+    startRecordingFlow(initialInteractionMode: .applicationWindow)
+  }
+
+  private func startRecordingFlow(initialInteractionMode: AreaSelectionInteractionMode) {
     guard hasPermission else {
       requestPermission()
       return
@@ -624,7 +650,9 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
 
     // Set flag BEFORE delay to close race window
     isAreaSelectionActive = true
-    DiagnosticLogger.shared.log(.info, .recording, "Recording flow started")
+    DiagnosticLogger.shared.log(.info, .recording, "Recording flow started", context: [
+      "initialMode": initialInteractionMode == .applicationWindow ? "application" : "manual",
+    ])
 
     // Hide only normal-level app windows (not overlay panels)
     hideVisibleNormalWindowsIfNeeded(shouldHideOwnWindowsForRecordingToolbarFlow)
@@ -639,7 +667,9 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
 
       // Check for saved recording area - restore if enabled and available
       let rememberLastArea = UserDefaults.standard.object(forKey: PreferencesKeys.recordingRememberLastArea) as? Bool ?? true
-      if rememberLastArea, let savedRect = RecordingCoordinator.shared.loadLastAreaRect() {
+      if initialInteractionMode == .manualRegion,
+         rememberLastArea,
+         let savedRect = RecordingCoordinator.shared.loadLastAreaRect() {
         self.isAreaSelectionActive = false
         DiagnosticLogger.shared.log(.info, .recording, "Using saved recording area", context: ["rect": "\(Int(savedRect.width))x\(Int(savedRect.height))"])
         Task { @MainActor in
@@ -649,7 +679,16 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
       }
 
       // No saved rect or disabled - start area selection
-      AreaSelectionController.shared.startSelection(mode: .recording) { [weak self] rect, mode in
+      let applicationConfiguration = AreaSelectionApplicationConfiguration(
+        prefetchedContentTask: self.captureManager.prefetchShareableContent(),
+        excludeOwnApplication: !self.includesOwnAppInRecordings
+      )
+      AreaSelectionController.shared.startSelection(
+        mode: .recording,
+        backdrops: [:],
+        applicationConfiguration: applicationConfiguration,
+        initialInteractionMode: initialInteractionMode
+      ) { [weak self] selection in
         guard let self = self else {
           DiagnosticLogger.shared.log(.warning, .recording, "startRecordingFlow completion: self deallocated")
           return
@@ -657,10 +696,19 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
 
         self.isAreaSelectionActive = false
 
-        guard let rect = rect else { return }
+        guard let selection else { return }
 
         Task { @MainActor in
-          RecordingCoordinator.shared.showToolbar(for: rect)
+          switch selection.target {
+          case .rect:
+            RecordingCoordinator.shared.showToolbar(for: selection.rect)
+          case .window(let target):
+            RecordingCoordinator.shared.showToolbar(
+              for: selection.rect,
+              captureMode: .application,
+              windowTarget: target
+            )
+          }
         }
       }
     }

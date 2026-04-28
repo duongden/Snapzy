@@ -442,10 +442,12 @@ extension GlobalShortcutKind {
 enum ShortcutAction {
   case captureFullscreen
   case captureArea
+  case captureApplication
   case captureScrolling
   case captureOCR
   case captureObjectCutout
   case recordVideo
+  case recordApplication
   case openAnnotate
   case openVideoEditor
   case openCloudUploads
@@ -485,6 +487,8 @@ final class KeyboardShortcutManager {
   private var areaHotkeyRef: EventHotKeyRef?
   private var scrollingCaptureHotkeyRef: EventHotKeyRef?
   private var recordingHotkeyRef: EventHotKeyRef?
+  private var applicationCaptureHotkeyRef: EventHotKeyRef?
+  private var applicationRecordingHotkeyRef: EventHotKeyRef?
   private var annotateHotkeyRef: EventHotKeyRef?
   private var videoEditorHotkeyRef: EventHotKeyRef?
   private var cloudUploadsHotkeyRef: EventHotKeyRef?
@@ -505,6 +509,8 @@ final class KeyboardShortcutManager {
   private let objectCutoutHotkeyID = EventHotKeyID(signature: OSType(0x5A53_4639), id: 9)  // "ZSF9"
   private let shortcutListHotkeyID = EventHotKeyID(signature: OSType(0x5A53_4641), id: 10)  // "ZSFA"
   private let historyHotkeyID = EventHotKeyID(signature: OSType(0x5A53_4642), id: 11)  // "ZSFB"
+  private let applicationCaptureHotkeyID = EventHotKeyID(signature: OSType(0x5A53_4643), id: 12)  // "ZSFC"
+  private let applicationRecordingHotkeyID = EventHotKeyID(signature: OSType(0x5A53_4644), id: 13)  // "ZSFD"
 
   private var eventHandler: EventHandlerRef?
 
@@ -584,7 +590,7 @@ final class KeyboardShortcutManager {
     isEnabled && !isTemporarilySuspended
   }
 
-  private func refreshShortcutRegistration() {
+  func refreshShortcutRegistration() {
     unregisterAllShortcuts()
 
     if shouldRegisterShortcuts {
@@ -878,12 +884,18 @@ final class KeyboardShortcutManager {
     case areaHotkeyID.id:
       actionName = "area"
       action = .captureArea
+    case applicationCaptureHotkeyID.id:
+      actionName = "application-capture"
+      action = .captureApplication
     case scrollingCaptureHotkeyID.id:
       actionName = "scrolling-capture"
       action = .captureScrolling
     case recordingHotkeyID.id:
       actionName = "recording"
       action = .recordVideo
+    case applicationRecordingHotkeyID.id:
+      actionName = "application-recording"
+      action = .recordApplication
     case annotateHotkeyID.id:
       actionName = "annotate"
       action = .openAnnotate
@@ -945,6 +957,20 @@ final class KeyboardShortcutManager {
       config: recordingShortcut,
       hotkeyID: recordingHotkeyID,
       ref: &recordingHotkeyRef
+    )
+    registerOverlayShortcutIfNeeded(
+      label: "application-capture",
+      parentKind: .area,
+      config: CaptureOverlayShortcutSettings.applicationCaptureIndependentShortcut,
+      hotkeyID: applicationCaptureHotkeyID,
+      ref: &applicationCaptureHotkeyRef
+    )
+    registerOverlayShortcutIfNeeded(
+      label: "application-recording",
+      parentKind: .recording,
+      config: CaptureOverlayShortcutSettings.recordingApplicationCaptureIndependentShortcut,
+      hotkeyID: applicationRecordingHotkeyID,
+      ref: &applicationRecordingHotkeyRef
     )
     registerShortcutIfNeeded(
       kind: .annotate,
@@ -1019,6 +1045,36 @@ final class KeyboardShortcutManager {
     }
   }
 
+  private func registerOverlayShortcutIfNeeded(
+    label: String,
+    parentKind: GlobalShortcutKind,
+    config: ShortcutConfig?,
+    hotkeyID: EventHotKeyID,
+    ref: inout EventHotKeyRef?
+  ) {
+    guard isShortcutEnabled(for: parentKind), let config else { return }
+
+    let status = RegisterEventHotKey(
+      config.keyCode,
+      config.modifiers,
+      hotkeyID,
+      GetApplicationEventTarget(),
+      0,
+      &ref
+    )
+
+    if status != noErr || ref == nil {
+      DiagnosticLogger.shared.log(
+        .warning,
+        .action,
+        "Failed to register shortcut \(label)",
+        context: ["status": String(status)]
+      )
+      ref = nil
+      return
+    }
+  }
+
   private func unregisterAllShortcuts() {
     if let ref = fullscreenHotkeyRef {
       UnregisterEventHotKey(ref)
@@ -1035,6 +1091,14 @@ final class KeyboardShortcutManager {
     if let ref = recordingHotkeyRef {
       UnregisterEventHotKey(ref)
       recordingHotkeyRef = nil
+    }
+    if let ref = applicationCaptureHotkeyRef {
+      UnregisterEventHotKey(ref)
+      applicationCaptureHotkeyRef = nil
+    }
+    if let ref = applicationRecordingHotkeyRef {
+      UnregisterEventHotKey(ref)
+      applicationRecordingHotkeyRef = nil
     }
     if let ref = annotateHotkeyRef {
       UnregisterEventHotKey(ref)

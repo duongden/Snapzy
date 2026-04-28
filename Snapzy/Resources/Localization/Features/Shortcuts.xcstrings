@@ -268,7 +268,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Inside the Capture Area overlay."
+            "value" : "Single key (A) pairs with Capture Area; modifier combo (⇧⌘A)\nworks independently."
           }
         },
         "es" : {
@@ -304,7 +304,7 @@
         "vi" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Bên trong overlay Chụp vùng."
+            "value" : "Phím đơn (A) đi cùng Chụp vùng; combo modifier (⇧⌘A)\nchạy độc lập."
           }
         },
         "zh-Hans" : {
@@ -381,6 +381,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "應用程式擷取"
+          }
+        }
+      }
+    },
+    "preferences-shortcuts.application-recording-description" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Single key (A) pairs with Record Screen; modifier combo (⇧⌘A)\nworks independently."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Phím đơn (A) đi cùng Ghi màn hình; combo modifier (⇧⌘A)\nchạy độc lập."
+          }
+        }
+      }
+    },
+    "preferences-shortcuts.application-recording-title" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Application Recording"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ghi ứng dụng"
           }
         }
       }
@@ -3069,6 +3101,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "應用程式擷取：%@"
+          }
+        }
+      }
+    },
+    "shortcut-overlay.application-recording" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Application Recording: %@"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ghi ứng dụng: %@"
           }
         }
       }

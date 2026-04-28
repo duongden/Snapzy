@@ -168,6 +168,7 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
   private var excludeOwnApplicationFromCapture: Bool = true
   private var excludeDesktopIconsFromCapture: Bool = false
   private var excludeDesktopWidgetsFromCapture: Bool = false
+  private var captureWindowTarget: WindowCaptureTarget?
   private var excludedWindowIDs = Set<CGWindowID>()
   private var exceptedWindowIDs = Set<CGWindowID>()
   private var outputURL: URL?
@@ -205,6 +206,7 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
   /// Prepare recording with specified parameters
   func prepareRecording(
     rect: CGRect,
+    windowTarget: WindowCaptureTarget? = nil,
     format: VideoFormat = .mov,
     quality: VideoQuality = .high,
     fps: Int = 30,
@@ -230,6 +232,7 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
     DiagnosticLogger.shared.log(.info, .recording, "Recording prepare started", context: [
       "rect": "\(Int(rect.width))x\(Int(rect.height))",
       "origin": "\(Int(rect.origin.x)),\(Int(rect.origin.y))",
+      "windowTarget": windowTarget.map { "\($0.windowID)" } ?? "none",
       "format": format.rawValue,
       "quality": quality.rawValue,
       "fps": "\(fps)",
@@ -250,6 +253,7 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
     self.excludeOwnApplicationFromCapture = excludeOwnApplication
     self.excludeDesktopIconsFromCapture = excludeDesktopIcons
     self.excludeDesktopWidgetsFromCapture = excludeDesktopWidgets
+    self.captureWindowTarget = windowTarget
     self.excludedWindowIDs = Set(excludedWindowIDs)
     self.exceptedWindowIDs.removeAll()
 
@@ -289,11 +293,13 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
       throw RecordingError.setupFailed(message)
     }
 
+    let requestedRect = windowTarget?.frame ?? rect
+
     // Find the display containing the rect using NSScreen (same coordinate system as input rect)
     // Then get the matching SCDisplay by displayID
     var targetScreen: NSScreen?
     for screen in NSScreen.screens {
-      if screen.frame.intersects(rect) {
+      if screen.frame.intersects(requestedRect) {
         targetScreen = screen
         break
       }
@@ -339,14 +345,14 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
     do {
       captureGeometry = try resolveCaptureGeometry(
         display: display,
-        rect: rect,
+        rect: requestedRect,
         scaleFactor: scaleFactor
       )
     } catch {
       DiagnosticLogger.shared.logError(.recording, error, "Recording geometry resolution failed", context: [
         "displayID": "\(display.displayID)",
         "scaleFactor": String(format: "%.2f", scaleFactor),
-        "requestedRect": "\(Int(rect.width))x\(Int(rect.height))",
+        "requestedRect": "\(Int(requestedRect.width))x\(Int(requestedRect.height))",
       ])
       cleanup()
       throw error
@@ -1068,6 +1074,27 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
   }
 
   private func makeContentFilter(display: SCDisplay, content: SCShareableContent) -> SCContentFilter {
+    if let captureWindowTarget,
+       let primaryWindow = content.windows.first(where: {
+         $0.windowID == captureWindowTarget.windowID && $0.isOnScreen
+       }) {
+      var includedWindows = [primaryWindow]
+      includedWindows += content.windows.filter { exceptedWindowIDs.contains($0.windowID) }
+      return SCContentFilter(
+        display: display,
+        including: uniqueWindows(includedWindows)
+      )
+    }
+
+    if let captureWindowTarget {
+      DiagnosticLogger.shared.log(
+        .warning,
+        .recording,
+        "Recording application window missing from shareable content; falling back to rect filter",
+        context: ["windowID": "\(captureWindowTarget.windowID)"]
+      )
+    }
+
     let iconManager = DesktopIconManager.shared
 
     if excludeOwnApplicationFromCapture {
@@ -1258,6 +1285,7 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
     registeredOutputTypes.removeAll()
     excludedWindowIDs.removeAll()
     exceptedWindowIDs.removeAll()
+    captureWindowTarget = nil
     session.setOnFirstVideoFrame(nil)
     excludeOwnApplicationFromCapture = true
     excludeDesktopIconsFromCapture = false
@@ -1291,8 +1319,9 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
     stream = nil
   }
 
-  /// Add a window to the capture filter's exceptingWindows list
-  /// Used to include annotation overlay in recording despite app being excluded
+  /// Add a window to the active recording filter.
+  /// In display capture this behaves as an "excepted" window. In application capture
+  /// it becomes an extra included overlay window so annotation/click effects stay visible.
   func addExceptedWindow(windowID: CGWindowID) async {
     guard let activeStream = stream else {
       DiagnosticLogger.shared.log(.warning, .recording, "Excepted recording window skipped: no active stream", context: [
@@ -1300,7 +1329,7 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
       ])
       return
     }
-    guard excludeOwnApplicationFromCapture else {
+    guard captureWindowTarget != nil || excludeOwnApplicationFromCapture else {
       DiagnosticLogger.shared.log(.debug, .recording, "Excepted recording window skipped: own app is included", context: [
         "windowID": "\(windowID)"
       ])

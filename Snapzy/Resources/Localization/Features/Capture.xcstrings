@@ -6655,7 +6655,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Press %@ to capture an app window"
+            "value" : "Press %@ to select an app window"
           }
         },
         "es" : {
@@ -6691,7 +6691,7 @@
         "vi" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Nhấn %@ để chụp cửa sổ ứng dụng"
+            "value" : "Nhấn %@ để chọn cửa sổ ứng dụng"
           }
         },
         "zh-Hans" : {
@@ -6911,7 +6911,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Press %@ for manual area capture"
+            "value" : "Press %@ for manual area selection"
           }
         },
         "es" : {
@@ -6947,7 +6947,7 @@
         "vi" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Nhấn %@ để quay lại chụp vùng thủ công"
+            "value" : "Nhấn %@ để quay lại chọn vùng thủ công"
           }
         },
         "zh-Hans" : {

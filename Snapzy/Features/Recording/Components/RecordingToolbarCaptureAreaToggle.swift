@@ -11,15 +11,17 @@ import SwiftUI
 enum RecordingCaptureMode: String {
   case area
   case fullscreen
+  case application
 }
 
 struct ToolbarCaptureAreaToggle: View {
   @ObservedObject var state: RecordingToolbarState
   @State private var isAreaHovered = false
   @State private var isFullscreenHovered = false
+  @State private var isApplicationHovered = false
 
-  private var isFullscreen: Bool {
-    state.captureMode == .fullscreen
+  private func isSelected(_ mode: RecordingCaptureMode) -> Bool {
+    state.captureMode == mode
   }
 
   var body: some View {
@@ -31,7 +33,7 @@ struct ToolbarCaptureAreaToggle: View {
       } label: {
         Image(systemName: "rectangle.inset.filled")
           .font(.system(size: ToolbarConstants.iconSize, weight: .medium))
-          .foregroundColor(.primary.opacity(isFullscreen ? 1.0 : 0.5))
+          .foregroundColor(.primary.opacity(isSelected(.fullscreen) ? 1.0 : 0.5))
           .frame(
             width: ToolbarConstants.iconButtonSize,
             height: ToolbarConstants.iconButtonSize
@@ -47,7 +49,7 @@ struct ToolbarCaptureAreaToggle: View {
       .onHover { isFullscreenHovered = $0 }
       .help(L10n.RecordingToolbar.fullscreenCapture)
       .accessibilityLabel(L10n.RecordingToolbar.fullscreenCapture)
-      .accessibilityAddTraits(isFullscreen ? .isSelected : [])
+      .accessibilityAddTraits(isSelected(.fullscreen) ? .isSelected : [])
 
       // Area selection button
       Button {
@@ -56,7 +58,7 @@ struct ToolbarCaptureAreaToggle: View {
       } label: {
         Image(systemName: "rectangle.dashed")
           .font(.system(size: ToolbarConstants.iconSize, weight: .medium))
-          .foregroundColor(.primary.opacity(!isFullscreen ? 1.0 : 0.5))
+          .foregroundColor(.primary.opacity(isSelected(.area) ? 1.0 : 0.5))
           .frame(
             width: ToolbarConstants.iconButtonSize,
             height: ToolbarConstants.iconButtonSize
@@ -72,7 +74,32 @@ struct ToolbarCaptureAreaToggle: View {
       .onHover { isAreaHovered = $0 }
       .help(L10n.RecordingToolbar.areaSelection)
       .accessibilityLabel(L10n.RecordingToolbar.areaSelectionCapture)
-      .accessibilityAddTraits(!isFullscreen ? .isSelected : [])
+      .accessibilityAddTraits(isSelected(.area) ? .isSelected : [])
+
+      // Application window button
+      Button {
+        state.captureMode = .application
+        state.onCaptureModeChanged?(.application)
+      } label: {
+        Image(systemName: "square.on.square")
+          .font(.system(size: ToolbarConstants.iconSize, weight: .medium))
+          .foregroundColor(.primary.opacity(isSelected(.application) ? 1.0 : 0.5))
+          .frame(
+            width: ToolbarConstants.iconButtonSize,
+            height: ToolbarConstants.iconButtonSize
+          )
+          .background(
+            RoundedRectangle(cornerRadius: ToolbarConstants.buttonCornerRadius)
+              .fill(Color.primary.opacity(isApplicationHovered ? 0.1 : 0))
+          )
+          .contentShape(RoundedRectangle(cornerRadius: ToolbarConstants.buttonCornerRadius))
+          .animation(ToolbarConstants.hoverAnimation, value: isApplicationHovered)
+      }
+      .buttonStyle(.plain)
+      .onHover { isApplicationHovered = $0 }
+      .help(L10n.PreferencesShortcuts.applicationRecordingTitle)
+      .accessibilityLabel(L10n.PreferencesShortcuts.applicationRecordingTitle)
+      .accessibilityAddTraits(isSelected(.application) ? .isSelected : [])
     }
   }
 }

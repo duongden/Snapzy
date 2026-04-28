@@ -95,6 +95,50 @@ final class ShortcutValidationService {
     return .accept(issue: nil)
   }
 
+  func validateCaptureOverlayShortcut(
+    _ shortcut: CaptureOverlayShortcut,
+    for kind: CaptureOverlayShortcutKind
+  ) -> ShortcutValidationDecision {
+    guard let config = shortcut.independentShortcutConfig else {
+      return .accept(issue: nil)
+    }
+
+    if let conflictKind = conflictingGlobalShortcut(for: config, excluding: nil) {
+      return .reject(issue: ShortcutValidationIssue(
+        severity: .error,
+        message: L10n.ShortcutValidation.alreadyUsedBy(conflictKind.displayName)
+      ))
+    }
+
+    if let conflictKind = conflictingAnnotateActionShortcut(for: config, excluding: nil) {
+      return .reject(issue: ShortcutValidationIssue(
+        severity: .error,
+        message: L10n.ShortcutValidation.alreadyUsedByInAnnotate(conflictKind.displayName)
+      ))
+    }
+
+    if let conflictKind = conflictingCaptureOverlayShortcut(for: config, excluding: kind) {
+      return .reject(issue: ShortcutValidationIssue(
+        severity: .error,
+        message: L10n.ShortcutValidation.alreadyUsedBy(conflictKind.displayName)
+      ))
+    }
+
+    let systemConflicts = SystemScreenshotShortcutManager.shared.conflictDescriptions(
+      for: kind.systemConflictKind,
+      shortcut: config
+    )
+
+    if let systemConflict = systemConflicts.first {
+      return .accept(issue: ShortcutValidationIssue(
+        severity: .warning,
+        message: L10n.ShortcutValidation.matchesSystemConflict(systemConflict)
+      ))
+    }
+
+    return .accept(issue: nil)
+  }
+
   private func conflictingGlobalShortcut(
     for config: ShortcutConfig,
     excluding excludedKind: GlobalShortcutKind?
@@ -117,7 +161,28 @@ final class ShortcutValidationService {
     })
   }
 
+  private func conflictingCaptureOverlayShortcut(
+    for config: ShortcutConfig,
+    excluding excludedKind: CaptureOverlayShortcutKind
+  ) -> CaptureOverlayShortcutKind? {
+    [CaptureOverlayShortcutKind.applicationCapture, .applicationRecording].first(where: {
+      $0 != excludedKind
+        && CaptureOverlayShortcutSettings.shortcut(for: $0).independentShortcutConfig == config
+    })
+  }
+
   private init() {}
+}
+
+private extension CaptureOverlayShortcutKind {
+  var systemConflictKind: GlobalShortcutKind {
+    switch self {
+    case .applicationCapture:
+      return .area
+    case .applicationRecording:
+      return .recording
+    }
+  }
 }
 
 private extension AnnotateActionShortcutKind {

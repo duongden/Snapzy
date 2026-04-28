@@ -254,27 +254,41 @@ final class AreaSelectionController: NSObject {
   func startSelection(
     mode: SelectionMode,
     backdrops: [CGDirectDisplayID: AreaSelectionBackdrop],
+    initialInteractionMode: AreaSelectionInteractionMode = .manualRegion,
     completion: @escaping AreaSelectionResultCompletion
   ) {
-    startSelection(mode: mode, backdrops: backdrops, applicationConfiguration: nil, completion: completion)
+    startSelection(
+      mode: mode,
+      backdrops: backdrops,
+      applicationConfiguration: nil,
+      initialInteractionMode: initialInteractionMode,
+      completion: completion
+    )
   }
 
   func startSelection(
     mode: SelectionMode,
     backdrops: [CGDirectDisplayID: AreaSelectionBackdrop],
     applicationConfiguration: AreaSelectionApplicationConfiguration?,
+    initialInteractionMode: AreaSelectionInteractionMode = .manualRegion,
     completion: @escaping AreaSelectionResultCompletion
   ) {
     self.completion = nil
     completionWithMode = nil
     completionWithResult = completion
-    startSelectionSession(mode: mode, backdrops: backdrops, applicationConfiguration: applicationConfiguration)
+    startSelectionSession(
+      mode: mode,
+      backdrops: backdrops,
+      applicationConfiguration: applicationConfiguration,
+      initialInteractionMode: initialInteractionMode
+    )
   }
 
   private func startSelectionSession(
     mode: SelectionMode,
     backdrops: [CGDirectDisplayID: AreaSelectionBackdrop],
-    applicationConfiguration: AreaSelectionApplicationConfiguration? = nil
+    applicationConfiguration: AreaSelectionApplicationConfiguration? = nil,
+    initialInteractionMode: AreaSelectionInteractionMode = .manualRegion
   ) {
     // Always clean up prior session's monitors to prevent orphaned leaks
     removeEscapeMonitors()
@@ -293,8 +307,8 @@ final class AreaSelectionController: NSObject {
     selectionMode = mode
     selectionBackdrops = backdrops
     self.applicationConfiguration = applicationConfiguration
-    allowsApplicationWindowSelection = mode == .screenshot && applicationConfiguration != nil
-    interactionMode = .manualRegion
+    allowsApplicationWindowSelection = applicationConfiguration != nil
+    interactionMode = applicationConfiguration == nil ? .manualRegion : initialInteractionMode
     windowSelectionSnapshot = nil
     selectionSessionID = UUID()
     keyboardOwnerDisplayID = resolvedKeyboardOwnerDisplayID()
@@ -363,10 +377,12 @@ final class AreaSelectionController: NSObject {
 
   private func isApplicationToggleEvent(_ event: NSEvent) -> Bool {
     guard allowsApplicationWindowSelection else { return false }
-    guard event.modifierFlags.intersection([.command, .control, .option, .function]).isEmpty else {
-      return false
+    switch selectionMode {
+    case .screenshot, .scrollingCapture:
+      return CaptureOverlayShortcutSettings.matchesApplicationCaptureShortcut(event)
+    case .recording:
+      return CaptureOverlayShortcutSettings.matchesRecordingApplicationCaptureShortcut(event)
     }
-    return CaptureOverlayShortcutSettings.matchesApplicationCaptureShortcut(event)
   }
 
   private func toggleInteractionMode() {
@@ -1166,16 +1182,29 @@ final class AreaSelectionOverlayView: NSView {
   }
 
   private func updateModeHint() {
-    guard selectionMode == .screenshot, allowsApplicationWindowSelection else {
+    guard allowsApplicationWindowSelection else {
       modeHintBackgroundLayer.isHidden = true
       modeHintTextLayer.isHidden = true
       return
     }
 
-    let shortcut = CaptureOverlayShortcutSettings.applicationCaptureShortcutDisplay
+    let shortcut: CaptureOverlayShortcut
+    switch selectionMode {
+    case .screenshot, .scrollingCapture:
+      shortcut = CaptureOverlayShortcutSettings.applicationCaptureShortcut
+    case .recording:
+      shortcut = CaptureOverlayShortcutSettings.recordingApplicationCaptureShortcut
+    }
+
+    guard !shortcut.isIndependent else {
+      modeHintBackgroundLayer.isHidden = true
+      modeHintTextLayer.isHidden = true
+      return
+    }
+
     let hint = interactionMode == .manualRegion
-      ? L10n.ScreenCapture.applicationModeHint(shortcut)
-      : L10n.ScreenCapture.manualModeHint(shortcut)
+      ? L10n.ScreenCapture.applicationModeHint(shortcut.displayString)
+      : L10n.ScreenCapture.manualModeHint(shortcut.displayString)
     let attributes = overlayTextAttributes
     let hintSize = hint.size(withAttributes: attributes)
     let padding = NSEdgeInsets(top: 6, left: 10, bottom: 6, right: 10)

@@ -292,6 +292,28 @@ final class AppStatusBarController: ObservableObject {
     captureAreaItem.isEnabled = viewModel.hasPermission
     menu?.addItem(captureAreaItem)
 
+    let applicationCaptureShortcut = CaptureOverlayShortcutSettings.applicationCaptureShortcut
+    let applicationCaptureItem = NSMenuItem(
+      title: overlayMenuTitle(
+        base: L10n.PreferencesShortcuts.applicationCaptureTitle,
+        shortcut: applicationCaptureShortcut,
+        parentShortcut: shortcutManager.shortcut(for: .area),
+        isParentShortcutEnabled: shortcutManager.isShortcutEnabled(for: .area)
+      ),
+      action: #selector(captureApplicationAction),
+      keyEquivalent: ""
+    )
+    applyConfiguredOverlayShortcut(
+      applicationCaptureItem,
+      shortcut: applicationCaptureShortcut,
+      parentKind: .area,
+      using: shortcutManager
+    )
+    applicationCaptureItem.target = self
+    applicationCaptureItem.image = NSImage(systemSymbolName: "macwindow", accessibilityDescription: nil)
+    applicationCaptureItem.isEnabled = viewModel.hasPermission
+    menu?.addItem(applicationCaptureItem)
+
     let captureFullscreenItem = NSMenuItem(
       title: L10n.Actions.captureFullscreen,
       action: #selector(captureFullscreenAction),
@@ -354,6 +376,28 @@ final class AppStatusBarController: ObservableObject {
     recordItem.image = NSImage(systemSymbolName: "record.circle", accessibilityDescription: nil)
     recordItem.isEnabled = viewModel.hasPermission && !recorder.isActive
     menu?.addItem(recordItem)
+
+    let applicationRecordingShortcut = CaptureOverlayShortcutSettings.recordingApplicationCaptureShortcut
+    let applicationRecordingItem = NSMenuItem(
+      title: overlayMenuTitle(
+        base: L10n.PreferencesShortcuts.applicationRecordingTitle,
+        shortcut: applicationRecordingShortcut,
+        parentShortcut: shortcutManager.shortcut(for: .recording),
+        isParentShortcutEnabled: shortcutManager.isShortcutEnabled(for: .recording)
+      ),
+      action: #selector(recordApplicationAction),
+      keyEquivalent: ""
+    )
+    applyConfiguredOverlayShortcut(
+      applicationRecordingItem,
+      shortcut: applicationRecordingShortcut,
+      parentKind: .recording,
+      using: shortcutManager
+    )
+    applicationRecordingItem.target = self
+    applicationRecordingItem.image = NSImage(systemSymbolName: "square.on.square", accessibilityDescription: nil)
+    applicationRecordingItem.isEnabled = viewModel.hasPermission && !recorder.isActive
+    menu?.addItem(applicationRecordingItem)
 
     menu?.addItem(NSMenuItem.separator())
 
@@ -485,6 +529,11 @@ final class AppStatusBarController: ObservableObject {
     viewModel?.captureArea()
   }
 
+  @objc private func captureApplicationAction() {
+    logMenuAction("captureApplication")
+    viewModel?.captureApplication()
+  }
+
   @objc private func captureFullscreenAction() {
     logMenuAction("captureFullscreen")
     viewModel?.captureFullscreen()
@@ -508,6 +557,11 @@ final class AppStatusBarController: ObservableObject {
   @objc private func recordScreenAction() {
     logMenuAction("recordScreen")
     viewModel?.startRecordingFlow()
+  }
+
+  @objc private func recordApplicationAction() {
+    logMenuAction("recordApplication")
+    viewModel?.startApplicationRecordingFlow()
   }
 
   @objc private func openAnnotateAction() {
@@ -689,6 +743,36 @@ final class AppStatusBarController: ObservableObject {
 
     item.keyEquivalent = keyEquivalent
     item.keyEquivalentModifierMask = config.menuModifierFlags
+  }
+
+  private func applyConfiguredOverlayShortcut(
+    _ item: NSMenuItem,
+    shortcut: CaptureOverlayShortcut,
+    parentKind: GlobalShortcutKind,
+    using manager: KeyboardShortcutManager
+  ) {
+    guard manager.isShortcutEnabled(for: parentKind),
+          let config = shortcut.independentShortcutConfig,
+          let keyEquivalent = config.menuKeyEquivalent else {
+      item.keyEquivalent = ""
+      item.keyEquivalentModifierMask = []
+      return
+    }
+
+    item.keyEquivalent = keyEquivalent
+    item.keyEquivalentModifierMask = config.menuModifierFlags
+  }
+
+  private func overlayMenuTitle(
+    base: String,
+    shortcut: CaptureOverlayShortcut,
+    parentShortcut: ShortcutConfig,
+    isParentShortcutEnabled: Bool
+  ) -> String {
+    guard isParentShortcutEnabled, !shortcut.isIndependent else { return base }
+    let parentDisplay = CaptureOverlayShortcut.inlineDisplay(parts: parentShortcut.displayParts)
+    let childDisplay = CaptureOverlayShortcut.inlineDisplay(parts: shortcut.displayParts)
+    return "\(base) \(parentDisplay) \(childDisplay)"
   }
 
   private func schedulePreferencesWindowTracking(excludingWindowNumbers existingWindowNumbers: Set<Int>) {
