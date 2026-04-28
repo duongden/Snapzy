@@ -2079,6 +2079,21 @@ enum L10n {
       defaultValue: "Applies to background removal in capture and Annotate",
       comment: "Capture preferences setting description"
     )
+    static let ocrSection = string(
+      "preferences-capture.section-ocr",
+      defaultValue: "OCR (Text Extraction)",
+      comment: "Capture preferences section title"
+    )
+    static let ocrSuccessNotificationTitle = string(
+      "preferences-capture.ocr-success-notification-title",
+      defaultValue: "Success Notification",
+      comment: "Capture preferences setting title"
+    )
+    static let ocrSuccessNotificationDescription = string(
+      "preferences-capture.ocr-success-notification-description",
+      defaultValue: "Show a toast when text is copied to clipboard",
+      comment: "Capture preferences setting description"
+    )
   }
 
   enum PreferencesShortcuts {

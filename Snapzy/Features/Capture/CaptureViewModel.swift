@@ -795,12 +795,15 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
             successContext["qrCount"] = "\(qrResult.detections.count)"
             successContext["unsupportedQRCount"] = "\(qrResult.unsupportedPayloadCount)"
             DiagnosticLogger.shared.log(.info, .ocr, "OCR text copied to clipboard", context: successContext)
-            AppToastManager.shared.show(
-              message: L10n.Common.copiedToClipboard,
-              style: .success,
-              position: .bottomCenter
-            )
-            QuickAccessSound.complete.play()
+            let showOCRNotification = UserDefaults.standard.object(forKey: PreferencesKeys.ocrSuccessNotificationEnabled) as? Bool ?? false
+            if showOCRNotification {
+              AppToastManager.shared.show(
+                message: L10n.Common.copiedToClipboard,
+                style: .success,
+                position: .bottomCenter
+              )
+              QuickAccessSound.complete.play()
+            }
 
           } catch {
             // Error feedback

@@ -37,6 +37,7 @@ struct CaptureSettingsView: View {
   @AppStorage(PreferencesKeys.screenshotFormat) private var screenshotFormat = "png"
   @AppStorage(PreferencesKeys.scrollingCaptureShowHints) private var scrollingCaptureShowHints = true
   @AppStorage(PreferencesKeys.backgroundCutoutAutoCropEnabled) private var backgroundCutoutAutoCropEnabled = true
+  @AppStorage(PreferencesKeys.ocrSuccessNotificationEnabled) private var ocrSuccessNotification = false
   @AppStorage(PreferencesKeys.screenshotFileNameTemplate)
   private var screenshotFileNameTemplate = CaptureOutputKind.screenshot.defaultTemplate
 
@@ -239,6 +240,21 @@ struct CaptureSettingsView: View {
                 .fixedSize(horizontal: false, vertical: true)
             }
             .padding(.vertical, 4)
+          }
+        }
+
+        // MARK: - OCR
+
+        if selectedPane == .screenshot {
+          Section(L10n.PreferencesCapture.ocrSection) {
+            SettingRow(
+              icon: "bell.badge",
+              title: L10n.PreferencesCapture.ocrSuccessNotificationTitle,
+              description: L10n.PreferencesCapture.ocrSuccessNotificationDescription
+            ) {
+              Toggle("", isOn: $ocrSuccessNotification)
+                .labelsHidden()
+            }
           }
         }
 

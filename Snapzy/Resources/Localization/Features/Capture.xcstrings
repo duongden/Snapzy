@@ -2113,6 +2113,57 @@
         }
       }
     },
+    "preferences-capture.ocr-success-notification-description" : {
+      "comment" : "Capture preferences setting description",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show a toast when text is copied to clipboard"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hiển thị thông báo khi văn bản được sao chép vào bộ nhớ tạm"
+          }
+        }
+      }
+    },
+    "preferences-capture.ocr-success-notification-title" : {
+      "comment" : "Capture preferences setting title",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Success Notification"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Thông báo thành công"
+          }
+        }
+      }
+    },
+    "preferences-capture.section-ocr" : {
+      "comment" : "Capture preferences section title",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "OCR (Text Extraction)"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "OCR (Trích xuất văn bản)"
+          }
+        }
+      }
+    },
     "preferences-capture.available-tokens" : {
       "localizations" : {
         "de" : {
