@@ -193,8 +193,10 @@ final class ScreenCaptureManager: ObservableObject {
     displayID: CGDirectDisplayID,
     showCursor: Bool,
     excludeDesktopIcons: Bool,
-    excludeDesktopWidgets: Bool
+    excludeDesktopWidgets: Bool,
+    excludeOwnApplication: Bool = false
   ) -> FrozenDisplaySnapshot? {
+    guard !excludeOwnApplication else { return nil }
     guard !showCursor else { return nil }
     guard !excludeDesktopIcons else { return nil }
     guard !excludeDesktopWidgets else { return nil }

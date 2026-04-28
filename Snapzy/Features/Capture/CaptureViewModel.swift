@@ -151,7 +151,7 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
   }
 
   private let windowHideSettleDelay: TimeInterval = 1.0 / 60.0
-  private let frozenSnapshotWindowHideSettleDelay: TimeInterval = 0.05
+  private let frozenSnapshotWindowHideSettleDelay: TimeInterval = 0.15
 
   @MainActor
   private final class HiddenWindowSession {
@@ -431,8 +431,8 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
     // Hide only normal-level app windows (not overlay panels) to avoid hiding pooled overlay windows
     let hiddenWindowSession = hideVisibleNormalWindowsIfNeeded(shouldHideOwnWindows)
 
-    // Frozen snapshots can run through the CoreGraphics fast path, so give WindowServer
-    // a few frames to fully remove hidden app windows before the display image is read.
+    // Give WindowServer enough time to fully remove hidden app windows before
+    // the frozen backdrop is prepared.
     let snapshotDelay = hiddenWindowSession.didHideWindows ? frozenSnapshotWindowHideSettleDelay : 0
     DispatchQueue.main.asyncAfter(deadline: .now() + snapshotDelay) { [weak self] in
       guard let self = self else {
@@ -452,7 +452,8 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
             displayID: targetDisplayID,
             showCursor: showCursor,
             excludeDesktopIcons: excludeDesktopIcons,
-            excludeDesktopWidgets: excludeDesktopWidgets
+            excludeDesktopWidgets: excludeDesktopWidgets,
+            excludeOwnApplication: excludeOwnApplication
           ) {
             frozenSession = FrozenAreaCaptureSession.fromSnapshot(fastSnapshot)
             captureMode = "coregraphics"
