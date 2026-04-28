@@ -6,6 +6,22 @@
     <description>Snapzy application updates</description>
     <language>en</language>
     <item>
+      <title>Version 1.11.0</title>
+      <sparkle:version>78</sparkle:version>
+      <sparkle:shortVersionString>1.11.0</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <pubDate>Tue, 28 Apr 2026 14:06:00 +0000</pubDate>
+      <description><![CDATA[
+        <style>:root { color-scheme: light dark; } body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 13px; line-height: 1.5; padding: 8px 16px; } h3 { font-size: 14px; margin: 12px 0 6px; } ul { padding-left: 20px; margin: 4px 0; } li { margin: 3px 0; }</style>
+        <h3>✨ Features</h3><ul><li>Add application capture mode recording functionality</li></ul>
+      ]]></description>
+      <enclosure
+        url="https://github.com/duongductrong/Snapzy/releases/download/v1.11.0/Snapzy-v1.11.0.dmg"
+        sparkle:edSignature="O0xSwLNichiMokb2kxPv8uwAgY2EEp3rYLhclfcFBhK+WhBLri4AJO1K5/SbpeS6MPN2bBq1L+1nW16T5jbLAg=="
+        length="44905549"
+        type="application/octet-stream"/>
+    </item>
+    <item>
       <title>Version 1.10.0</title>
       <sparkle:version>77</sparkle:version>
       <sparkle:shortVersionString>1.10.0</sparkle:shortVersionString>
