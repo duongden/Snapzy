@@ -72,6 +72,14 @@ final class AreaSelectionController: NSObject {
   private var localEscapeMonitor: Any?
   private var globalEscapeMonitor: Any?
 
+  /// Whether the overlay should be dismissed immediately after a selection is made.
+  /// When `false`, the caller is responsible for calling `cancelSelection()` to dismiss.
+  private(set) var dismissesAfterSelection = true
+
+  func setDismissesAfterSelection(_ value: Bool) {
+    dismissesAfterSelection = value
+  }
+
   // MARK: - Initialization
 
   private override init() {
@@ -198,15 +206,27 @@ final class AreaSelectionController: NSObject {
     }
   }
 
-  /// Deactivate all windows (hide, don't close)
-  private func deactivatePooledWindows() {
+  /// Reset window interaction state without hiding.
+  private func resetPooledWindows() {
     for (_, window) in windowPool {
       window.setReceivesKeyboardInput(false)
-      window.orderOut(nil)
       window.overlayView.resetSelection()
       window.overlayView.clearBackdrop()
     }
     activeWindow = nil
+  }
+
+  /// Hide all pooled windows.
+  private func hidePooledWindows() {
+    for (_, window) in windowPool {
+      window.orderOut(nil)
+    }
+  }
+
+  /// Deactivate all windows (hide, don't close)
+  private func deactivatePooledWindows() {
+    resetPooledWindows()
+    hidePooledWindows()
   }
 
   // MARK: - Public API
@@ -414,7 +434,10 @@ final class AreaSelectionController: NSObject {
     )
     removeEscapeMonitors()
     cancelWindowSelectionTask()
-    deactivatePooledWindows()
+    resetPooledWindows()
+    if dismissesAfterSelection {
+      hidePooledWindows()
+    }
     completion?(rect)
     completionWithMode?(rect, selectionMode)
     if let displayID {
@@ -423,6 +446,7 @@ final class AreaSelectionController: NSObject {
       completionWithResult?(nil)
     }
     resetCallbacks()
+    dismissesAfterSelection = true
   }
 
   /// Cancel the current selection

@@ -177,11 +177,11 @@ Snapzy/
 
 | Path | Owns |
 | --- | --- |
-| `Services/Capture/` | ScreenCaptureKit capture engine, area selection overlay/controller, window-target resolution, recording engine, temp storage, post-capture routing |
+| `Services/Capture/` | ScreenCaptureKit capture engine, area selection overlay/controller, OCR scanning overlay, window-target resolution, recording engine, temp storage, post-capture routing |
 | `Services/Capture/ScrollingCapture/` | Long screenshot session model, live preview, stitcher, HUD, metrics |
 | `Services/Cloud/` | S3/R2 providers, upload orchestration, GRDB history, Keychain credentials, encrypted transfer |
 | `Services/FileAccess/` | Sandbox-scoped save-folder permissions and bookmarks |
-| `Services/Media/` | OCR, foreground cutout, GIF conversion helpers, WebP encode |
+| `Services/Media/` | OCR, QR payload detection, foreground cutout, GIF conversion helpers, WebP encode |
 | `Services/Shortcuts/` | Global shortcuts, conflict detection, system shortcut checks |
 | `Services/Diagnostics/` | Crash sentinel, logs, toasts, cleanup |
 | `Services/Updates/` | Sparkle updater bootstrap |

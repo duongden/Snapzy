@@ -131,6 +131,10 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
     UserDefaults.standard.object(forKey: PreferencesKeys.backgroundCutoutAutoCropEnabled) as? Bool ?? true
   }
 
+  private var isOCRScanningOverlayEnabled: Bool {
+    UserDefaults.standard.object(forKey: PreferencesKeys.ocrScanningOverlayEnabled) as? Bool ?? true
+  }
+
   /// Always read format from UserDefaults to stay in sync with Settings @AppStorage
   private var resolvedFormat: ImageFormat {
     if let raw = UserDefaults.standard.string(forKey: PreferencesKeys.screenshotFormat),
@@ -695,6 +699,9 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
         return
       }
 
+      let keepSelectionOverlay = self.isOCRScanningOverlayEnabled
+      AreaSelectionController.shared.setDismissesAfterSelection(!keepSelectionOverlay)
+
       AreaSelectionController.shared.startSelection { [weak self] rect in
         guard let self = self else {
           DiagnosticLogger.shared.log(.warning, .ocr, "captureOCR completion: self deallocated")
@@ -711,11 +718,17 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
         Task { @MainActor in
           defer {
             self.isAreaSelectionActive = false
+            if keepSelectionOverlay {
+              AreaSelectionController.shared.cancelSelection()
+            }
           }
           await Task.yield()
 
           do {
+            let operationStartTime = CFAbsoluteTimeGetCurrent()
+
             // Capture the screen region
+            let captureStartTime = CFAbsoluteTimeGetCurrent()
             guard let image = try await self.captureManager.captureAreaAsImage(
               rect: selectedRect,
               excludeDesktopIcons: excludeDesktopIcons,
@@ -726,21 +739,60 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
               QuickAccessSound.failed.play()
               return
             }
+            let captureDurationMs = Self.elapsedMilliseconds(since: captureStartTime)
 
-            // Perform OCR
-            let text = try await OCRService.shared.recognizeText(
-              from: image,
-              preferredLanguageIdentifier: AppLanguageManager.shared.activeOCRLanguageIdentifier,
-              contentType: .interfaceText
+            let scanningOverlaySession = self.isOCRScanningOverlayEnabled
+              ? OCRScanningOverlayController.shared.begin(over: selectedRect)
+              : nil
+            defer {
+              OCRScanningOverlayController.shared.finish(scanningOverlaySession)
+            }
+            await Task.yield()
+
+            let processingStartTime = CFAbsoluteTimeGetCurrent()
+            async let qrResultTask = self.detectQRCodes(in: image)
+            async let recognizedTextTask = self.recognizeOCRText(in: image)
+            let (qrResult, recognizedText) = await (qrResultTask, recognizedTextTask)
+            let processingDurationMs = Self.elapsedMilliseconds(since: processingStartTime)
+            let totalDurationMs = Self.elapsedMilliseconds(since: operationStartTime)
+
+            let clipboardText = OCRQRPayloadComposer.compose(
+              recognizedText: recognizedText,
+              qrDetections: qrResult.detections,
+              qrSectionTitle: L10n.OCR.qrCodesLabel
             )
+            let performanceContext = [
+              "captureMs": captureDurationMs,
+              "processingMs": processingDurationMs,
+              "totalMs": totalDurationMs
+            ]
 
-            // Copy to clipboard
+            guard let clipboardText else {
+              if qrResult.unsupportedPayloadCount > 0 {
+                var context = performanceContext
+                context["unsupportedQRCount"] = "\(qrResult.unsupportedPayloadCount)"
+                DiagnosticLogger.shared.log(.warning, .ocr, "OCR QR capture found unsupported QR payloads", context: context)
+                AppToastManager.shared.show(
+                  message: L10n.OCR.qrTextOnlyUnsupported,
+                  style: .warning,
+                  position: .bottomCenter
+                )
+              } else {
+                DiagnosticLogger.shared.log(.warning, .ocr, "OCR capture failed: no text or QR payload found", context: performanceContext)
+              }
+              QuickAccessSound.failed.play()
+              return
+            }
+
             let pasteboard = NSPasteboard.general
             pasteboard.clearContents()
-            pasteboard.setString(text, forType: .string)
+            pasteboard.setString(clipboardText, forType: .string)
 
-            // Success feedback
-            DiagnosticLogger.shared.log(.info, .ocr, "OCR text copied to clipboard", context: ["chars": "\(text.count)"])
+            var successContext = performanceContext
+            successContext["chars"] = "\(clipboardText.count)"
+            successContext["qrCount"] = "\(qrResult.detections.count)"
+            successContext["unsupportedQRCount"] = "\(qrResult.unsupportedPayloadCount)"
+            DiagnosticLogger.shared.log(.info, .ocr, "OCR text copied to clipboard", context: successContext)
             QuickAccessSound.complete.play()
 
           } catch {
@@ -751,6 +803,87 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
         }
       }
     }
+  }
+
+  private func detectQRCodes(in image: CGImage) async -> QRCodeDetectionResult {
+    let startTime = CFAbsoluteTimeGetCurrent()
+
+    do {
+      let result = try await Task.detached(priority: .userInitiated) {
+        try await QRCodeService.shared.detect(in: image)
+      }.value
+
+      if result.hasCopyablePayloads || result.unsupportedPayloadCount > 0 {
+        DiagnosticLogger.shared.log(
+          .info,
+          .ocr,
+          "OCR QR detection completed",
+          context: [
+            "qrCount": "\(result.detections.count)",
+            "unsupportedQRCount": "\(result.unsupportedPayloadCount)",
+            "payloadTypes": result.detections
+              .map(\.classification.diagnosticName)
+              .joined(separator: ","),
+            "durationMs": Self.elapsedMilliseconds(since: startTime)
+          ]
+        )
+      } else {
+        DiagnosticLogger.shared.log(
+          .debug,
+          .ocr,
+          "OCR QR detection completed without QR payloads",
+          context: ["durationMs": Self.elapsedMilliseconds(since: startTime)]
+        )
+      }
+      return result
+    } catch {
+      DiagnosticLogger.shared.logError(
+        .ocr,
+        error,
+        "OCR QR detection failed",
+        context: ["durationMs": Self.elapsedMilliseconds(since: startTime)]
+      )
+      return .empty
+    }
+  }
+
+  private func recognizeOCRText(in image: CGImage) async -> String? {
+    let startTime = CFAbsoluteTimeGetCurrent()
+
+    do {
+      let text = try await OCRService.shared.recognizeText(
+        from: image,
+        preferredLanguageIdentifier: AppLanguageManager.shared.activeOCRLanguageIdentifier,
+        contentType: .interfaceText
+      )
+      DiagnosticLogger.shared.log(
+        .debug,
+        .ocr,
+        "OCR text recognition timing",
+        context: ["durationMs": Self.elapsedMilliseconds(since: startTime)]
+      )
+      return text
+    } catch OCRError.noTextFound {
+      DiagnosticLogger.shared.log(
+        .debug,
+        .ocr,
+        "OCR text recognition found no text",
+        context: ["durationMs": Self.elapsedMilliseconds(since: startTime)]
+      )
+      return nil
+    } catch {
+      DiagnosticLogger.shared.logError(
+        .ocr,
+        error,
+        "OCR text recognition failed",
+        context: ["durationMs": Self.elapsedMilliseconds(since: startTime)]
+      )
+      return nil
+    }
+  }
+
+  private static func elapsedMilliseconds(since startTime: CFAbsoluteTime) -> String {
+    String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - startTime) * 1000)
   }
 
   // MARK: - Object Cutout Capture

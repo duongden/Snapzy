@@ -56,6 +56,7 @@ All permissions are requested through standard macOS prompts and can be revoked 
 - **No telemetry** — No analytics, tracking, or usage data is collected.
 - **No accounts** — No sign-in, registration, or user accounts.
 - **Network usage** — Outbound requests are limited to Sparkle update checks (appcast over HTTPS) and user-initiated cloud uploads. Both can be disabled in Preferences.
+- **Passive QR decoding** — QR codes detected during OCR capture are decoded locally and copied only as plain text. Snapzy does not auto-open QR URLs, expand links over the network, execute commands, load WebViews, or place QR payloads on the pasteboard as file URLs.
 
 ## Cloud Credentials
 

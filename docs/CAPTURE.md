@@ -12,13 +12,13 @@ flowchart TD
 
     B --> C["Fullscreen / Area screenshot"]
     B --> D["Scrolling capture"]
-    B --> E["Capture Text (OCR)"]
+    B --> E["Capture Text (OCR / QR)"]
     B --> F["Object cutout"]
     B --> G["Record screen"]
 
     C --> H["ScreenCaptureManager"]
     D --> I["ScrollingCaptureCoordinator"]
-    E --> J["captureAreaAsImage -> OCRService"]
+    E --> J["captureAreaAsImage -> QRCodeService + OCRService"]
     F --> K["captureAreaAsImage -> ForegroundCutoutService"]
     G --> L["RecordingCoordinator -> ScreenRecordingManager"]
 
@@ -27,7 +27,7 @@ flowchart TD
     K --> M
     L --> M
 
-    J --> N["Clipboard text result"]
+    J --> N["Clipboard plain-text result"]
 
     M --> O["Quick Access"]
     M --> P["Clipboard copy"]
@@ -48,7 +48,7 @@ flowchart TD
 
     D -->|Fullscreen| E["captureFullscreen()"]
     D -->|Area| F["FrozenAreaCaptureSession.prepare()"]
-    D -->|OCR| G["AreaSelectionController.startSelection()"]
+    D -->|OCR / QR| G["AreaSelectionController.startSelection()"]
     D -->|Cutout| H["AreaSelectionController.startSelection()"]
 
     E --> I["ScreenCaptureManager.captureFullscreen()"]
@@ -65,8 +65,9 @@ flowchart TD
     N --> O["saveImage()/saveProcessedImage()"]
     O --> P["PostCaptureActionHandler"]
 
-    G --> Q["OCRService.recognizeText()"]
-    Q --> R["Copy recognized text to NSPasteboard"]
+    L --> Q0["Show OCR effect"]
+    Q0 --> Q["QRCodeService.detect() + OCRService.recognizeText()"]
+    Q --> R["Copy recognized text / QR payloads to NSPasteboard as plain text"]
 
     H --> S["ForegroundCutoutService.extractForegroundResult()"]
     S --> T{"Auto-crop suggested and enabled?"}
@@ -86,7 +87,10 @@ flowchart TD
 - In application window mode, `AreaSelectionController` builds a front-to-back candidate list from `CGWindowListCopyWindowInfo` plus `SCShareableContent`, highlights the hovered window above the dimming overlay, and captures the selected app window on click without requiring a drag rectangle.
 - Exact window capture is handled by `ScreenCaptureManager.captureWindow()`. macOS 14+ uses ScreenCaptureKit window metrics directly; macOS 13+ stays supported with the same ScreenCaptureKit path plus a safe area-capture fallback if exact capture fails.
 - The frozen/manual and application-window paths both preserve existing desktop icon/widget exclusion, cursor, own-app exclusion, temp-save, Quick Access, clipboard, and annotate routing behavior.
-- OCR is the only capture path that does not create a file; it captures a `CGImage`, runs Vision OCR, and copies text to the pasteboard.
+- OCR is the only capture path that does not create a file; it captures a `CGImage`, optionally shows a lightweight OCR effect while Vision work runs, then copies text/QR payloads to the pasteboard as plain text.
+- The OCR effect is controlled by `PreferencesKeys.ocrScanningOverlayEnabled` from Capture → Screenshot → OCR and is enabled by default.
+- QR detection runs as local Vision work alongside OCR where possible, with capture/processing duration logged for latency checks.
+- QR payload handling is passive by design: Snapzy does not open decoded URLs, perform network requests, load WebViews, execute processes, or write QR payloads as file URL pasteboard items.
 - Object cutout is macOS 14+ only. JPEG is overridden to PNG because transparency must be preserved.
 - Capture toasts, alerts, open-panel prompts, and error surfaces are localized through `L10n`.
 
@@ -275,6 +279,9 @@ flowchart TD
 | `Snapzy/Shared/Localization/L10n.swift` | Shared localization bridge for these flows |
 | `Snapzy/Resources/Localization/{Shared,Features}/*.xcstrings` | Split runtime String Catalogs backing translated flow copy |
 | `Snapzy/Features/Capture/CaptureViewModel.swift` | Entry point for screenshot, scrolling capture, OCR, cutout, and recording launch |
+| `Snapzy/Services/Capture/OCRScanningOverlayWindow.swift` | Non-interactive scanning progress overlay for OCR area capture |
+| `Snapzy/Services/Media/QRCodeService.swift` | Local QR payload detection for OCR capture |
+| `scripts/qr_detection_performance_probe.swift` | Local Vision QR timing probe for OCR latency checks |
 | `Snapzy/Services/Capture/ScreenCaptureManager.swift` | Core screenshot engine, frozen snapshot capture, and file writing |
 | `Snapzy/Services/Capture/FrozenAreaCaptureSession.swift` | Frozen display snapshots used by area screenshot selection |
 | `Snapzy/Services/Capture/PostCaptureActionHandler.swift` | Quick Access, clipboard, and screenshot auto-open routing |
