@@ -12,6 +12,12 @@ import os.log
 
 private let logger = Logger(subsystem: "Snapzy", category: "TempCaptureManager")
 
+struct RecordingSavePlan {
+  let finalDirectory: URL
+  let processingDirectory: URL
+  let autoSaveEnabled: Bool
+}
+
 /// Manages lifecycle of temporary capture files when auto-save is disabled
 @MainActor
 final class TempCaptureManager {
@@ -40,6 +46,15 @@ final class TempCaptureManager {
       .appendingPathComponent("Captures", isDirectory: true)
     try? FileManager.default.createDirectory(at: capturesDir, withIntermediateDirectories: true)
     return capturesDir
+  }()
+
+  /// Per-session writer processing space for recordings. AVAssetWriter can create
+  /// sidecar processing files beside the output URL, so recordings always write here first.
+  private let recordingProcessingDirectory: URL = {
+    let root = TempCaptureManager.tempCaptureRootDirectory()
+      .appendingPathComponent("RecordingProcessing", isDirectory: true)
+    try? FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    return root
   }()
 
   private init() {}
@@ -75,6 +90,75 @@ final class TempCaptureManager {
       context: ["captureType": typeLabel, "autoSave": "false"]
     )
     return tempCaptureDirectory
+  }
+
+  /// Resolve final and processing directories for recording output.
+  /// The final video is moved into `finalDirectory` after the writer completes,
+  /// while AVAssetWriter and any transient sidecars stay in `processingDirectory`.
+  func makeRecordingSavePlan(exportDirectory: URL) throws -> RecordingSavePlan {
+    let autoSaveEnabled = preferencesManager.isActionEnabled(.save, for: .recording)
+    let finalDirectory = autoSaveEnabled ? exportDirectory : tempCaptureDirectory
+    let processingDirectory = try createRecordingProcessingDirectory()
+
+    DiagnosticLogger.shared.log(
+      .info,
+      .recording,
+      "Recording save plan resolved",
+      context: [
+        "autoSave": autoSaveEnabled ? "true" : "false",
+        "finalDirectory": finalDirectory.lastPathComponent,
+        "processingDirectory": processingDirectory.lastPathComponent,
+      ]
+    )
+
+    return RecordingSavePlan(
+      finalDirectory: finalDirectory,
+      processingDirectory: processingDirectory,
+      autoSaveEnabled: autoSaveEnabled
+    )
+  }
+
+  /// Build a stable fallback URL in the temp capture root if final export move fails.
+  func makeRecoveredRecordingURL(for sourceURL: URL) -> URL {
+    let fileExtension = sourceURL.pathExtension.isEmpty ? "mov" : sourceURL.pathExtension
+    let baseName = sourceURL.deletingPathExtension().lastPathComponent
+    return CaptureOutputNaming.makeUniqueFileURL(
+      in: tempCaptureDirectory,
+      baseName: baseName,
+      fileExtension: fileExtension
+    )
+  }
+
+  /// Delete a recording processing session directory and all transient sidecars within it.
+  func deleteRecordingProcessingDirectory(_ directory: URL) {
+    guard isRecordingProcessingSessionDirectory(directory) else {
+      DiagnosticLogger.shared.log(
+        .warning,
+        .recording,
+        "Recording processing directory cleanup skipped; path outside processing root",
+        context: ["directory": directory.lastPathComponent]
+      )
+      return
+    }
+
+    guard FileManager.default.fileExists(atPath: directory.path) else { return }
+
+    do {
+      try FileManager.default.removeItem(at: directory)
+      DiagnosticLogger.shared.log(
+        .debug,
+        .recording,
+        "Recording processing directory cleaned",
+        context: ["directory": directory.lastPathComponent]
+      )
+    } catch {
+      DiagnosticLogger.shared.logError(
+        .recording,
+        error,
+        "Recording processing directory cleanup failed",
+        context: ["directory": directory.lastPathComponent]
+      )
+    }
   }
 
   /// Move a temp file to the permanent export location.
@@ -244,6 +328,33 @@ final class TempCaptureManager {
   }
 
   // MARK: - Private
+
+  private static func tempCaptureRootDirectory() -> URL {
+    guard let appSupport = FileManager.default.urls(
+      for: .applicationSupportDirectory, in: .userDomainMask
+    ).first else {
+      return FileManager.default.temporaryDirectory
+        .appendingPathComponent("Snapzy_Captures", isDirectory: true)
+    }
+
+    return appSupport
+      .appendingPathComponent("Snapzy", isDirectory: true)
+      .appendingPathComponent("Captures", isDirectory: true)
+  }
+
+  private func createRecordingProcessingDirectory() throws -> URL {
+    try FileManager.default.createDirectory(at: recordingProcessingDirectory, withIntermediateDirectories: true)
+    let sessionDirectory = recordingProcessingDirectory
+      .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    try FileManager.default.createDirectory(at: sessionDirectory, withIntermediateDirectories: true)
+    return sessionDirectory
+  }
+
+  private func isRecordingProcessingSessionDirectory(_ directory: URL) -> Bool {
+    let rootPath = recordingProcessingDirectory.standardizedFileURL.resolvingSymlinksInPath().path
+    let directoryPath = directory.standardizedFileURL.resolvingSymlinksInPath().path
+    return directoryPath.hasPrefix(rootPath + "/")
+  }
 
   /// Move associated recording metadata sidecar when saving a video
   private func moveRecordingMetadataIfNeeded(from sourceURL: URL, to destinationURL: URL) {

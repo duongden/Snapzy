@@ -195,6 +195,8 @@ Snapzy/
 ~/Library/Application Support/Snapzy/
   Captures/
     <temp screenshot or recording files when Save is OFF>
+    RecordingProcessing/
+      <per-session AVAssetWriter processing directories>
     RecordingMetadata/
       index.json
       Entries/
@@ -206,7 +208,7 @@ Snapzy/
 | --- | --- |
 | `UserDefaults` | Preferences, shortcut configs, onboarding flags, feature toggles |
 | `Keychain` | Cloud access key, secret key, optional cloud protection password |
-| `Application Support/Snapzy/Captures/` | Temp captures and recording metadata sidecars |
+| `Application Support/Snapzy/Captures/` | Temp captures, per-session recording processing files, and recording metadata sidecars |
 | `Application Support/Snapzy/snapzy.db` | Cloud upload history via GRDB |
 
 ## Implementation Notes That Matter
@@ -217,7 +219,7 @@ Snapzy/
 - `AreaSelectionController` and `AreaSelectionWindow` own the cross-display overlay session, target-display keyboard ownership for screenshot sessions, and highlight rendering for both manual and application screenshot interaction modes.
 - `WindowSelectionQueryService` resolves the hovered topmost app window from CoreGraphics window lists plus `SCShareableContent`, so app-mode hover stays accurate without doing expensive live queries on every draw pass.
 - `PostCaptureActionHandler` executes Quick Access, clipboard copy, and screenshot auto-open in Annotate after files already exist.
-- `TempCaptureManager` is where the `Save` after-capture toggle becomes real behavior.
+- `TempCaptureManager` is where the `Save` after-capture toggle becomes real behavior. Recording uses an internal per-session processing directory first, then moves the final video to export or the temp capture root after AVAssetWriter finishes.
 - `RecordingCoordinator` owns the toolbar/overlay UX. `ScreenRecordingManager` owns the media pipeline.
 - `ScrollingCaptureCoordinator` is its own subsystem. Treat `Services/Capture/ScrollingCapture/*` as a unit.
 - `CloudManager` is a facade. Provider-specific behavior lives under `Services/Cloud/`.

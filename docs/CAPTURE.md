@@ -148,7 +148,7 @@ flowchart TD
     E --> F["prepareRecording(rect, format, quality, fps, audio flags)"]
     F --> G["ScreenRecordingManager.startRecording()"]
 
-    G --> H["SCStream + AVAssetWriter"]
+    G --> H["SCStream + AVAssetWriter in internal RecordingProcessing dir"]
     G --> I["RecordingMouseTracker"]
     G --> J["Optional click highlight + keystroke + annotation overlays"]
 
@@ -156,8 +156,9 @@ flowchart TD
     I --> K
     J --> K
 
-    K --> L["Persist RecordingMetadata if mouse samples are available"]
-    K --> M{"Output mode"}
+    K --> K1["Move final video to export or temp capture root, delete RecordingProcessing dir"]
+    K1 --> L["Persist RecordingMetadata if mouse samples are available"]
+    K1 --> M{"Output mode"}
 
     M -->|Video| N["PostCaptureActionHandler.handleVideoCapture()"]
     M -->|GIF| O["Quick Access placeholder card"]
@@ -171,6 +172,7 @@ flowchart TD
 ### Notes
 
 - Recording metadata is stored separately from the media file and powers Smart Camera / Follow Mouse in the video editor.
+- Recording media is written to a per-session internal `Application Support/Snapzy/Captures/RecordingProcessing/` directory first. When the writer finishes, Snapzy moves only the final video into the user export folder when Save is enabled, or into the temp capture root when Save is disabled, then deletes the processing directory and AVAssetWriter sidecars.
 - GIF output is a two-step flow: record video first, then convert and swap the Quick Access item.
 - `RecordingCoordinator` owns toolbar and overlay UX. `ScreenRecordingManager` owns media capture, timing, and metadata persistence.
 - `AppStatusBarController` stays menu-first during active recording. The menu bar item keeps Snapzy's normal identity, shows the live elapsed time, and exposes stop plus pause/resume from the menu instead of left-click-to-stop.
@@ -181,13 +183,17 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A["Capture file is ready"] --> B["TempCaptureManager.resolveSaveDirectory()"]
+    A["Capture file is ready"] --> B["TempCaptureManager destination resolution"]
     B --> C{"Save enabled for this capture type?"}
-    C -->|Yes| D["Write into user export directory"]
+    C -->|Yes| D["Screenshots write into user export directory"]
     C -->|No| E["Write into Application Support temp capture directory"]
+    C -->|Recording Yes| D1["Record in internal processing dir, then move final video to export directory"]
+    C -->|Recording No| E1["Record in internal processing dir, then move final video to temp capture root"]
 
     D --> F["PostCaptureActionHandler"]
     E --> F
+    D1 --> F
+    E1 --> F
 
     F --> G{"Show Quick Access?"}
     F --> H{"Copy file?"}
@@ -214,7 +220,7 @@ flowchart TD
 
 ### Notes
 
-- `AfterCaptureAction.save` is not a post-write callback. It changes the destination before the file is written.
+- `AfterCaptureAction.save` is not a post-write callback. For screenshots it changes the destination before write; for recordings it chooses the final destination after the internal writer processing file is complete.
 - Current cloud behavior is manual from Quick Access for screenshots, videos, and GIFs, plus Annotate for screenshots. The preference toggle enables those affordances; it does not auto-upload in `PostCaptureActionHandler`.
 - Quick Access countdowns pause while a card is converting to GIF or uploading to cloud, then resume after the active work finishes.
 - Temp captures are intentionally stored in Application Support, not `/tmp`, so drag-and-drop remains stable.

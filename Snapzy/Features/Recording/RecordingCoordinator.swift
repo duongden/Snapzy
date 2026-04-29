@@ -498,9 +498,7 @@ final class RecordingCoordinator: ObservableObject {
 
         let exclusionConfig = self.recordingCaptureExclusionConfiguration()
 
-        // Resolve save directory based on auto-save toggle
-        let actualSaveDirectory = self.tempCaptureManager.resolveSaveDirectory(
-          for: .recording,
+        let savePlan = try self.tempCaptureManager.makeRecordingSavePlan(
           exportDirectory: saveDirectory
         )
 
@@ -512,7 +510,8 @@ final class RecordingCoordinator: ObservableObject {
           fps: fps,
           captureSystemAudio: savedCaptureAudio,
           captureMicrophone: savedCaptureMicrophone,
-          saveDirectory: actualSaveDirectory,
+          saveDirectory: savePlan.finalDirectory,
+          processingDirectory: savePlan.processingDirectory,
           excludeDesktopIcons: DesktopIconManager.shared.isIconHidingEnabled,
           excludeDesktopWidgets: DesktopIconManager.shared.isWidgetHidingEnabled,
           excludeOwnApplication: exclusionConfig.excludeOwnApplication,
@@ -602,9 +601,7 @@ final class RecordingCoordinator: ObservableObject {
           "excludedWindows": "\(exclusionConfig.excludedWindowIDs.count)",
         ])
 
-        // Resolve save directory based on auto-save toggle
-        let actualSaveDirectory = self.tempCaptureManager.resolveSaveDirectory(
-          for: .recording,
+        let savePlan = try self.tempCaptureManager.makeRecordingSavePlan(
           exportDirectory: saveDirectory
         )
 
@@ -616,7 +613,8 @@ final class RecordingCoordinator: ObservableObject {
           fps: fps,
           captureSystemAudio: captureSystemAudio,
           captureMicrophone: captureMicrophone,
-          saveDirectory: actualSaveDirectory,
+          saveDirectory: savePlan.finalDirectory,
+          processingDirectory: savePlan.processingDirectory,
           excludeDesktopIcons: DesktopIconManager.shared.isIconHidingEnabled,
           excludeDesktopWidgets: DesktopIconManager.shared.isWidgetHidingEnabled,
           excludeOwnApplication: exclusionConfig.excludeOwnApplication,
@@ -730,9 +728,7 @@ final class RecordingCoordinator: ObservableObject {
       do {
         let exclusionConfig = self.recordingCaptureExclusionConfiguration()
 
-        // Resolve save directory based on auto-save toggle
-        let actualSaveDirectory = self.tempCaptureManager.resolveSaveDirectory(
-          for: .recording,
+        let savePlan = try self.tempCaptureManager.makeRecordingSavePlan(
           exportDirectory: saveDirectory
         )
 
@@ -744,7 +740,8 @@ final class RecordingCoordinator: ObservableObject {
           fps: fps,
           captureSystemAudio: captureSystemAudio,
           captureMicrophone: false,
-          saveDirectory: actualSaveDirectory,
+          saveDirectory: savePlan.finalDirectory,
+          processingDirectory: savePlan.processingDirectory,
           excludeDesktopIcons: DesktopIconManager.shared.isIconHidingEnabled,
           excludeDesktopWidgets: DesktopIconManager.shared.isWidgetHidingEnabled,
           excludeOwnApplication: exclusionConfig.excludeOwnApplication,

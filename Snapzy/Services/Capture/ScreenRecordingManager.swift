@@ -172,6 +172,9 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
   private var excludedWindowIDs = Set<CGWindowID>()
   private var exceptedWindowIDs = Set<CGWindowID>()
   private var outputURL: URL?
+  private var finalOutputURL: URL?
+  private var recordingProcessingDirectory: URL?
+  private var shouldPreserveProcessingOutputOnCleanup = false
   private var mouseTracker: RecordingMouseTracker?
   private var exportDirectoryAccess: SandboxFileAccessManager.ScopedAccess?
   private var registeredOutputTypes: Set<SCStreamOutputType> = []
@@ -213,6 +216,7 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
     captureSystemAudio: Bool = true,
     captureMicrophone: Bool = false,
     saveDirectory: URL,
+    processingDirectory: URL? = nil,
     fileName: String? = nil,
     excludeDesktopIcons: Bool = false,
     excludeDesktopWidgets: Bool = false,
@@ -243,6 +247,7 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
       "excludeDesktopWidgets": "\(excludeDesktopWidgets)",
       "excludedWindows": "\(excludedWindowIDs.count)",
       "saveDirectory": saveDirectory.lastPathComponent,
+      "processingDirectory": processingDirectory?.lastPathComponent ?? "same-as-final",
     ])
 
     self.videoFormat = format
@@ -380,11 +385,15 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
     exportDirectoryAccess = directoryAccess
 
     let scopedSaveDirectory = directoryAccess.url
+    let writerDirectory = processingDirectory ?? scopedSaveDirectory
+    recordingProcessingDirectory = processingDirectory
 
     do {
       try FileManager.default.createDirectory(at: scopedSaveDirectory, withIntermediateDirectories: true)
+      try FileManager.default.createDirectory(at: writerDirectory, withIntermediateDirectories: true)
     } catch {
       DiagnosticLogger.shared.logError(.recording, error, "Failed to create recording save directory")
+      cleanupRecordingProcessingDirectoryIfNeeded()
       exportDirectoryAccess?.stop()
       exportDirectoryAccess = nil
       state = .idle
@@ -392,13 +401,21 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
       throw RecordingError.writeFailed(error.localizedDescription)
     }
 
-    outputURL = CaptureOutputNaming.makeUniqueFileURL(
+    finalOutputURL = CaptureOutputNaming.makeUniqueFileURL(
       in: scopedSaveDirectory,
       baseName: resolvedFileName,
       fileExtension: format.fileExtension
     )
+    let writerBaseName = finalOutputURL?.deletingPathExtension().lastPathComponent ?? resolvedFileName
+    outputURL = CaptureOutputNaming.makeUniqueFileURL(
+      in: writerDirectory,
+      baseName: writerBaseName,
+      fileExtension: format.fileExtension
+    )
     DiagnosticLogger.shared.log(.debug, .recording, "Recording output file prepared", context: [
-      "file": outputURL?.lastPathComponent ?? "nil"
+      "file": finalOutputURL?.lastPathComponent ?? "nil",
+      "writerFile": outputURL?.lastPathComponent ?? "nil",
+      "processingDirectory": writerDirectory.lastPathComponent,
     ])
 
     do {
@@ -619,8 +636,10 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
     let videoWriteStats = session.videoWriteStats()
 
     let mouseSamples = mouseTracker?.stop() ?? []
-    let url = outputURL
-    await logRecordingFrameDiagnostics(outputURL: url, stats: videoWriteStats)
+    let writerURL = outputURL
+    await logRecordingFrameDiagnostics(outputURL: writerURL, stats: videoWriteStats)
+    let url = finalizeRecordingOutput(writerURL: writerURL)
+    outputURL = url
     if let url = url {
       if mouseSamples.count >= 2 {
         do {
@@ -709,6 +728,128 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
   }
 
   // MARK: - Private Methods
+
+  private func finalizeRecordingOutput(writerURL: URL?) -> URL? {
+    guard let writerURL else { return nil }
+
+    guard FileManager.default.fileExists(atPath: writerURL.path) else {
+      DiagnosticLogger.shared.log(
+        .error,
+        .recording,
+        "Recording writer output missing before final move",
+        context: ["file": writerURL.lastPathComponent]
+      )
+      cleanupRecordingProcessingDirectoryIfNeeded()
+      return nil
+    }
+
+    guard let proposedFinalURL = finalOutputURL else {
+      cleanupRecordingProcessingDirectoryIfNeeded()
+      return writerURL
+    }
+
+    if sameFilePath(writerURL, proposedFinalURL) {
+      cleanupRecordingProcessingDirectoryIfNeeded()
+      return writerURL
+    }
+
+    do {
+      let movedURL = try moveRecordingOutput(from: writerURL, to: proposedFinalURL)
+      cleanupRecordingProcessingDirectoryIfNeeded()
+      DiagnosticLogger.shared.log(.info, .recording, "Recording output moved to final directory", context: [
+        "file": movedURL.lastPathComponent,
+        "processingDirectory": writerURL.deletingLastPathComponent().lastPathComponent,
+        "finalDirectory": movedURL.deletingLastPathComponent().lastPathComponent,
+      ])
+      return movedURL
+    } catch {
+      DiagnosticLogger.shared.logError(
+        .recording,
+        error,
+        "Recording final move failed; attempting temp recovery",
+        context: ["file": writerURL.lastPathComponent]
+      )
+    }
+
+    let recoveredURL = TempCaptureManager.shared.makeRecoveredRecordingURL(for: writerURL)
+    do {
+      let movedURL = try moveRecordingOutput(from: writerURL, to: recoveredURL)
+      cleanupRecordingProcessingDirectoryIfNeeded()
+      DiagnosticLogger.shared.log(.info, .recording, "Recording output recovered to temp captures", context: [
+        "file": movedURL.lastPathComponent
+      ])
+      return movedURL
+    } catch {
+      shouldPreserveProcessingOutputOnCleanup = true
+      DiagnosticLogger.shared.logError(
+        .recording,
+        error,
+        "Recording temp recovery failed; preserving writer output",
+        context: ["file": writerURL.lastPathComponent]
+      )
+      return writerURL
+    }
+  }
+
+  private func moveRecordingOutput(from sourceURL: URL, to proposedDestinationURL: URL) throws -> URL {
+    let destinationURL = uniqueDestinationURL(for: proposedDestinationURL)
+    try FileManager.default.createDirectory(
+      at: destinationURL.deletingLastPathComponent(),
+      withIntermediateDirectories: true
+    )
+    try FileManager.default.moveItem(at: sourceURL, to: destinationURL)
+    return destinationURL
+  }
+
+  private func uniqueDestinationURL(for proposedURL: URL) -> URL {
+    guard FileManager.default.fileExists(atPath: proposedURL.path) else {
+      return proposedURL
+    }
+
+    let directory = proposedURL.deletingLastPathComponent()
+    let fileExtension = proposedURL.pathExtension
+    let baseName = proposedURL.deletingPathExtension().lastPathComponent
+    return CaptureOutputNaming.makeUniqueFileURL(
+      in: directory,
+      baseName: baseName,
+      fileExtension: fileExtension
+    )
+  }
+
+  private func cleanupRecordingProcessingDirectoryIfNeeded() {
+    guard let directory = recordingProcessingDirectory else { return }
+    defer {
+      recordingProcessingDirectory = nil
+      shouldPreserveProcessingOutputOnCleanup = false
+    }
+
+    if shouldPreserveProcessingOutputOnCleanup,
+       let outputURL,
+       isURL(outputURL, inside: directory),
+       FileManager.default.fileExists(atPath: outputURL.path)
+    {
+      DiagnosticLogger.shared.log(
+        .warning,
+        .recording,
+        "Recording processing directory preserved because final output still lives there",
+        context: ["file": outputURL.lastPathComponent]
+      )
+      return
+    }
+
+    TempCaptureManager.shared.deleteRecordingProcessingDirectory(directory)
+  }
+
+  private func sameFilePath(_ lhs: URL, _ rhs: URL) -> Bool {
+    lhs.standardizedFileURL.resolvingSymlinksInPath().path
+      == rhs.standardizedFileURL.resolvingSymlinksInPath().path
+  }
+
+  private func isURL(_ url: URL, inside directory: URL) -> Bool {
+    let directoryPath = directory.standardizedFileURL.resolvingSymlinksInPath().path
+    let urlPath = url.standardizedFileURL.resolvingSymlinksInPath().path
+    return urlPath.hasPrefix(directoryPath + "/")
+  }
 
   private func setupAssetWriter(width: Int, height: Int, captureSystemAudio: Bool, captureMicrophone: Bool) throws {
     guard let url = outputURL else {
@@ -1292,6 +1433,8 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
     excludeDesktopWidgetsFromCapture = false
     mouseTracker = nil
     session.reset()
+    cleanupRecordingProcessingDirectoryIfNeeded()
+    finalOutputURL = nil
     outputURL = nil
     state = .idle
     elapsedSeconds = 0
