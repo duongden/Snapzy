@@ -18,11 +18,7 @@ struct GeneralSettingsView: View {
 
   @State private var startAtLogin = LoginItemManager.isEnabled
   @State private var logSizeText = L10n.PreferencesGeneral.calculating
-  @State private var cacheSizeText = L10n.PreferencesGeneral.calculating
-  @State private var canClearCache = true
-  @State private var isClearingCache = false
   private let fileAccessManager = SandboxFileAccessManager.shared
-  private let storageManager = CaptureStorageManager.shared
 
   private var updater: SPUUpdater {
     UpdaterManager.shared.updater
@@ -60,15 +56,6 @@ struct GeneralSettingsView: View {
           }
           .buttonStyle(.bordered)
           .controlSize(.small)
-        }
-
-        SettingRow(icon: "externaldrive.fill", title: L10n.PreferencesGeneral.cacheTitle, description: cacheSizeText) {
-          Button(isClearingCache ? L10n.PreferencesGeneral.clearingButton : L10n.PreferencesGeneral.clearButton) {
-            clearCacheWithConfirmation()
-          }
-          .buttonStyle(.bordered)
-          .controlSize(.small)
-          .disabled(!canClearCache || isClearingCache)
         }
       }
 
@@ -171,7 +158,6 @@ struct GeneralSettingsView: View {
       startAtLogin = LoginItemManager.isEnabled
       initializeExportLocation()
       updateLogSize()
-      updateCacheSize()
     }
     .onChange(of: diagnosticsRetentionDays) { _ in
       LogCleanupScheduler.shared.performCleanupNow()
@@ -205,43 +191,6 @@ struct GeneralSettingsView: View {
       directoryURL: fileAccessManager.resolvedExportDirectoryURL()
     ) {
       exportLocation = url.path
-    }
-  }
-
-  // MARK: - Cache Management
-
-  private func updateCacheSize() {
-    Task {
-      let bytes = await storageManager.calculateCacheSize()
-      cacheSizeText = CaptureStorageManager.formattedSize(bytes)
-      canClearCache = storageManager.isSafeToCleanup && bytes > 0
-    }
-  }
-
-  private func clearCacheWithConfirmation() {
-    let alert = NSAlert()
-    alert.messageText = L10n.PreferencesGeneral.clearCacheAlertTitle
-    alert.informativeText = L10n.PreferencesGeneral.clearCacheAlertMessage
-    alert.alertStyle = .warning
-    alert.addButton(withTitle: L10n.PreferencesGeneral.clearCacheConfirm)
-    alert.addButton(withTitle: L10n.Common.cancel)
-
-    guard alert.runModal() == .alertFirstButtonReturn else { return }
-
-    isClearingCache = true
-    Task {
-      do {
-        try await storageManager.clearCache()
-      } catch {
-        let errorAlert = NSAlert()
-        errorAlert.messageText = L10n.PreferencesGeneral.clearCacheErrorTitle
-        errorAlert.informativeText = error.localizedDescription
-        errorAlert.alertStyle = .informational
-        errorAlert.addButton(withTitle: L10n.Common.ok)
-        errorAlert.runModal()
-      }
-      isClearingCache = false
-      updateCacheSize()
     }
   }
 

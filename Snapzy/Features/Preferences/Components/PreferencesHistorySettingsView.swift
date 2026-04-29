@@ -12,6 +12,8 @@ struct HistorySettingsView: View {
   @AppStorage(PreferencesKeys.historyRetentionDays) private var historyRetentionDays = 30
   @AppStorage(PreferencesKeys.historyMaxCount) private var historyMaxCount = 500
   @AppStorage(PreferencesKeys.historyBackgroundStyle) private var historyBackgroundStyle: HistoryBackgroundStyle = .defaultStyle
+  @State private var captureStorageSizeText = L10n.PreferencesGeneral.calculating
+  private let storageManager = CaptureStorageManager.shared
 
   var body: some View {
     Form {
@@ -153,6 +155,18 @@ struct HistorySettingsView: View {
 
       Section(L10n.PreferencesHistory.storageSection) {
         SettingRow(
+          icon: "externaldrive.fill",
+          title: L10n.PreferencesHistory.captureStorageTitle,
+          description: captureStorageSizeText
+        ) {
+          Button(L10n.PreferencesHistory.openCaptureStorageButton) {
+            revealCaptureStorage()
+          }
+          .buttonStyle(.bordered)
+          .controlSize(.small)
+        }
+
+        SettingRow(
           icon: "trash",
           title: L10n.PreferencesHistory.clearHistoryTitle,
           description: L10n.PreferencesHistory.clearHistoryDescription
@@ -167,6 +181,9 @@ struct HistorySettingsView: View {
       }
     }
     .formStyle(.grouped)
+    .onAppear {
+      updateCaptureStorageSize()
+    }
   }
 
   private var retentionDaysDescription: String {
@@ -185,7 +202,20 @@ struct HistorySettingsView: View {
     alert.addButton(withTitle: L10n.Common.cancel)
 
     guard alert.runModal() == .alertFirstButtonReturn else { return }
-    CaptureHistoryStore.shared.removeAll()
+    HistoryWindowController.shared.deleteRecords(CaptureHistoryStore.shared.records, asksConfirmation: false)
+    updateCaptureStorageSize()
+  }
+
+  private func updateCaptureStorageSize() {
+    Task {
+      let bytes = await storageManager.calculateCacheSize()
+      captureStorageSizeText = CaptureStorageManager.formattedSize(bytes)
+    }
+  }
+
+  private func revealCaptureStorage() {
+    guard let url = storageManager.ensureCapturesDirectory() else { return }
+    NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: url.path)
   }
 }
 

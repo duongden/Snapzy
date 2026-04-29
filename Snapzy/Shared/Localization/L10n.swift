@@ -1447,11 +1447,6 @@ enum L10n {
       defaultValue: "Choose...",
       comment: "General preferences button title"
     )
-    static let cacheTitle = string(
-      "preferences-general.cache-title",
-      defaultValue: "Cache",
-      comment: "General preferences setting title"
-    )
     static let checkAutomaticallyTitle = string(
       "preferences-general.check-automatically-title",
       defaultValue: "Check automatically",
@@ -1580,36 +1575,6 @@ enum L10n {
       "preferences-general.save-here-button",
       defaultValue: "Save Here",
       comment: "Open panel prompt for choosing export location"
-    )
-    static let clearButton = string(
-      "preferences-general.clear-button",
-      defaultValue: "Clear...",
-      comment: "General preferences button title"
-    )
-    static let clearingButton = string(
-      "preferences-general.clearing-button",
-      defaultValue: "Clearing...",
-      comment: "General preferences button title while cache cleanup is in progress"
-    )
-    static let clearCacheAlertTitle = string(
-      "preferences-general.clear-cache-alert-title",
-      defaultValue: "Clear Cache?",
-      comment: "Alert title for confirming cache cleanup"
-    )
-    static let clearCacheAlertMessage = string(
-      "preferences-general.clear-cache-alert-message",
-      defaultValue: "This will remove all temporary capture files. Active captures will not be affected. This action cannot be undone.",
-      comment: "Alert message for confirming cache cleanup"
-    )
-    static let clearCacheConfirm = string(
-      "preferences-general.clear-cache-confirm",
-      defaultValue: "Clear Cache",
-      comment: "Destructive alert button title for cache cleanup"
-    )
-    static let clearCacheErrorTitle = string(
-      "preferences-general.clear-cache-error-title",
-      defaultValue: "Could Not Clear Cache",
-      comment: "Alert title when cache cleanup fails"
     )
   }
 
@@ -6099,6 +6064,16 @@ enum L10n {
       defaultValue: "Storage",
       comment: "History settings section title for storage"
     )
+    static let captureStorageTitle = string(
+      "preferences-history.capture-storage-title",
+      defaultValue: "Capture Storage",
+      comment: "History settings title for local capture storage"
+    )
+    static let openCaptureStorageButton = string(
+      "preferences-history.open-capture-storage-button",
+      defaultValue: "Open Folder",
+      comment: "History settings button for opening local capture storage in Finder"
+    )
     static let clearHistoryTitle = string(
       "preferences-history.clear-history-title",
       defaultValue: "Clear All History",
@@ -6106,7 +6081,7 @@ enum L10n {
     )
     static let clearHistoryDescription = string(
       "preferences-history.clear-history-description",
-      defaultValue: "Remove all capture history records",
+      defaultValue: "Move all captures to Trash and clear History",
       comment: "History settings description for clearing history"
     )
     static let clearHistoryButton = string(
@@ -6121,7 +6096,7 @@ enum L10n {
     )
     static let clearHistoryAlertMessage = string(
       "preferences-history.clear-history-alert-message",
-      defaultValue: "This will remove all capture history records. The actual files will not be deleted.",
+      defaultValue: "This will move all capture files to Trash and remove them from History. This action cannot be undone in Snapzy.",
       comment: "Alert message when clearing history"
     )
     static let clearHistoryConfirm = string(

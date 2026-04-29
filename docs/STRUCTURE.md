@@ -168,7 +168,7 @@ Snapzy/
 | `Features/QuickAccess/` | Floating post-capture stack, temp-file persistence UX, drag-to-app |
 | `Features/Annotate/` | Image editor, export, crop, blur, mockup, cutout-aware editing |
 | `Features/VideoEditor/` | Trim, zoom, background, Smart Camera, GIF/video export |
-| `Features/Preferences/` | General, Capture, Quick Access, Shortcuts, Permissions, Cloud, About tabs |
+| `Features/Preferences/` | General, Capture, Quick Access, Shortcuts, Permissions, History storage/retention, Cloud, About tabs |
 | `Features/Shortcuts/` | Keyboard shortcut cheat-sheet overlay |
 | `Features/Updates/` | Sparkle menu binding and update UI bridge |
 | `Features/CrashReport/` | Crash report prompt and diagnostics UX |
