@@ -119,8 +119,68 @@ When Developer ID credentials are unavailable, the GitHub release workflow now p
 - Expect Gatekeeper/notarization limitations on these fallback builds
 - If permissions were granted to an older bundle ID, macOS will require re-granting them
 
+## Release Notifications
+
+Release notifications are handled by a **separate workflow** (`release-notify.yml`) that triggers automatically after `release-publish.yml` completes successfully. This keeps the publish workflow focused on build/sign/release, and makes it easy to add new notification channels.
+
+**Architecture:**
+
+```
+release-publish.yml (build → sign → release)
+        ↓ workflow_run trigger
+release-notify.yml
+  ├── prepare  (fetch release metadata from GitHub API)
+  ├── discord  (parallel)
+  ├── slack    (parallel, add when needed)
+  └── telegram (parallel, add when needed)
+```
+
+### Discord
+
+#### 1. Create a Discord Webhook
+
+1. Open your Discord server
+2. Go to **Server Settings → Integrations → Webhooks**
+3. Click **New Webhook**
+4. Choose the target channel for release announcements
+5. (Optional) Set the webhook name (e.g., "Snapzy Releases") and avatar
+6. Click **Copy Webhook URL** — it looks like:
+   ```
+   https://discord.com/api/webhooks/123456789012345678/abcdefg...
+   ```
+
+#### 2. Add the Secret to GitHub
+
+1. Go to your GitHub repository → **Settings → Secrets and variables → Actions**
+2. Click **New repository secret**
+3. Name: `DISCORD_WEBHOOK_URL`
+4. Value: paste the webhook URL from step 1
+5. Click **Add secret**
+
+#### What Gets Posted
+
+Each release notification includes:
+- **Title**: version number with link to the GitHub release page
+- **Body**: full changelog from `CHANGELOG.md` (features, bug fixes, etc.)
+- **Quick links**: DMG download and release page
+- **Timestamp**: when the release was published
+
+If `DISCORD_WEBHOOK_URL` is not configured, the job is silently skipped — no failures.
+
+### Adding a New Channel
+
+To add a notification channel (e.g., Slack, Telegram):
+
+1. Open `.github/workflows/release-notify.yml`
+2. Add a new job that depends on `prepare`
+3. Use `${{ needs.prepare.outputs.version }}`, `.release_url`, `.download_url`, and `.body` for release data
+4. Add the required secrets (e.g., `SLACK_WEBHOOK_URL`) to GitHub repository settings
+
+See the commented examples at the bottom of `release-notify.yml`.
+
 ## Troubleshooting
 
 1. **Button always disabled**: Check Info.plist has SUFeedURL and SUPublicEDKey
 2. **Signature errors**: Ensure private key matches public key in app
 3. **No updates found**: Verify appcast.xml sparkle:version > current CFBundleVersion
+4. **Notification not sent**: Verify the channel secret (e.g., `DISCORD_WEBHOOK_URL`) is set correctly in GitHub repository settings. Check the `release-notify` workflow run logs for HTTP status warnings.
