@@ -277,6 +277,8 @@ flowchart TD
 - Annotate windows cache session state per Quick Access item so the user can reopen the same card and keep editing.
 - Watermark annotations are editable items with text, style, opacity, size, rotation, and color controls; export/copy/share/upload render them through the same final image pipeline as other annotations.
 - The crop tool can shrink or expand the editable canvas. Dragging crop handles outside the source image creates empty canvas space that accepts the same annotations as the original image area and is included in export/copy/share/upload.
+- Drag-to-app starts with a lazy file promise and guarantees a rendered file-URL fallback for apps that do not support file promises, so the first drag attempt can be accepted by file-url-only targets.
+- After a successful Annotate drag-to-app from a Quick Access item, Snapzy saves the current edits back to the source file before dismissing the Quick Access card.
 - Manually opened Annotate windows from the menu bar, global shortcut, or toolbar plus button are independent, so users can work with multiple clipboard/drop sessions side by side.
 - If a screenshot was already uploaded, later edits mark the cloud state stale until the user re-uploads.
 - Annotate dialogs, preset actions, mockup labels, cutout/export alerts, and cloud re-upload messaging are localized.

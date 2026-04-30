@@ -5,8 +5,8 @@
 //  NSViewRepresentable drag handle that initiates NSDraggingSession
 //  for dragging the annotated image to external apps.
 //
-//  Performance: Uses NSFilePromiseProvider so drag starts immediately, plus
-//  a warmed concrete file fallback for apps that only accept public.file-url.
+//  Performance: Uses NSFilePromiseProvider plus a warmed concrete file fallback
+//  for apps that only accept public.file-url.
 //
 
 import AppKit
@@ -30,16 +30,12 @@ struct AnnotateDragHandleView: NSViewRepresentable {
 
 /// AppKit view that initiates NSDraggingSession with a lazy NSFilePromiseProvider.
 ///
-/// The key insight: NSDraggingItem(pasteboardWriter: NSFilePromiseProvider) starts
-/// the drag IMMEDIATELY — no file needs to exist yet. The provider's delegate
-/// `filePromiseProvider(_:writePromiseTo:completionHandler:)` is only called
-/// AFTER the user drops onto a target app, at which point we render + write the PNG.
+/// The key insight: NSDraggingItem(pasteboardWriter: NSFilePromiseProvider) lets
+/// modern apps receive a lazy file. A pre-rendered fallback file URL is also
+/// attached so apps that only accept concrete files can accept the first drag.
 ///
 /// This matches how modern macOS apps (Photos, Finder previews) handle drags.
 final class DragHandleNSView: NSView {
-  private static let initialPreparationDelayNanoseconds: UInt64 = 450_000_000
-  private static let updatePreparationDelayNanoseconds: UInt64 = 250_000_000
-
   var state: AnnotateState
   private var isDragging = false
   private weak var draggingWindow: NSWindow?
@@ -48,6 +44,8 @@ final class DragHandleNSView: NSView {
   private var preparedFallbackSignature: DragFallbackSignature?
   private var fallbackPreparationTask: Task<Void, Never>?
   private var fallbackGenerationSequence: UInt64 = 0
+  private var activeDragFallbackFileURL: URL?
+  private var shouldRetainGeneratedFallbackFile = false
 
   /// Dedicated queue for file writes on drop (off main thread)
   private static let writeQueue = OperationQueue()
@@ -64,7 +62,9 @@ final class DragHandleNSView: NSView {
 
   deinit {
     fallbackPreparationTask?.cancel()
-    cleanupGeneratedFallbackFileIfNeeded()
+    if !shouldRetainGeneratedFallbackFile {
+      cleanupGeneratedFallbackFileIfNeeded()
+    }
   }
 
   override var acceptsFirstResponder: Bool { false }
@@ -81,24 +81,28 @@ final class DragHandleNSView: NSView {
 
   override func mouseDown(with event: NSEvent) {
     guard state.hasImage, !isDragging else { return }
-    guard state.sourceURL != nil || (preparedFallbackSignature == currentFallbackSignature && generatedFallbackFileURL != nil) else {
+    state.commitTextEditing()
+    updateState(state)
+
+    let preparedFallbackFileURL = fallbackFileURLForDragStart()
+    let canUseSourceFileURL = state.sourceURL != nil && !state.hasUnsavedChanges
+    guard canUseSourceFileURL || preparedFallbackFileURL != nil else {
       state.setDragToAppPreparationState(.preparing)
       scheduleFallbackPreparationIfNeeded()
       return
     }
     isDragging = true
+    activeDragFallbackFileURL = preparedFallbackFileURL
 
-    // Create a lazy file promise. The concrete file-url fallback is prepared
-    // ahead of time so drag startup does not block on export work.
+    // Create a lazy file promise plus a guaranteed concrete file-url fallback
+    // for apps that do not accept file promises.
     let resolvedUTType = Self.preferredUTType()
     let provider = AnnotateDragFilePromiseProvider(
       fileType: resolvedUTType.identifier,
       delegate: self
     )
     provider.annotateState = state
-    provider.fallbackFileURL = preparedFallbackSignature == currentFallbackSignature
-      ? generatedFallbackFileURL
-      : nil
+    provider.fallbackFileURL = preparedFallbackFileURL
 
     let dragItem = NSDraggingItem(pasteboardWriter: provider)
 
@@ -131,11 +135,11 @@ final class DragHandleNSView: NSView {
     draggingWindow = window
     NotificationCenter.default.post(name: .annotateDragStarted, object: draggingWindow)
 
-    // Start drag session — instant, nothing blocked
+    // Start drag session once the pasteboard writer can satisfy both promises and file URLs.
     let session = beginDraggingSession(with: [dragItem], event: event, source: self)
     session.animatesToStartingPositionsOnCancelOrFail = true
 
-    print("[AnnotateDrag] Session started (instant — lazy promise)")
+    print("[AnnotateDrag] Session started (promise + file-url fallback)")
   }
 }
 
@@ -156,6 +160,13 @@ extension DragHandleNSView: NSDraggingSource {
   ) {
     isDragging = false
     let success = operation != []
+    if success, activeDragFallbackFileURL != nil {
+      shouldRetainGeneratedFallbackFile = true
+    }
+    activeDragFallbackFileURL = nil
+    if !success {
+      scheduleFallbackPreparationIfNeeded()
+    }
     let sourceWindow = draggingWindow
     draggingWindow = nil
     print("[AnnotateDrag] Drag ended — success=\(success), op=\(operation.rawValue)")
@@ -254,16 +265,22 @@ extension DragHandleNSView: NSFilePromiseProviderDelegate {
 ///
 /// This matches the pattern used by Photos.app and Finder.
 final class AnnotateDragFilePromiseProvider: NSFilePromiseProvider {
-  /// Weak reference to avoid retain cycles; state lives in the window controller
-  weak var annotateState: AnnotateState?
+  /// Keep the state alive until the file promise finishes, since a successful
+  /// drop closes the source Annotate window immediately after the drag session.
+  var annotateState: AnnotateState?
   var fallbackFileURL: URL?
 
   // MARK: - Broad Compatibility: Also Provide File URL
 
   override func writableTypes(for pasteboard: NSPasteboard) -> [NSPasteboard.PasteboardType] {
     var types = super.writableTypes(for: pasteboard)
-    // Also advertise as a file URL so non-promise apps can accept the drag
-    types.append(.fileURL)
+    // Also advertise as a file URL so non-promise apps can accept the drag.
+    // Dirty source-backed edits must use the rendered fallback file; exposing
+    // sourceURL here would let apps read stale pixels from disk.
+    let canUseSourceFileURL = annotateState?.sourceURL != nil && annotateState?.hasUnsavedChanges != true
+    if fallbackFileURL != nil || canUseSourceFileURL {
+      types.append(.fileURL)
+    }
     return types
   }
 
@@ -281,7 +298,11 @@ final class AnnotateDragFilePromiseProvider: NSFilePromiseProvider {
   ) -> Any? {
     // Provide a concrete file URL for apps that ask for NSFilenamesPboardType / public.file-url.
     if type == .fileURL {
-      let url = fallbackFileURL ?? annotateState?.sourceURL
+      if let fallbackFileURL {
+        return (fallbackFileURL as NSURL).pasteboardPropertyList(forType: type)
+      }
+      guard annotateState?.hasUnsavedChanges != true else { return nil }
+      let url = annotateState?.sourceURL
       return (url as NSURL?)?.pasteboardPropertyList(forType: type)
     }
     return super.pasteboardPropertyList(forType: type)
@@ -300,11 +321,32 @@ private enum DragError: Error {
 // MARK: - Format Helpers
 
 extension DragHandleNSView {
+  private func preparedFallbackFileURLForCurrentState() -> URL? {
+    guard preparedFallbackSignature == currentFallbackSignature else { return nil }
+    return generatedFallbackFileURL
+  }
+
+  private func fallbackFileURLForDragStart() -> URL? {
+    guard state.sourceURL == nil || state.hasUnsavedChanges else {
+      return nil
+    }
+
+    if let preparedFallbackFileURL = preparedFallbackFileURLForCurrentState() {
+      return preparedFallbackFileURL
+    }
+
+    guard let signature = currentFallbackSignature else { return nil }
+    cancelFallbackPreparationTask()
+    return prepareConcreteFallbackFileIfNeeded(for: signature)
+  }
+
   private func scheduleFallbackPreparationIfNeeded() {
     fallbackGenerationSequence &+= 1
     let generation = fallbackGenerationSequence
-    fallbackPreparationTask?.cancel()
+    cancelFallbackPreparationTask()
     preparedFallbackSignature = nil
+
+    guard !isDragging else { return }
 
     guard state.hasImage else {
       cleanupGeneratedFallbackFileIfNeeded()
@@ -312,7 +354,7 @@ extension DragHandleNSView {
       return
     }
 
-    guard state.sourceURL == nil else {
+    guard state.sourceURL == nil || state.hasUnsavedChanges else {
       cleanupGeneratedFallbackFileIfNeeded()
       state.setDragToAppPreparationState(.ready)
       return
@@ -325,13 +367,7 @@ extension DragHandleNSView {
     }
 
     state.setDragToAppPreparationState(.preparing)
-    let delayNanoseconds = generatedFallbackFileURL == nil
-      ? Self.initialPreparationDelayNanoseconds
-      : Self.updatePreparationDelayNanoseconds
     fallbackPreparationTask = Task(priority: .utility) { @MainActor [weak self] in
-      if delayNanoseconds > 0 {
-        try? await Task.sleep(nanoseconds: delayNanoseconds)
-      }
       await Task.yield()
 
       guard let self,
@@ -340,6 +376,11 @@ extension DragHandleNSView {
             self.currentFallbackSignature == signature else { return }
       self.prepareConcreteFallbackFileIfNeeded(for: signature)
     }
+  }
+
+  private func cancelFallbackPreparationTask() {
+    fallbackPreparationTask?.cancel()
+    fallbackPreparationTask = nil
   }
 
   private func cleanupGeneratedFallbackFileIfNeeded() {
@@ -354,8 +395,6 @@ extension DragHandleNSView {
 
   @MainActor
   private func prepareConcreteFallbackFileIfNeeded(for signature: DragFallbackSignature) -> URL? {
-    guard state.sourceURL == nil else { return nil }
-
     guard let image = AnnotateExporter.renderFinalImage(state: state) else {
       state.setDragToAppPreparationState(.unavailable)
       return nil
@@ -369,7 +408,8 @@ extension DragHandleNSView {
 
     let rootDirectory = Self.dragFallbackRootDirectory()
     let sessionDirectory = rootDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
-    let fileURL = sessionDirectory.appendingPathComponent("annotated_image_annotated.\(ext)")
+    let baseName = state.sourceURL?.deletingPathExtension().lastPathComponent ?? "annotated_image"
+    let fileURL = sessionDirectory.appendingPathComponent("\(baseName)_annotated.\(ext)")
     let previousFallbackFileURL = generatedFallbackFileURL
 
     do {

@@ -420,9 +420,8 @@ final class AnnotateWindowController: NSWindowController, NSWindowDelegate {
 
   private func handleDragEnded(success: Bool) {
     if success {
-      // Successful drop — close the Annotate Window
-      state.hasUnsavedChanges = false
-      window?.close()
+      commitDragSuccessChangesIfNeeded()
+      forceClose()
       // Also dismiss the Quick Access card (without deleting the file)
       if let itemId = quickAccessItemId {
         QuickAccessManager.shared.dismissCard(id: itemId)
@@ -440,6 +439,53 @@ final class AnnotateWindowController: NSWindowController, NSWindowDelegate {
       print("[AnnotateDrag] Drag cancelled — window restored")
     }
     savedWindowFrame = nil
+  }
+
+  private func commitDragSuccessChangesIfNeeded() {
+    guard state.hasUnsavedChanges else {
+      state.markAsSaved()
+      return
+    }
+
+    guard let sourceURL = state.sourceURL else {
+      state.markAsSaved()
+      return
+    }
+
+    let renderedImage = AnnotateExporter.renderFinalImage(state: state)
+    guard let renderedImage else {
+      DiagnosticLogger.shared.log(
+        .error,
+        .annotate,
+        "Annotate drag success save skipped; render returned nil",
+        context: ["fileName": sourceURL.lastPathComponent]
+      )
+      state.markAsSaved()
+      return
+    }
+
+    state.markAsSaved()
+    if let itemId = quickAccessItemId {
+      QuickAccessManager.shared.updateItemThumbnail(id: itemId, image: renderedImage)
+      QuickAccessManager.shared.markCloudStale(id: itemId)
+    }
+
+    let capturedState = state
+    Task.detached(priority: .userInitiated) {
+      guard await AnnotateExporter.saveToFile(image: renderedImage, state: capturedState) else {
+        DiagnosticLogger.shared.log(
+          .error,
+          .annotate,
+          "Annotate drag success save failed",
+          context: ["fileName": sourceURL.lastPathComponent]
+        )
+        return
+      }
+      await PostCaptureActionHandler.shared.copyEditedCaptureToClipboardIfEnabled(
+        for: .screenshot,
+        url: sourceURL
+      )
+    }
   }
 
   private func togglePin() {
