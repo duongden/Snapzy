@@ -943,7 +943,21 @@ final class ScreenCaptureManager: ObservableObject {
       contentFilter: contentFilter,
       configuration: configuration
     )
-    return (image, scaleFactor)
+    let normalizedImage = await Task.detached(priority: .userInitiated) {
+      Self.trimTransparentWindowFringe(from: image)
+    }.value
+    if normalizedImage.didTrim {
+      DiagnosticLogger.shared.log(
+        .debug,
+        .capture,
+        "Trimmed transparent window capture fringe",
+        context: [
+          "input": "\(image.width)x\(image.height)",
+          "output": "\(normalizedImage.image.width)x\(normalizedImage.image.height)"
+        ]
+      )
+    }
+    return (normalizedImage.image, scaleFactor)
   }
 
   private func resolvedWindowScaleFactor(
@@ -979,6 +993,205 @@ final class ScreenCaptureManager: ObservableObject {
     return NSScreen.screens.max {
       $0.frame.intersection(window.frame).width * $0.frame.intersection(window.frame).height
         < $1.frame.intersection(window.frame).width * $1.frame.intersection(window.frame).height
+    }
+  }
+
+  private nonisolated static func trimTransparentWindowFringe(
+    from image: CGImage,
+    alphaThreshold: UInt8 = 1
+  ) -> (image: CGImage, didTrim: Bool) {
+    guard let alphaBounds = transparentFringeBounds(in: image, alphaThreshold: alphaThreshold) else {
+      return (image, false)
+    }
+
+    let imageBounds = CGRect(x: 0, y: 0, width: image.width, height: image.height)
+    let cropRect = alphaBounds.integral.intersection(imageBounds)
+    guard
+      !cropRect.isEmpty,
+      cropRect.integral != imageBounds.integral,
+      let croppedImage = image.cropping(to: cropRect)
+    else {
+      return (image, false)
+    }
+
+    return (croppedImage, true)
+  }
+
+  private nonisolated static func transparentFringeBounds(
+    in image: CGImage,
+    alphaThreshold: UInt8
+  ) -> CGRect? {
+    let width = image.width
+    let height = image.height
+    guard width > 0, height > 0 else { return nil }
+
+    if let directBounds = directTransparentFringeBounds(in: image, alphaThreshold: alphaThreshold) {
+      return directBounds
+    }
+
+    return redrawTransparentFringeBounds(in: image, alphaThreshold: alphaThreshold)
+  }
+
+  private nonisolated static func directTransparentFringeBounds(
+    in image: CGImage,
+    alphaThreshold: UInt8
+  ) -> CGRect? {
+    guard
+      image.bitsPerComponent == 8,
+      image.bitsPerPixel == 32,
+      let providerData = image.dataProvider?.data,
+      let baseAddress = CFDataGetBytePtr(providerData),
+      let alphaOffset = alphaByteOffset(for: image)
+    else {
+      return nil
+    }
+
+    let width = image.width
+    let height = image.height
+    let bytesPerPixel = 4
+    let bytesPerRow = image.bytesPerRow
+    let dataLength = CFDataGetLength(providerData)
+    guard bytesPerRow >= width * bytesPerPixel, dataLength >= height * bytesPerRow else {
+      return nil
+    }
+
+    let pixels = UnsafeRawBufferPointer(start: baseAddress, count: dataLength)
+    return scanTransparentFringeBounds(
+      pixels: pixels,
+      width: width,
+      height: height,
+      bytesPerRow: bytesPerRow,
+      bytesPerPixel: bytesPerPixel,
+      alphaOffset: alphaOffset,
+      alphaThreshold: alphaThreshold
+    )
+  }
+
+  private nonisolated static func redrawTransparentFringeBounds(
+    in image: CGImage,
+    alphaThreshold: UInt8
+  ) -> CGRect? {
+    let width = image.width
+    let height = image.height
+    let bytesPerPixel = 4
+    let bytesPerRow = width * bytesPerPixel
+    var pixels = [UInt8](repeating: 0, count: height * bytesPerRow)
+    let colorSpace = CGColorSpaceCreateDeviceRGB()
+    let bitmapInfo = CGImageAlphaInfo.premultipliedLast.rawValue | CGBitmapInfo.byteOrder32Big.rawValue
+
+    let didDraw = pixels.withUnsafeMutableBytes { rawBuffer -> Bool in
+      guard let baseAddress = rawBuffer.baseAddress else { return false }
+      guard let context = CGContext(
+        data: baseAddress,
+        width: width,
+        height: height,
+        bitsPerComponent: 8,
+        bytesPerRow: bytesPerRow,
+        space: colorSpace,
+        bitmapInfo: bitmapInfo
+      ) else {
+        return false
+      }
+
+      context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+      return true
+    }
+    guard didDraw else { return nil }
+
+    return pixels.withUnsafeBytes { rawBuffer in
+      scanTransparentFringeBounds(
+        pixels: rawBuffer,
+        width: width,
+        height: height,
+        bytesPerRow: bytesPerRow,
+        bytesPerPixel: bytesPerPixel,
+        alphaOffset: 3,
+        alphaThreshold: alphaThreshold
+      )
+    }
+  }
+
+  private nonisolated static func scanTransparentFringeBounds(
+    pixels: UnsafeRawBufferPointer,
+    width: Int,
+    height: Int,
+    bytesPerRow: Int,
+    bytesPerPixel: Int,
+    alphaOffset: Int,
+    alphaThreshold: UInt8
+  ) -> CGRect? {
+    guard width > 0, height > 0, bytesPerPixel > alphaOffset else { return nil }
+
+    func rowHasContent(_ y: Int) -> Bool {
+      let rowStart = y * bytesPerRow
+      var offset = rowStart + alphaOffset
+      let rowEnd = rowStart + (width * bytesPerPixel)
+      while offset < rowEnd {
+        if pixels[offset] > alphaThreshold {
+          return true
+        }
+        offset += bytesPerPixel
+      }
+      return false
+    }
+
+    func columnHasContent(_ x: Int, minY: Int, maxY: Int) -> Bool {
+      var offset = minY * bytesPerRow + x * bytesPerPixel + alphaOffset
+      for _ in minY...maxY {
+        if pixels[offset] > alphaThreshold {
+          return true
+        }
+        offset += bytesPerRow
+      }
+      return false
+    }
+
+    var minY = 0
+    while minY < height && !rowHasContent(minY) {
+      minY += 1
+    }
+    guard minY < height else { return nil }
+
+    var maxY = height - 1
+    while maxY > minY && !rowHasContent(maxY) {
+      maxY -= 1
+    }
+
+    var minX = 0
+    while minX < width && !columnHasContent(minX, minY: minY, maxY: maxY) {
+      minX += 1
+    }
+
+    var maxX = width - 1
+    while maxX > minX && !columnHasContent(maxX, minY: minY, maxY: maxY) {
+      maxX -= 1
+    }
+
+    return CGRect(
+      x: minX,
+      y: minY,
+      width: maxX - minX + 1,
+      height: maxY - minY + 1
+    )
+  }
+
+  private nonisolated static func alphaByteOffset(for image: CGImage) -> Int? {
+    guard image.bitsPerComponent == 8, image.bitsPerPixel == 32 else {
+      return nil
+    }
+
+    guard let alphaInfo = CGImageAlphaInfo(rawValue: image.bitmapInfo.rawValue & CGBitmapInfo.alphaInfoMask.rawValue) else {
+      return nil
+    }
+    let byteOrder = CGBitmapInfo(rawValue: image.bitmapInfo.rawValue & CGBitmapInfo.byteOrderMask.rawValue)
+
+    switch alphaInfo {
+    case .first, .premultipliedFirst:
+      return byteOrder == .byteOrder32Little ? 3 : 0
+    case .last, .premultipliedLast:
+      return byteOrder == .byteOrder32Little ? 0 : 3
+    default:
+      return nil
     }
   }
 
