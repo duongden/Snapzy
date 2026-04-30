@@ -6,6 +6,22 @@
     <description>Snapzy application updates</description>
     <language>en</language>
     <item>
+      <title>Version 1.12.2</title>
+      <sparkle:version>83</sparkle:version>
+      <sparkle:shortVersionString>1.12.2</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <pubDate>Thu, 30 Apr 2026 09:08:37 +0000</pubDate>
+      <description><![CDATA[
+        <style>:root { color-scheme: light dark; } body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 13px; line-height: 1.5; padding: 8px 16px; } h3 { font-size: 14px; margin: 12px 0 6px; } ul { padding-left: 20px; margin: 4px 0; } li { margin: 3px 0; }</style>
+        <h3>✨ Features</h3><ul><li>Enhance annotation resizing and selection handling for line annotations; add support for highlighter selection bounds</li></ul><h3>🐛 Bug Fixes</h3><ul><li>Trim fully transparent capture fringe in window capture for improved output quality</li><li>Enhance drag-to-app functionality with lazy file promise and rendered file-URL fallback; ensure edits are saved after successful drag</li></ul>
+      ]]></description>
+      <enclosure
+        url="https://github.com/duongductrong/Snapzy/releases/download/v1.12.2/Snapzy-v1.12.2.dmg"
+        sparkle:edSignature="pTBwTz/Ut8Sav2lzvtmyos99qRt+riP4x9UHCcXenrCohFSaqxHvOr8e8mYsIe6NR9Kqk1Fv9GiA7FaF38JMAQ=="
+        length="45009946"
+        type="application/octet-stream"/>
+    </item>
+    <item>
       <title>Version 1.12.1</title>
       <sparkle:version>82</sparkle:version>
       <sparkle:shortVersionString>1.12.1</sparkle:shortVersionString>
