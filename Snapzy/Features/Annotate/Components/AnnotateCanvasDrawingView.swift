@@ -41,6 +41,7 @@ struct CanvasDrawingView: NSViewRepresentable {
 enum ResizeHandle: Equatable {
   case topLeft, topRight, bottomLeft, bottomRight
   case top, bottom, left, right
+  case lineStart, lineEnd
 }
 
 /// NSView subclass handling mouse events and drawing
@@ -260,20 +261,41 @@ final class DrawingCanvasNSView: NSView {
     return nil
   }
 
-  private func hitTestHandle(at point: CGPoint, for bounds: CGRect) -> ResizeHandle? {
-    let handles: [(ResizeHandle, CGRect)] = [
-      (.topLeft, handleRect(at: CGPoint(x: bounds.minX, y: bounds.maxY))),
-      (.topRight, handleRect(at: CGPoint(x: bounds.maxX, y: bounds.maxY))),
-      (.bottomLeft, handleRect(at: CGPoint(x: bounds.minX, y: bounds.minY))),
-      (.bottomRight, handleRect(at: CGPoint(x: bounds.maxX, y: bounds.minY))),
-    ]
-
-    for (handle, rect) in handles {
+  private func hitTestHandle(
+    at point: CGPoint,
+    for annotation: AnnotationItem,
+    inDisplayCoordinates: Bool
+  ) -> ResizeHandle? {
+    for (handle, rect) in resizeHandleRects(for: annotation, inDisplayCoordinates: inDisplayCoordinates) {
       if rect.contains(point) {
         return handle
       }
     }
     return nil
+  }
+
+  private func resizeHandleRects(
+    for annotation: AnnotationItem,
+    inDisplayCoordinates: Bool
+  ) -> [(ResizeHandle, CGRect)] {
+    switch annotation.type {
+    case .line(let start, let end):
+      let startPoint = inDisplayCoordinates ? imageToDisplay(start) : start
+      let endPoint = inDisplayCoordinates ? imageToDisplay(end) : end
+      return [
+        (.lineStart, handleRect(at: startPoint)),
+        (.lineEnd, handleRect(at: endPoint)),
+      ]
+
+    default:
+      let bounds = inDisplayCoordinates ? imageToDisplay(annotation.resizeBounds) : annotation.resizeBounds
+      return [
+        (.topLeft, handleRect(at: CGPoint(x: bounds.minX, y: bounds.maxY))),
+        (.topRight, handleRect(at: CGPoint(x: bounds.maxX, y: bounds.maxY))),
+        (.bottomLeft, handleRect(at: CGPoint(x: bounds.minX, y: bounds.minY))),
+        (.bottomRight, handleRect(at: CGPoint(x: bounds.maxX, y: bounds.minY))),
+      ]
+    }
   }
 
   private func handleRect(at center: CGPoint) -> CGRect {
@@ -383,8 +405,7 @@ final class DrawingCanvasNSView: NSView {
     if let selectedId = state.selectedAnnotationId,
        let annotation = state.annotations.first(where: { $0.id == selectedId }),
        annotation.supportsResize {
-      let displayBounds = imageToDisplay(annotation.resizeBounds)
-      if let handle = hitTestHandle(at: displayPoint, for: displayBounds) {
+      if let handle = hitTestHandle(at: displayPoint, for: annotation, inDisplayCoordinates: true) {
         isResizingAnnotation = true
         resizingAnnotationId = selectedId
         activeResizeHandle = handle
@@ -523,9 +544,16 @@ final class DrawingCanvasNSView: NSView {
     // Handle resizing (in image coordinates)
     if isResizingAnnotation, let handle = activeResizeHandle,
        let resizeId = resizingAnnotationId {
-      let newBounds = calculateResizedBounds(handle: handle, currentPoint: imagePoint)
       Task { @MainActor in
-        state.updateAnnotationBounds(id: resizeId, bounds: newBounds)
+        switch handle {
+        case .lineStart:
+          state.updateLineEndpoint(id: resizeId, start: imagePoint)
+        case .lineEnd:
+          state.updateLineEndpoint(id: resizeId, end: imagePoint)
+        default:
+          let newBounds = calculateResizedBounds(handle: handle, currentPoint: imagePoint)
+          state.updateAnnotationBounds(id: resizeId, bounds: newBounds)
+        }
       }
       needsDisplay = true
       return
@@ -706,6 +734,8 @@ final class DrawingCanvasNSView: NSView {
       newBounds.origin.y = clampedY
       newBounds.size.width = clampedX - originalBounds.minX
       newBounds.size.height = originalBounds.maxY - clampedY
+    case .lineStart, .lineEnd:
+      break
     default:
       break
     }
@@ -725,7 +755,11 @@ final class DrawingCanvasNSView: NSView {
     )
     if let item = item {
       state.annotations.append(item)
-      state.selectedAnnotationId = item.id
+      if case .highlight = item.type {
+        state.deselectAnnotation()
+      } else {
+        state.selectedAnnotationId = item.id
+      }
     }
   }
 
@@ -786,10 +820,10 @@ final class DrawingCanvasNSView: NSView {
     for annotation in state.annotations {
       renderer.draw(annotation)
 
-      // Draw selection affordance if selected. Multi-selection shows outlines only.
+      // Draw selection affordance if selected. Single selections can also show resize handles.
       if state.isAnnotationSelected(annotation.id) {
-        drawSelectionHandles(
-          for: annotation.resizeBounds,
+        drawSelectionAffordance(
+          for: annotation,
           in: context,
           showsHandles: state.selectedAnnotationIds.count == 1 && annotation.supportsResize
         )
@@ -876,30 +910,69 @@ final class DrawingCanvasNSView: NSView {
     }
   }
 
-  private func drawSelectionHandles(for bounds: CGRect, in context: CGContext, showsHandles: Bool) {
-    // Draw selection border
+  private func drawSelectionAffordance(for annotation: AnnotationItem, in context: CGContext, showsHandles: Bool) {
+    switch annotation.type {
+    case .line(let start, let end):
+      drawSelectionCenterline(points: [start, end], in: context)
+    case .path(let points), .highlight(let points):
+      drawSelectionCenterline(points: points, in: context)
+    default:
+      drawSelectionBounds(annotation.selectionDecorationBounds, in: context)
+    }
+
+    guard showsHandles else { return }
+    drawResizeHandles(for: annotation, in: context)
+  }
+
+  private func drawSelectionBounds(_ bounds: CGRect, in context: CGContext) {
     context.setStrokeColor(NSColor.systemBlue.cgColor)
     context.setLineWidth(1)
     context.setLineDash(phase: 0, lengths: [4, 4])
     context.stroke(bounds)
     context.setLineDash(phase: 0, lengths: [])
+  }
 
-    guard showsHandles else { return }
+  private func drawSelectionCenterline(points: [CGPoint], in context: CGContext) {
+    guard points.count > 1 else { return }
 
-    // Draw corner handles
-    let corners = [
-      CGPoint(x: bounds.minX, y: bounds.minY),
-      CGPoint(x: bounds.maxX, y: bounds.minY),
-      CGPoint(x: bounds.minX, y: bounds.maxY),
-      CGPoint(x: bounds.maxX, y: bounds.maxY),
-    ]
+    let scale = max(displayScale, 0.0001)
+    let lineWidth = 1 / scale
+    let dashLength = 4 / scale
 
+    context.saveGState()
+    context.setLineCap(.round)
+    context.setLineJoin(.round)
+
+    context.setStrokeColor(NSColor.white.withAlphaComponent(0.85).cgColor)
+    context.setLineWidth(lineWidth * 3)
+    context.setLineDash(phase: 0, lengths: [])
+    strokePolyline(points, in: context)
+
+    context.setStrokeColor(NSColor.systemBlue.cgColor)
+    context.setLineWidth(lineWidth)
+    context.setLineDash(phase: 0, lengths: [dashLength, dashLength])
+    strokePolyline(points, in: context)
+    context.setLineDash(phase: 0, lengths: [])
+    context.restoreGState()
+  }
+
+  private func strokePolyline(_ points: [CGPoint], in context: CGContext) {
+    guard let first = points.first else { return }
+
+    context.beginPath()
+    context.move(to: first)
+    for point in points.dropFirst() {
+      context.addLine(to: point)
+    }
+    context.strokePath()
+  }
+
+  private func drawResizeHandles(for annotation: AnnotationItem, in context: CGContext) {
     context.setFillColor(NSColor.white.cgColor)
     context.setStrokeColor(NSColor.systemBlue.cgColor)
     context.setLineWidth(1)
 
-    for corner in corners {
-      let rect = handleRect(at: corner)
+    for (_, rect) in resizeHandleRects(for: annotation, inDisplayCoordinates: false) {
       context.fill(rect)
       context.stroke(rect)
     }
@@ -941,9 +1014,8 @@ final class DrawingCanvasNSView: NSView {
     if state.selectedAnnotationIds.count == 1,
        let selectedId = state.selectedAnnotationIds.first,
        let annotation = state.annotations.first(where: { $0.id == selectedId }) {
-      let displayBounds = imageToDisplay(annotation.resizeBounds)
       if annotation.supportsResize,
-         let handle = hitTestHandle(at: displayPoint, for: displayBounds) {
+         let handle = hitTestHandle(at: displayPoint, for: annotation, inDisplayCoordinates: true) {
         setCursorForHandle(handle)
         return
       }
@@ -985,7 +1057,7 @@ final class DrawingCanvasNSView: NSView {
 
   private func setCursorForHandle(_ handle: ResizeHandle) {
     switch handle {
-    case .topLeft, .bottomRight:
+    case .topLeft, .bottomRight, .lineStart, .lineEnd:
       NSCursor.crosshair.set()
     case .topRight, .bottomLeft:
       NSCursor.crosshair.set()

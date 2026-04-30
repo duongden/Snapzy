@@ -1731,7 +1731,7 @@ final class AnnotateState: ObservableObject {
     // Find annotation at point (in reverse order to select topmost)
     for annotation in annotations.reversed() {
       // Quick bounds check first (optimization)
-      let expandedBounds = annotation.bounds.insetBy(dx: -10, dy: -10)
+      let expandedBounds = annotation.selectionBounds.insetBy(dx: -10, dy: -10)
       guard expandedBounds.contains(point) else { continue }
 
       // Precise hit test
@@ -1803,6 +1803,21 @@ final class AnnotateState: ObservableObject {
     default:
       break
     }
+  }
+
+  func updateLineEndpoint(id: UUID, start newStart: CGPoint? = nil, end newEnd: CGPoint? = nil) {
+    guard let index = annotations.firstIndex(where: { $0.id == id }),
+          case .line(let start, let end) = annotations[index].type else { return }
+
+    let updatedStart = newStart ?? start
+    let updatedEnd = newEnd ?? end
+    annotations[index].type = .line(start: updatedStart, end: updatedEnd)
+    annotations[index].bounds = CGRect(
+      x: min(updatedStart.x, updatedEnd.x),
+      y: min(updatedStart.y, updatedEnd.y),
+      width: abs(updatedEnd.x - updatedStart.x),
+      height: abs(updatedEnd.y - updatedStart.y)
+    ).standardized
   }
 
   func updateAnnotationText(id: UUID, text: String) {

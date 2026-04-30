@@ -45,7 +45,7 @@ enum AnnotationFactory {
 
     case .highlighter:
       guard path.count > 1 else { return nil }
-      type = .highlight(path)
+      type = .highlight(normalizedHighlighterPath(path, strokeWidth: properties.strokeWidth))
 
     case .blur:
       type = .blur(state.blurType)
@@ -86,6 +86,13 @@ enum AnnotationFactory {
         center: start,
         canvasBounds: state.activeAnnotationBounds
       )
+    case .highlight(let points):
+      bounds = pathBounds(containing: points) ?? normalizedBounds(CGRect(
+        x: min(start.x, end.x),
+        y: min(start.y, end.y),
+        width: abs(end.x - start.x),
+        height: abs(end.y - start.y)
+      ))
     default:
       bounds = CGRect(
         x: min(start.x, end.x),
@@ -113,5 +120,82 @@ enum AnnotationFactory {
     }
 
     return drawnBounds.standardized
+  }
+
+  private static func normalizedHighlighterPath(_ path: [CGPoint], strokeWidth: CGFloat) -> [CGPoint] {
+    guard path.count > 2,
+          let first = path.first,
+          let last = path.last else {
+      return path
+    }
+
+    let dx = last.x - first.x
+    let dy = last.y - first.y
+    let length = hypot(dx, dy)
+    guard length >= 24, abs(dx) >= 24 else { return path }
+
+    let angle = abs(atan2(dy, dx))
+    let angleFromHorizontal = min(angle, abs(.pi - angle))
+    guard angleFromHorizontal <= 10 * .pi / 180 else { return path }
+
+    let minY = path.map(\.y).min() ?? first.y
+    let maxY = path.map(\.y).max() ?? first.y
+    let maximumVerticalRange = max(8, strokeWidth * 3 * 0.6)
+    guard maxY - minY <= maximumVerticalRange else { return path }
+
+    let minX = path.map(\.x).min() ?? min(first.x, last.x)
+    let maxX = path.map(\.x).max() ?? max(first.x, last.x)
+    guard maxX - minX >= 24 else { return path }
+
+    let y = medianY(in: path)
+    return [
+      CGPoint(x: minX, y: y),
+      CGPoint(x: maxX, y: y),
+    ]
+  }
+
+  private static func medianY(in path: [CGPoint]) -> CGFloat {
+    let values = path.map(\.y).sorted()
+    guard !values.isEmpty else { return 0 }
+
+    let midpoint = values.count / 2
+    if values.count.isMultiple(of: 2) {
+      return (values[midpoint - 1] + values[midpoint]) / 2
+    }
+    return values[midpoint]
+  }
+
+  private static func pathBounds(containing points: [CGPoint]) -> CGRect? {
+    guard let first = points.first else { return nil }
+
+    var minX = first.x
+    var maxX = first.x
+    var minY = first.y
+    var maxY = first.y
+
+    for point in points.dropFirst() {
+      minX = min(minX, point.x)
+      maxX = max(maxX, point.x)
+      minY = min(minY, point.y)
+      maxY = max(maxY, point.y)
+    }
+
+    return normalizedBounds(CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY))
+  }
+
+  private static func normalizedBounds(_ rect: CGRect, minimumDimension: CGFloat = 1) -> CGRect {
+    var normalized = rect.standardized
+
+    if normalized.width < minimumDimension {
+      normalized.origin.x -= (minimumDimension - normalized.width) / 2
+      normalized.size.width = minimumDimension
+    }
+
+    if normalized.height < minimumDimension {
+      normalized.origin.y -= (minimumDimension - normalized.height) / 2
+      normalized.size.height = minimumDimension
+    }
+
+    return normalized
   }
 }

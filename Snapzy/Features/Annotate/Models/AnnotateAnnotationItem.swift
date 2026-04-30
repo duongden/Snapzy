@@ -477,8 +477,8 @@ struct AnnotationProperties: Equatable {
 extension AnnotationItem {
   var supportsResize: Bool {
     switch type {
-    case .path(let points), .highlight(let points):
-      return points.count > 1
+    case .path, .highlight:
+      return false
     default:
       return true
     }
@@ -501,8 +501,25 @@ extension AnnotationItem {
   }
 
   var selectionBounds: CGRect {
+    if case .highlight = type {
+      return selectionDecorationBounds
+    }
+
     let padding = max(6, properties.strokeWidth / 2)
     return resizeBounds.insetBy(dx: -padding, dy: -padding)
+  }
+
+  var selectionDecorationBounds: CGRect {
+    switch type {
+    case .highlight(let points):
+      return Self.highlighterSelectionBounds(
+        containing: points,
+        strokeWidth: properties.strokeWidth,
+        fallback: resizeBounds
+      )
+    default:
+      return resizeBounds
+    }
   }
 
   /// Check if point hits this annotation with appropriate tolerance
@@ -569,6 +586,34 @@ extension AnnotationItem {
     }
 
     return normalized
+  }
+
+  private static func highlighterSelectionBounds(
+    containing points: [CGPoint],
+    strokeWidth: CGFloat,
+    fallback: CGRect
+  ) -> CGRect {
+    let baseBounds = Self.normalizedBounds(Self.bounds(containing: points) ?? fallback)
+    let visibleRadius = max(strokeWidth * 1.5, 1)
+    let horizontalPadding = max(6, visibleRadius)
+    let verticalPadding = max(6, visibleRadius + 4)
+    var bounds = baseBounds.insetBy(dx: -horizontalPadding, dy: -verticalPadding)
+
+    let minimumHeight = max(16, strokeWidth * 3 + 8)
+    if bounds.height < minimumHeight {
+      let delta = minimumHeight - bounds.height
+      bounds.origin.y -= delta / 2
+      bounds.size.height = minimumHeight
+    }
+
+    let minimumWidth = max(16, strokeWidth * 3)
+    if bounds.width < minimumWidth {
+      let delta = minimumWidth - bounds.width
+      bounds.origin.x -= delta / 2
+      bounds.size.width = minimumWidth
+    }
+
+    return bounds.standardized
   }
 
   private func pointInEllipse(_ point: CGPoint, in rect: CGRect) -> Bool {
