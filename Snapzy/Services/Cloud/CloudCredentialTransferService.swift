@@ -143,6 +143,16 @@ enum CloudCredentialTransferService {
     payload: CloudCredentialTransferPayload,
     passphrase: String
   ) throws -> Data {
+    guard passphrase.count >= minimumPassphraseLength else {
+      DiagnosticLogger.shared.log(
+        .warning,
+        .cloud,
+        "Cloud credential archive export rejected; passphrase too short",
+        context: ["minimumLength": "\(minimumPassphraseLength)"]
+      )
+      throw CloudCredentialTransferError.passphraseTooShort(minimumLength: minimumPassphraseLength)
+    }
+
     DiagnosticLogger.shared.log(
       .debug,
       .cloud,

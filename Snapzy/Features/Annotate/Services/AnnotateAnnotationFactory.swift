@@ -10,6 +10,14 @@ import SwiftUI
 
 /// Factory for creating annotation items
 enum AnnotationFactory {
+  struct CreationContext {
+    var properties: AnnotationProperties
+    var arrowStyle: ArrowStyle
+    var blurType: BlurType
+    var counterValue: Int
+    var watermarkText: String
+    var activeAnnotationBounds: CGRect
+  }
 
   static func createAnnotation(
     tool: AnnotationToolType,
@@ -18,8 +26,31 @@ enum AnnotationFactory {
     path: [CGPoint],
     state: AnnotateState
   ) -> AnnotationItem? {
+    createAnnotation(
+      tool: tool,
+      from: start,
+      to: end,
+      path: path,
+      context: CreationContext(
+        properties: state.annotationCreationProperties(for: tool),
+        arrowStyle: state.arrowStyle,
+        blurType: state.blurType,
+        counterValue: state.nextCounterValue(),
+        watermarkText: state.watermarkText,
+        activeAnnotationBounds: state.activeAnnotationBounds
+      )
+    )
+  }
 
-    let properties = state.annotationCreationProperties(for: tool)
+  static func createAnnotation(
+    tool: AnnotationToolType,
+    from start: CGPoint,
+    to end: CGPoint,
+    path: [CGPoint],
+    context: CreationContext
+  ) -> AnnotationItem? {
+
+    let properties = context.properties
 
     let type: AnnotationType?
 
@@ -34,7 +65,7 @@ enum AnnotationFactory {
       type = .oval
 
     case .arrow:
-      type = .arrow(ArrowGeometry(start: start, end: end, style: state.arrowStyle))
+      type = .arrow(ArrowGeometry(start: start, end: end, style: context.arrowStyle))
 
     case .line:
       type = .line(start: start, end: end)
@@ -48,13 +79,13 @@ enum AnnotationFactory {
       type = .highlight(normalizedHighlighterPath(path, strokeWidth: properties.strokeWidth))
 
     case .blur:
-      type = .blur(state.blurType)
+      type = .blur(context.blurType)
 
     case .counter:
-      type = .counter(state.nextCounterValue())
+      type = .counter(context.counterValue)
 
     case .watermark:
-      let text = state.watermarkText.trimmingCharacters(in: .whitespacesAndNewlines)
+      let text = context.watermarkText.trimmingCharacters(in: .whitespacesAndNewlines)
       type = .watermark(text.isEmpty ? "Snapzy" : text)
 
     case .selection, .crop, .text, .mockup:
@@ -84,7 +115,7 @@ enum AnnotationFactory {
       bounds = watermarkBounds(
         drawnBounds: drawnBounds,
         center: start,
-        canvasBounds: state.activeAnnotationBounds
+        canvasBounds: context.activeAnnotationBounds
       )
     case .highlight(let points):
       bounds = pathBounds(containing: points) ?? normalizedBounds(CGRect(

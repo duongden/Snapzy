@@ -22,10 +22,8 @@ enum LifecycleXMLParser {
       guard let endRange = xmlString.range(of: "</Rule>", range: startRange.upperBound..<xmlString.endIndex)
       else { break }
 
-      let ruleXML = String(xmlString[startRange.lowerBound...endRange.upperBound])
-      // Trim but keep the closing tag
-      let fullRule = String(xmlString[startRange.lowerBound..<endRange.upperBound]) + "</Rule>"
-      rules.append(ruleXML)
+      let fullRule = String(xmlString[startRange.lowerBound..<endRange.upperBound])
+      rules.append(fullRule)
       searchRange = endRange.upperBound..<xmlString.endIndex
     }
 
