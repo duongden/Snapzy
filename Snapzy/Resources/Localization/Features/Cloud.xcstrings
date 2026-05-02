@@ -2796,6 +2796,71 @@
         }
       }
     },
+    "cloud-settings.limited-permissions-warning" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mit eingeschränkten Berechtigungen verbunden. Automatische Bereinigung (Lebenszyklusregeln) ist nicht verfügbar — Dateien bleiben erhalten, bis sie manuell gelöscht werden."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Connected with limited permissions. Auto-cleanup (lifecycle rules) is unavailable — files will remain until manually deleted."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conectado con permisos limitados. La limpieza automática (reglas de ciclo de vida) no está disponible; los archivos permanecerán hasta que se eliminen manualmente."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Connecté avec des autorisations limitées. Le nettoyage automatique (règles de cycle de vie) n’est pas disponible : les fichiers resteront jusqu’à leur suppression manuelle."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "権限が制限された状態で接続されています。自動クリーンアップ（ライフサイクル ルール）は利用できないため、ファイルは手動で削除するまで残ります。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "제한된 권한으로 연결되었습니다. 자동 정리(수명 주기 규칙)를 사용할 수 없으므로 파일은 수동으로 삭제할 때까지 남아 있습니다."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Подключено с ограниченными правами. Автоочистка (правила жизненного цикла) недоступна — файлы останутся, пока вы не удалите их вручную."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Đã kết nối với quyền hạn chế. Tự động dọn dẹp (quy tắc lifecycle) không khả dụng — tệp sẽ được giữ lại cho đến khi bạn tự xóa."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已使用受限权限连接。自动清理（生命周期规则）不可用，文件将保留，直到手动删除。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已使用受限權限連接。自動清理（生命週期規則）不可用，檔案將保留，直到手動刪除。"
+          }
+        }
+      }
+    },
     "cloud-settings.credentials-section" : {
       "extractionState" : "stale",
       "localizations" : {
