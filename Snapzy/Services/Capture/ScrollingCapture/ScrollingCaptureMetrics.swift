@@ -25,6 +25,11 @@ nonisolated struct ScrollingCaptureSessionMetrics {
 
   private(set) var commitScheduleCount = 0
   private(set) var commitCoalescedCount = 0
+  private(set) var streamCommitFrameCount = 0
+  private(set) var stillFallbackCommitFrameCount = 0
+  private(set) var duplicateCommitFrameCount = 0
+  private(set) var commitFrameAgeTotalMs = 0
+  private(set) var commitFrameAgeMaxMs = 0
 
   private(set) var refreshAttemptCount = 0
   private(set) var refreshSuccessCount = 0
@@ -46,6 +51,8 @@ nonisolated struct ScrollingCaptureSessionMetrics {
   private(set) var guidedVisionMatchCount = 0
   private(set) var recoveryVisionMatchCount = 0
   private(set) var visionEstimateCount = 0
+  private(set) var unsafeStitchCount = 0
+  private(set) var tentativeStitchCount = 0
   private(set) var matcherConfidenceTotal = 0.0
   private(set) var matcherConfidenceCount = 0
   private(set) var appendedDeltaTotalPixels = 0
@@ -120,6 +127,28 @@ nonisolated struct ScrollingCaptureSessionMetrics {
     commitCoalescedCount += 1
   }
 
+  mutating func recordCommitFrameSelected(
+    source: ScrollingCaptureCommitFrameSource,
+    frameAgeMs: Int?,
+    isDuplicateFrame: Bool
+  ) {
+    switch source {
+    case .stream:
+      streamCommitFrameCount += 1
+    case .stillFallback:
+      stillFallbackCommitFrameCount += 1
+    }
+
+    if isDuplicateFrame {
+      duplicateCommitFrameCount += 1
+    }
+
+    if let frameAgeMs {
+      commitFrameAgeTotalMs += frameAgeMs
+      commitFrameAgeMaxMs = max(commitFrameAgeMaxMs, frameAgeMs)
+    }
+  }
+
   mutating func recordRefreshSuccess(
     reason: String,
     captureDurationMs: Int,
@@ -127,7 +156,8 @@ nonisolated struct ScrollingCaptureSessionMetrics {
     previewPublishDurationMs: Int,
     totalDurationMs: Int,
     outcome: ScrollingCaptureStitchOutcome,
-    alignmentDebug: ScrollingCaptureAlignmentDebugInfo?
+    alignmentDebug: ScrollingCaptureAlignmentDebugInfo?,
+    safety: ScrollingCaptureStitchSafety = .confirmed
   ) {
     refreshAttemptCount += 1
     refreshSuccessCount += 1
@@ -157,6 +187,15 @@ nonisolated struct ScrollingCaptureSessionMetrics {
     case .reachedHeightLimit:
       reachedHeightLimitCount += 1
       currentAlignmentFailureStreak = 0
+    }
+
+    switch safety {
+    case .confirmed:
+      break
+    case .tentative:
+      tentativeStitchCount += 1
+    case .unsafe:
+      unsafeStitchCount += 1
     }
 
     if let alignmentDebug {
@@ -264,6 +303,11 @@ nonisolated struct ScrollingCaptureSessionMetrics {
       "livePreviewFrames": "\(livePreviewFrameCount)",
       "commitSchedules": "\(commitScheduleCount)",
       "commitCoalesced": "\(commitCoalescedCount)",
+      "streamCommitFrames": "\(streamCommitFrameCount)",
+      "stillFallbackCommitFrames": "\(stillFallbackCommitFrameCount)",
+      "duplicateCommitFrames": "\(duplicateCommitFrameCount)",
+      "commitFrameAgeAvgMs": Self.averageString(total: commitFrameAgeTotalMs, count: streamCommitFrameCount),
+      "commitFrameAgeMaxMs": "\(commitFrameAgeMaxMs)",
       "livePreviewPublishAvgMs": Self.averageString(
         total: livePreviewPublishDurationTotalMs,
         count: livePreviewFrameCount
@@ -272,6 +316,8 @@ nonisolated struct ScrollingCaptureSessionMetrics {
       "livePreviewGapMaxMs": "\(livePreviewGapMaxMs)",
       "previewTruthLiveAhead": "\(previewTruthLiveAheadCount)",
       "previewTruthLiveAheadMaxLagMs": "\(previewTruthLiveAheadMaxLagMs)",
+      "tentativeStitches": "\(tentativeStitchCount)",
+      "unsafeStitches": "\(unsafeStitchCount)",
       "finalizingStarts": "\(finalizingStartCount)",
       "finalizingAvgMs": Self.averageString(total: finalizingDurationTotalMs, count: finalizingStartCount),
       "finalizingBlockedInput": "\(finalizingBlockedInputCount)",

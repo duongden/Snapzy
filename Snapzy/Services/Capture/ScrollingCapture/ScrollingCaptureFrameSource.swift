@@ -21,7 +21,8 @@ final class ScrollingCaptureFrameSource: NSObject {
 
   private var stream: SCStream?
   private nonisolated(unsafe) var lastPublishedAt: TimeInterval = 0
-  private var onFrame: ((CGImage) -> Void)?
+  private nonisolated(unsafe) var nextSequenceNumber = 0
+  private var onFrame: ((ScrollingCaptureFrame) -> Void)?
   private var onFailure: ((String) -> Void)?
 
   init(previewFPS: Int = 30) {
@@ -32,7 +33,7 @@ final class ScrollingCaptureFrameSource: NSObject {
   @MainActor
   func start(
     with context: ScreenCaptureManager.PreparedAreaCaptureContext,
-    frameHandler: @escaping (CGImage) -> Void,
+    frameHandler: @escaping (ScrollingCaptureFrame) -> Void,
     failureHandler: @escaping (String) -> Void
   ) async throws {
     stop()
@@ -40,6 +41,7 @@ final class ScrollingCaptureFrameSource: NSObject {
     onFrame = frameHandler
     onFailure = failureHandler
     lastPublishedAt = 0
+    nextSequenceNumber = 0
 
     let configuration = ScreenCaptureManager.shared.makeAreaStreamConfiguration(
       from: context,
@@ -114,8 +116,15 @@ extension ScrollingCaptureFrameSource: SCStreamOutput {
       }
 
       lastPublishedAt = now
+      nextSequenceNumber += 1
+      let frame = ScrollingCaptureFrame(
+        sequenceNumber: nextSequenceNumber,
+        image: cgImage,
+        capturedAt: now,
+        motionScore: nil
+      )
       DispatchQueue.main.async { [weak self] in
-        self?.onFrame?(cgImage)
+        self?.onFrame?(frame)
       }
     }
   }

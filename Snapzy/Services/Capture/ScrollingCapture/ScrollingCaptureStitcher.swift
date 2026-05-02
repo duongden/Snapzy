@@ -23,6 +23,19 @@ nonisolated enum ScrollingCaptureStitchOutcome {
   case reachedHeightLimit
 }
 
+nonisolated enum ScrollingCaptureStitchSafety: Equatable {
+  case confirmed
+  case tentative(reason: String)
+  case unsafe(reason: String)
+
+  var isUnsafe: Bool {
+    if case .unsafe = self {
+      return true
+    }
+    return false
+  }
+}
+
 nonisolated enum ScrollingCaptureAlignmentPath: String {
   case initialFrame = "initial-frame"
   case fastGuided = "fast-guided"
@@ -52,6 +65,7 @@ nonisolated struct ScrollingCaptureStitchUpdate {
   let matchFailureCount: Int
   let mergeDirection: ScrollingCaptureMergeDirection
   let likelyReachedBoundary: Bool
+  let safety: ScrollingCaptureStitchSafety
   let alignmentDebug: ScrollingCaptureAlignmentDebugInfo?
 }
 
@@ -342,6 +356,7 @@ nonisolated final class ScrollingCaptureStitcher: @unchecked Sendable {
       matchFailureCount: matchNotFoundCount,
       mergeDirection: mergeDirection,
       likelyReachedBoundary: false,
+      safety: .confirmed,
       alignmentDebug: ScrollingCaptureAlignmentDebugInfo(
         path: .initialFrame,
         usedVisionEstimate: false,
@@ -685,6 +700,7 @@ nonisolated final class ScrollingCaptureStitcher: @unchecked Sendable {
     outcome: ScrollingCaptureStitchOutcome,
     includeMergedImage: Bool = true,
     likelyReachedBoundary: Bool = false,
+    safety: ScrollingCaptureStitchSafety? = nil,
     alignmentDebug: ScrollingCaptureAlignmentDebugInfo? = nil
   ) -> ScrollingCaptureStitchUpdate {
     ScrollingCaptureStitchUpdate(
@@ -695,8 +711,18 @@ nonisolated final class ScrollingCaptureStitcher: @unchecked Sendable {
       matchFailureCount: matchNotFoundCount,
       mergeDirection: mergeDirection,
       likelyReachedBoundary: likelyReachedBoundary,
+      safety: safety ?? defaultSafety(for: outcome),
       alignmentDebug: alignmentDebug
     )
+  }
+
+  private func defaultSafety(for outcome: ScrollingCaptureStitchOutcome) -> ScrollingCaptureStitchSafety {
+    switch outcome {
+    case .initialized, .appended, .ignoredNoMovement, .reachedHeightLimit:
+      return .confirmed
+    case .ignoredAlignmentFailed:
+      return .unsafe(reason: "alignment-failed")
+    }
   }
 
   private func makeAlignmentDebugInfo(

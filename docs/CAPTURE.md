@@ -105,15 +105,16 @@ flowchart TD
 
     D --> E["Prepare region-scoped capture context"]
     D --> F["Show region overlay, HUD, preview window"]
-    D --> G["Create live preview stream"]
+    D --> G["Create live preview stream + shared frame ring"]
     D --> H["Create commit scheduler"]
 
-    G --> I["ScrollingCaptureFrameSource receives latest region frame"]
-    I --> J["ScrollingCapturePreviewRenderer presents live image"]
+    G --> I["ScrollingCaptureFrameSource publishes timestamped region frames"]
+    I --> I1["ScrollingCaptureFrameRing keeps latest bounded frame history"]
+    I1 --> J["ScrollingCapturePreviewRenderer presents stitched preview first"]
 
     H --> K["Initial commit or scroll-triggered commit request"]
     K --> L["ScrollingCaptureCommitScheduler keeps latest pending request"]
-    L --> M["refreshPreview() captures newest eligible frame"]
+    L --> M["refreshPreview() commits newest eligible stream frame or still fallback"]
     M --> N["ScrollingCaptureStitcher append / ignore / pause / height-limit"]
     N --> O["Session model updates badge, caption, metrics"]
 
@@ -131,8 +132,13 @@ flowchart TD
 ### Notes
 
 - The subsystem in `Services/Capture/ScrollingCapture/` is intentionally self-contained: preview, stitcher, HUD, metrics, commit scheduling, and window placement all live there.
-- The preview lane and commit lane are separate. Live preview can stay ahead while the stitcher locks the next safe frame.
+- The live stream is a low-latency frame source, not the primary visual result after capture starts.
+- The preview rail prioritizes the stitched preview image so the visible result grows as accepted slices are merged.
+- The preview lane and commit lane share the same bounded frame timeline through `ScrollingCaptureFrameRing`; still capture is now a fallback when the stream has no usable new frame.
+- `previewTruthState` indicates whether stitched output is captured, syncing to uncommitted scroll, paused, or finalizing.
 - Vision is a recovery tool inside `ScrollingCaptureStitcher`, not the default hot path.
+- `ScrollingCaptureStitchUpdate.safety` marks confirmed versus unsafe stitch outcomes; final output is built from accepted slices only.
+- Debug sessions emit `ScrollingCaptureDebug` lines to `~/Library/Logs/Snapzy/snapzy_YYYY-MM-DD.txt`; filter them with `grep 'ScrollingCaptureDebug' "$HOME/Library/Logs/Snapzy/snapzy_$(date +%F).txt"` when validating frame source, append deltas, confidence, safety, and final session summary.
 - Session guidance, runtime badges, preview captions, and recovery toasts are localized and should stay in sync with `docs/LOCALIZATION.md`.
 
 ## Recording, GIF Output, and Smart Camera

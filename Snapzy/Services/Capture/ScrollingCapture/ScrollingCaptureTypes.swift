@@ -293,6 +293,7 @@ final class ScrollingCaptureSessionModel: ObservableObject {
 
   var isShowingLiveViewport: Bool {
     phase == .capturing
+      && previewImage == nil
       && previewTruthState.prefersLiveViewport
       && livePreviewImage != nil
   }

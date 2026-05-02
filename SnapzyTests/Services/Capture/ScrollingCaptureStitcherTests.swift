@@ -248,6 +248,7 @@ final class ScrollingCaptureStitcherTests: XCTestCase {
     XCTAssertEqual(update?.alignmentDebug?.path, .initialFrame)
     XCTAssertEqual(update?.alignmentDebug?.confidence, 1.0)
     XCTAssertFalse(update?.alignmentDebug?.usedVisionEstimate ?? true)
+    XCTAssertEqual(update?.safety, .confirmed)
   }
 
   // MARK: - Merge Direction
@@ -299,4 +300,21 @@ final class ScrollingCaptureStitcherTests: XCTestCase {
     // the cached version from start(), so we just verify the call succeeds.
     XCTAssertNotNil(update)
   }
+
+  func testAppend_mismatchedDimensions_marksUnsafe() {
+    let stitcher = ScrollingCaptureStitcher()
+    guard
+      let image1 = TestImageFactory.solidColor(width: 100, height: 100),
+      let image2 = TestImageFactory.solidColor(width: 120, height: 100)
+    else {
+      XCTFail("Failed to create test images")
+      return
+    }
+
+    _ = stitcher.start(with: image1)
+    let update = stitcher.append(image2, maxOutputHeight: 10000)
+
+    XCTAssertEqual(update?.safety, .unsafe(reason: "alignment-failed"))
+  }
+
 }

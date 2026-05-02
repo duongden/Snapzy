@@ -26,6 +26,7 @@ final class ScrollingCaptureCoordinator {
   private let defaultForcedRefreshScrollPoints: CGFloat = 42
   private let fastForcedRefreshScrollPoints: CGFloat = 28
   private let previewTruthLagToleranceMs = 90
+  private let liveFrameDebugSampleInterval = 30
   private let scrollHitSlop: CGFloat = 32
   private let previewRenderScale: CGFloat = 2
   private let processingQueue = DispatchQueue(
@@ -41,6 +42,7 @@ final class ScrollingCaptureCoordinator {
   private var latestImage: CGImage?
   private var stitcher: ScrollingCaptureStitcher?
   private var liveFrameSource: ScrollingCaptureFrameSource?
+  private let liveFrameRing = ScrollingCaptureFrameRing(capacity: 8)
   private var commitScheduler: ScrollingCaptureCommitScheduler?
   private var sessionMetrics = ScrollingCaptureSessionMetrics()
   private var didFlushSessionMetrics = false
@@ -106,6 +108,7 @@ final class ScrollingCaptureCoordinator {
     self.preparedCaptureContext = nil
     self.prepareCaptureContextTask = nil
     self.liveFrameSource = nil
+    self.liveFrameRing.reset()
     self.commitScheduler = makeCommitScheduler()
     self.livePreviewFrameSequence = 0
     self.lastScheduledCommitSequenceNumber = 0
@@ -178,6 +181,7 @@ final class ScrollingCaptureCoordinator {
     sessionModel = nil
     latestImage = nil
     stitcher = nil
+    liveFrameRing.reset()
     selectedRect = nil
     saveDirectory = nil
     prefetchedContentTask = nil
@@ -417,12 +421,19 @@ final class ScrollingCaptureCoordinator {
           stitchDurationMs: 0,
           totalDurationMs: totalDurationMs
         )
+        logScrollingCaptureRefreshFailure(
+          reason: reason,
+          stage: "mixed-directions",
+          captureDurationMs: 0,
+          stitchDurationMs: 0,
+          totalDurationMs: totalDurationMs
+        )
         updatePreviewTruthState()
         return nil
       }
 
       let captureStartedAt = CFAbsoluteTimeGetCurrent()
-      guard let capturedImage = try await capturePreparedAreaForSession() else {
+      guard let commitFrame = try await captureFrameForCommit() else {
         sessionModel.runtimeState = isFinalizingRefresh ? .finalizing : .paused
         sessionModel.setStatus(
           isFinalizingRefresh
@@ -431,23 +442,33 @@ final class ScrollingCaptureCoordinator {
           guidance: isFinalizingRefresh ? .lockingCurrentCapture : .previewNeedsRecovery
         )
         let totalDurationMs = Self.elapsedMilliseconds(since: refreshStartedAt)
+        let captureDurationMs = Self.elapsedMilliseconds(since: captureStartedAt)
         sessionMetrics.recordRefreshFailure(
           reason: reason,
-          captureDurationMs: Self.elapsedMilliseconds(since: captureStartedAt),
+          captureDurationMs: captureDurationMs,
+          stitchDurationMs: 0,
+          totalDurationMs: totalDurationMs
+        )
+        logScrollingCaptureRefreshFailure(
+          reason: reason,
+          stage: "capture-frame-missing",
+          captureDurationMs: captureDurationMs,
           stitchDurationMs: 0,
           totalDurationMs: totalDurationMs
         )
         updatePreviewTruthState()
         return nil
       }
+      let capturedImage = commitFrame.image
       let captureDurationMs = Self.elapsedMilliseconds(since: captureStartedAt)
       guard generation == sessionGeneration, self.sessionModel != nil else { return nil }
 
       let stitchStartedAt = CFAbsoluteTimeGetCurrent()
+      let shouldRenderMergedImage = !(sessionModel.isUsingLivePreview && sessionModel.livePreviewImage != nil)
       let (update, processedStitcher) = await stitchCapturedImage(
         capturedImage,
         expectedSignedDeltaPixels: expectedSignedDeltaPixels,
-        renderMergedImage: !(sessionModel.isUsingLivePreview && sessionModel.livePreviewImage != nil)
+        renderMergedImage: shouldRenderMergedImage
       )
       let stitchDurationMs = Self.elapsedMilliseconds(since: stitchStartedAt)
       guard generation == sessionGeneration, let sessionModel = self.sessionModel else { return nil }
@@ -470,10 +491,19 @@ final class ScrollingCaptureCoordinator {
           stitchDurationMs: stitchDurationMs,
           totalDurationMs: totalDurationMs
         )
+        logScrollingCaptureRefreshFailure(
+          reason: reason,
+          stage: "stitch-update-missing",
+          captureDurationMs: captureDurationMs,
+          stitchDurationMs: stitchDurationMs,
+          totalDurationMs: totalDurationMs,
+          commitFrame: commitFrame
+        )
         updatePreviewTruthState()
         return nil
       }
 
+      liveFrameRing.markCommitted(sequenceNumber: commitFrame.sequenceNumber)
       let previewPublishStartedAt = CFAbsoluteTimeGetCurrent()
       if let mergedImage = update.mergedImage {
         latestImage = mergedImage
@@ -504,7 +534,19 @@ final class ScrollingCaptureCoordinator {
         previewPublishDurationMs: previewPublishDurationMs,
         totalDurationMs: totalDurationMs,
         outcome: update.outcome,
-        alignmentDebug: update.alignmentDebug
+        alignmentDebug: update.alignmentDebug,
+        safety: update.safety
+      )
+      logScrollingCaptureStitchUpdate(
+        reason: reason,
+        expectedSignedDeltaPixels: expectedSignedDeltaPixels,
+        shouldRenderMergedImage: shouldRenderMergedImage,
+        commitFrame: commitFrame,
+        update: update,
+        captureDurationMs: captureDurationMs,
+        stitchDurationMs: stitchDurationMs,
+        previewPublishDurationMs: previewPublishDurationMs,
+        totalDurationMs: totalDurationMs
       )
 
       if isFinalizingRefresh {
@@ -579,6 +621,14 @@ final class ScrollingCaptureCoordinator {
         captureDurationMs: 0,
         stitchDurationMs: 0,
         totalDurationMs: totalDurationMs
+      )
+      logScrollingCaptureRefreshFailure(
+        reason: reason,
+        stage: "thrown-error",
+        captureDurationMs: 0,
+        stitchDurationMs: 0,
+        totalDurationMs: totalDurationMs,
+        errorDescription: error.localizedDescription
       )
       sessionModel.runtimeState = isFinalizingRefresh ? .finalizing : .paused
       DiagnosticLogger.shared.log(
@@ -684,6 +734,7 @@ final class ScrollingCaptureCoordinator {
     prepareCaptureContextTask = nil
     latestImage = nil
     stitcher = nil
+    liveFrameRing.reset()
     lastAcceptedDeltaPixels = nil
     livePreviewFrameSequence = 0
     lastScheduledCommitSequenceNumber = 0
@@ -776,6 +827,70 @@ final class ScrollingCaptureCoordinator {
     }
   }
 
+  private struct CommitFrame {
+    let image: CGImage
+    let sequenceNumber: Int?
+    let source: ScrollingCaptureCommitFrameSource
+    let frameAgeMs: Int?
+    let isDuplicateFrame: Bool
+  }
+
+  private func captureFrameForCommit() async throws -> CommitFrame? {
+    let streamFrame: ScrollingCaptureFrame?
+    if let lastCommittedSequenceNumber = liveFrameRing.lastCommittedSequenceNumber {
+      streamFrame = liveFrameRing.latestFrame(after: lastCommittedSequenceNumber)
+    } else {
+      streamFrame = liveFrameRing.latest
+    }
+
+    if let streamFrame {
+      let now = ProcessInfo.processInfo.systemUptime
+      let isDuplicate = liveFrameRing.lastCommittedSequenceNumber
+        .map { streamFrame.sequenceNumber <= $0 } ?? false
+      let frameAgeMs = max(0, Int(((now - streamFrame.capturedAt) * 1_000).rounded()))
+      sessionMetrics.recordCommitFrameSelected(
+        source: .stream,
+        frameAgeMs: frameAgeMs,
+        isDuplicateFrame: isDuplicate
+      )
+      let commitFrame = CommitFrame(
+        image: streamFrame.image,
+        sequenceNumber: streamFrame.sequenceNumber,
+        source: .stream,
+        frameAgeMs: frameAgeMs,
+        isDuplicateFrame: isDuplicate
+      )
+      logScrollingCaptureCommitFrameSelected(commitFrame)
+      return commitFrame
+    }
+
+    guard let capturedImage = try await capturePreparedAreaForSession() else {
+      logScrollingCaptureDebug(
+        "commit-frame-missing",
+        context: [
+          "reason": "prepared-capture-returned-nil",
+          "ringFrames": "\(liveFrameRing.frames.count)",
+          "lastCommittedSequence": optionalString(liveFrameRing.lastCommittedSequenceNumber)
+        ]
+      )
+      return nil
+    }
+    sessionMetrics.recordCommitFrameSelected(
+      source: .stillFallback,
+      frameAgeMs: nil,
+      isDuplicateFrame: false
+    )
+    let commitFrame = CommitFrame(
+      image: capturedImage,
+      sequenceNumber: nil,
+      source: .stillFallback,
+      frameAgeMs: nil,
+      isDuplicateFrame: false
+    )
+    logScrollingCaptureCommitFrameSelected(commitFrame)
+    return commitFrame
+  }
+
   private func startLiveRefreshLoopIfNeeded() {
     guard pendingRefreshTask == nil else { return }
 
@@ -837,8 +952,8 @@ final class ScrollingCaptureCoordinator {
 
       try await frameSource.start(
         with: context,
-        frameHandler: { [weak self] cgImage in
-          self?.publishLivePreviewFrame(cgImage)
+        frameHandler: { [weak self] frame in
+          self?.publishLivePreviewFrame(frame)
         },
         failureHandler: { [weak self] errorDescription in
           self?.handleLivePreviewFailure(errorDescription)
@@ -850,11 +965,24 @@ final class ScrollingCaptureCoordinator {
       sessionModel.runtimeState = .streaming
       sessionModel.previewCaption = L10n.ScrollingCapture.captionLivePreviewRunning
       updatePreviewTruthState()
+      logScrollingCaptureDebug(
+        "live-stream-started",
+        context: [
+          "sourceRect": "\(Int(context.sourceRect.width))x\(Int(context.sourceRect.height))",
+          "outputSize": "\(context.outputWidth)x\(context.outputHeight)",
+          "scale": Self.formattedDebugDouble(Double(captureScaleFactor)),
+          "ringFrames": "\(liveFrameRing.frames.count)"
+        ]
+      )
     } catch {
       sessionMetrics.recordLivePreviewStart(success: false)
       sessionMetrics.recordLivePreviewFallbackActivation()
       sessionModel.isUsingLivePreview = false
       updatePreviewTruthState()
+      logScrollingCaptureDebug(
+        "live-stream-fallback",
+        context: ["error": error.localizedDescription]
+      )
       DiagnosticLogger.shared.log(
         .warning,
         .capture,
@@ -867,6 +995,8 @@ final class ScrollingCaptureCoordinator {
   private func stopLivePreviewIfNeeded(clearImage: Bool = true) {
     liveFrameSource?.stop()
     liveFrameSource = nil
+    liveFrameRing.reset()
+    lastLivePreviewPublishedAt = nil
     if clearImage {
       sessionModel?.livePreviewImage = nil
     }
@@ -874,24 +1004,38 @@ final class ScrollingCaptureCoordinator {
     updatePreviewTruthState()
   }
 
-  private func publishLivePreviewFrame(_ cgImage: CGImage) {
+  private func publishLivePreviewFrame(_ frame: ScrollingCaptureFrame) {
     guard let sessionModel, sessionModel.phase == .capturing else { return }
 
     let publishStartedAt = CFAbsoluteTimeGetCurrent()
-    let publishedAt = ProcessInfo.processInfo.systemUptime
-    livePreviewFrameSequence += 1
-    sessionModel.livePreviewImage = cgImage
+    let observedFrame = liveFrameRing.append(frame)
+    livePreviewFrameSequence = observedFrame.sequenceNumber
+    sessionModel.livePreviewImage = observedFrame.image
     sessionModel.isUsingLivePreview = true
     if !(commitScheduler?.isRunning ?? false), sessionModel.runtimeState != .paused {
       sessionModel.runtimeState = .previewing
     }
-    lastLivePreviewPublishedAt = publishedAt
+    lastLivePreviewPublishedAt = observedFrame.capturedAt
     let publishDurationMs = Self.elapsedMilliseconds(since: publishStartedAt)
     sessionMetrics.recordLivePreviewFramePublished(
-      at: publishedAt,
+      at: observedFrame.capturedAt,
       publishDurationMs: publishDurationMs
     )
     updatePreviewTruthState()
+    if shouldLogLiveFrameSample(observedFrame) {
+      logScrollingCaptureDebug(
+        "live-frame-sample",
+        context: [
+          "sequence": "\(observedFrame.sequenceNumber)",
+          "imageSize": imageSizeString(observedFrame.image),
+          "ringFrames": "\(liveFrameRing.frames.count)",
+          "lastCommittedSequence": optionalString(liveFrameRing.lastCommittedSequenceNumber),
+          "publishMs": "\(publishDurationMs)",
+          "previewTruth": previewTruthStateName(sessionModel.previewTruthState),
+          "activePreview": sessionModel.previewImage == nil ? "live" : "stitched"
+        ]
+      )
+    }
   }
 
   private func handleLivePreviewFailure(_ errorDescription: String) {
@@ -1206,10 +1350,15 @@ final class ScrollingCaptureCoordinator {
         }
       } else if sessionModel.isUsingLivePreview, sessionModel.livePreviewImage != nil {
         let hasCommittedTruth = lastCommittedObservationAt != nil || sessionModel.acceptedFrameCount > 0
-        let isLiveAhead = !hasCommittedTruth
-          || pendingCommitCount > 0
-          || previewLagMs > previewTruthLagToleranceMs
-        previewTruthState = isLiveAhead ? .liveAhead : .liveSynced
+        let hasCommittedPreview = sessionModel.previewImage != nil || sessionModel.acceptedFrameCount > 0
+        let hasUncommittedScroll = abs(pendingScrollDistancePoints) > 2 || pendingCommitCount > 0
+
+        if hasCommittedPreview {
+          previewTruthState = hasUncommittedScroll ? .liveAhead : .committedOnly
+        } else {
+          let isLiveAhead = !hasCommittedTruth || previewLagMs > previewTruthLagToleranceMs
+          previewTruthState = isLiveAhead ? .liveAhead : .liveSynced
+        }
       } else if sessionModel.previewImage != nil || sessionModel.acceptedFrameCount > 0 {
         previewTruthState = .committedOnly
       } else {
@@ -1227,11 +1376,134 @@ final class ScrollingCaptureCoordinator {
     }
   }
 
+  private func logScrollingCaptureCommitFrameSelected(_ commitFrame: CommitFrame) {
+    logScrollingCaptureDebug(
+      "commit-frame-selected",
+      context: [
+        "source": commitFrameSourceName(commitFrame.source),
+        "sequence": optionalString(commitFrame.sequenceNumber),
+        "lastCommittedSequence": optionalString(liveFrameRing.lastCommittedSequenceNumber),
+        "ringFrames": "\(liveFrameRing.frames.count)",
+        "frameAgeMs": optionalString(commitFrame.frameAgeMs),
+        "duplicate": String(commitFrame.isDuplicateFrame),
+        "inputSize": imageSizeString(commitFrame.image)
+      ]
+    )
+  }
+
+  private func logScrollingCaptureStitchUpdate(
+    reason: String,
+    expectedSignedDeltaPixels: Int?,
+    shouldRenderMergedImage: Bool,
+    commitFrame: CommitFrame,
+    update: ScrollingCaptureStitchUpdate,
+    captureDurationMs: Int,
+    stitchDurationMs: Int,
+    previewPublishDurationMs: Int,
+    totalDurationMs: Int
+  ) {
+    var context: [String: String] = [
+      "reason": reason,
+      "source": commitFrameSourceName(commitFrame.source),
+      "sequence": optionalString(commitFrame.sequenceNumber),
+      "frameAgeMs": optionalString(commitFrame.frameAgeMs),
+      "duplicate": String(commitFrame.isDuplicateFrame),
+      "inputSize": imageSizeString(commitFrame.image),
+      "expectedDeltaPx": optionalString(expectedSignedDeltaPixels),
+      "outcome": stitchOutcomeName(update.outcome),
+      "safety": stitchSafetyName(update.safety),
+      "acceptedFrames": "\(update.acceptedFrameCount)",
+      "outputHeightPx": "\(update.outputHeight)",
+      "matchFailures": "\(update.matchFailureCount)",
+      "mergeDirection": mergeDirectionName(update.mergeDirection),
+      "likelyBoundary": String(update.likelyReachedBoundary),
+      "captureMs": "\(captureDurationMs)",
+      "stitchMs": "\(stitchDurationMs)",
+      "previewPublishMs": "\(previewPublishDurationMs)",
+      "totalMs": "\(totalDurationMs)",
+      "renderMergedFullImage": String(shouldRenderMergedImage),
+      "ringFrames": "\(liveFrameRing.frames.count)",
+      "lastCommittedSequence": optionalString(liveFrameRing.lastCommittedSequenceNumber)
+    ]
+
+    addOutcomeDetails(update.outcome, to: &context)
+
+    if let alignmentDebug = update.alignmentDebug {
+      context["alignmentPath"] = alignmentDebug.path.rawValue
+      context["confidence"] = Self.formattedDebugDouble(alignmentDebug.confidence)
+      context["pixelScore"] = optionalString(alignmentDebug.pixelScore)
+      context["totalScore"] = optionalString(alignmentDebug.totalScore)
+      context["appendDeltaY"] = optionalString(alignmentDebug.appendDeltaY)
+      context["usedVisionEstimate"] = String(alignmentDebug.usedVisionEstimate)
+      context["visionAgreementCount"] = "\(alignmentDebug.visionAgreementCount)"
+
+      if let expectedSignedDeltaPixels, let appendDeltaY = alignmentDebug.appendDeltaY {
+        context["deltaMagnitudeErrorPx"] = "\(abs(abs(expectedSignedDeltaPixels) - appendDeltaY))"
+      }
+    } else {
+      context["alignmentPath"] = "none"
+    }
+
+    logScrollingCaptureDebug("stitch-update", context: context)
+  }
+
+  private func logScrollingCaptureRefreshFailure(
+    reason: String,
+    stage: String,
+    captureDurationMs: Int,
+    stitchDurationMs: Int,
+    totalDurationMs: Int,
+    commitFrame: CommitFrame? = nil,
+    errorDescription: String? = nil
+  ) {
+    var context: [String: String] = [
+      "reason": reason,
+      "stage": stage,
+      "captureMs": "\(captureDurationMs)",
+      "stitchMs": "\(stitchDurationMs)",
+      "totalMs": "\(totalDurationMs)",
+      "ringFrames": "\(liveFrameRing.frames.count)",
+      "lastCommittedSequence": optionalString(liveFrameRing.lastCommittedSequenceNumber)
+    ]
+
+    if let commitFrame {
+      context["source"] = commitFrameSourceName(commitFrame.source)
+      context["sequence"] = optionalString(commitFrame.sequenceNumber)
+      context["frameAgeMs"] = optionalString(commitFrame.frameAgeMs)
+      context["inputSize"] = imageSizeString(commitFrame.image)
+    }
+
+    if let errorDescription {
+      context["error"] = errorDescription
+    }
+
+    logScrollingCaptureDebug("refresh-failure", context: context)
+  }
+
+  private func logScrollingCaptureDebug(_ event: String, context: [String: String]) {
+    var context = context
+    context["generation"] = "\(sessionGeneration)"
+    DiagnosticLogger.shared.log(
+      .debug,
+      .capture,
+      "ScrollingCaptureDebug \(event)",
+      context: context
+    )
+  }
+
+  private func shouldLogLiveFrameSample(_ frame: ScrollingCaptureFrame) -> Bool {
+    frame.sequenceNumber == 1 || frame.sequenceNumber % liveFrameDebugSampleInterval == 0
+  }
+
   private func flushSessionMetricsIfNeeded(reason: String) {
     guard !didFlushSessionMetrics else { return }
     guard sessionMetrics.hadActivity else { return }
 
     didFlushSessionMetrics = true
+    logScrollingCaptureDebug(
+      "session-summary",
+      context: sessionMetrics.summaryContext(reason: reason)
+    )
     DiagnosticLogger.shared.log(
       .info,
       .capture,
@@ -1242,6 +1514,97 @@ final class ScrollingCaptureCoordinator {
 
   private static func elapsedMilliseconds(since startedAt: CFAbsoluteTime) -> Int {
     Int(((CFAbsoluteTimeGetCurrent() - startedAt) * 1_000).rounded())
+  }
+
+  private func commitFrameSourceName(_ source: ScrollingCaptureCommitFrameSource) -> String {
+    switch source {
+    case .stream:
+      return "stream"
+    case .stillFallback:
+      return "still-fallback"
+    }
+  }
+
+  private func stitchOutcomeName(_ outcome: ScrollingCaptureStitchOutcome) -> String {
+    switch outcome {
+    case .initialized:
+      return "initialized"
+    case .appended:
+      return "appended"
+    case .ignoredNoMovement:
+      return "ignored-no-movement"
+    case .ignoredAlignmentFailed:
+      return "ignored-alignment-failed"
+    case .reachedHeightLimit:
+      return "reached-height-limit"
+    }
+  }
+
+  private func addOutcomeDetails(
+    _ outcome: ScrollingCaptureStitchOutcome,
+    to context: inout [String: String]
+  ) {
+    if case .appended(let deltaY) = outcome {
+      context["outcomeDeltaY"] = "\(deltaY)"
+    }
+  }
+
+  private func stitchSafetyName(_ safety: ScrollingCaptureStitchSafety) -> String {
+    switch safety {
+    case .confirmed:
+      return "confirmed"
+    case .tentative(let reason):
+      return "tentative:\(reason)"
+    case .unsafe(let reason):
+      return "unsafe:\(reason)"
+    }
+  }
+
+  private func mergeDirectionName(_ direction: ScrollingCaptureMergeDirection) -> String {
+    switch direction {
+    case .unresolved:
+      return "unresolved"
+    case .appendFromBottom:
+      return "append-from-bottom"
+    case .appendFromTop:
+      return "append-from-top"
+    }
+  }
+
+  private func previewTruthStateName(_ state: ScrollingCapturePreviewTruthState) -> String {
+    switch state {
+    case .ready:
+      return "ready"
+    case .committedOnly:
+      return "committed-only"
+    case .liveSynced:
+      return "live-synced"
+    case .liveAhead:
+      return "live-ahead"
+    case .pausedRecovery:
+      return "paused-recovery"
+    case .finalizing:
+      return "finalizing"
+    case .saving:
+      return "saving"
+    }
+  }
+
+  private func imageSizeString(_ image: CGImage) -> String {
+    "\(image.width)x\(image.height)"
+  }
+
+  private func optionalString(_ value: Int?) -> String {
+    value.map(String.init) ?? "none"
+  }
+
+  private func optionalString(_ value: Double?) -> String {
+    guard let value else { return "none" }
+    return Self.formattedDebugDouble(value)
+  }
+
+  private static func formattedDebugDouble(_ value: Double) -> String {
+    String(format: "%.3f", value)
   }
 }
 
