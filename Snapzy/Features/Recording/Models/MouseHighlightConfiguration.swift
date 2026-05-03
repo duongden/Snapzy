@@ -47,8 +47,8 @@ struct MouseHighlightConfiguration {
 
   // MARK: - Init from UserDefaults
 
-  init() {
-    let ud = UserDefaults.standard
+  init(defaults: UserDefaults = .standard) {
+    let ud = defaults
 
     self.highlightSize = ud.object(forKey: PreferencesKeys.mouseHighlightSize) as? CGFloat
       ?? Self.defaultHighlightSize

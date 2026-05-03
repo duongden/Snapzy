@@ -19,11 +19,19 @@ final class PostCaptureActionHandler {
 
   static let shared = PostCaptureActionHandler()
 
-  private let preferencesManager = PreferencesManager.shared
-  private let quickAccessManager = QuickAccessManager.shared
-  private let fileAccessManager = SandboxFileAccessManager.shared
+  private let preferences: PreferencesProviding
+  private let quickAccess: QuickAccessManaging
+  private let fileAccess: SandboxFileAccessing
 
-  private init() {}
+  init(
+    preferences: PreferencesProviding = PreferencesManager.shared,
+    quickAccess: QuickAccessManaging = QuickAccessManager.shared,
+    fileAccess: SandboxFileAccessing = SandboxFileAccessManager.shared
+  ) {
+    self.preferences = preferences
+    self.quickAccess = quickAccess
+    self.fileAccess = fileAccess
+  }
 
   // MARK: - Public API
 
@@ -161,7 +169,7 @@ final class PostCaptureActionHandler {
 
   /// Re-run clipboard automation after an in-place edit save succeeds.
   func copyEditedCaptureToClipboardIfEnabled(for captureType: CaptureType, url: URL) {
-    guard preferencesManager.isActionEnabled(.copyFile, for: captureType) else {
+    guard preferences.isActionEnabled(.copyFile, for: captureType) else {
       DiagnosticLogger.shared.log(
         .debug,
         .clipboard,
@@ -186,8 +194,8 @@ final class PostCaptureActionHandler {
   // MARK: - Private
 
   private func executeActions(for captureType: CaptureType, url: URL, skipQuickAccess: Bool = false) async {
-    let fileAccess = fileAccessManager.beginAccessingURL(url)
-    defer { fileAccess.stop() }
+    let scopedAccess = fileAccess.beginAccessingURL(url)
+    defer { scopedAccess.stop() }
 
     // Validate file exists before processing
     guard FileManager.default.fileExists(atPath: url.path) else {
@@ -218,12 +226,12 @@ final class PostCaptureActionHandler {
     )
 
     // Show Quick Access Overlay
-    if !skipQuickAccess && preferencesManager.isActionEnabled(.showQuickAccess, for: captureType) {
+    if !skipQuickAccess && preferences.isActionEnabled(.showQuickAccess, for: captureType) {
       switch captureType {
       case .screenshot:
-        await quickAccessManager.addScreenshot(url: url)
+        await quickAccess.addScreenshot(url: url)
       case .recording:
-        await quickAccessManager.addVideo(url: url)
+        await quickAccess.addVideo(url: url)
       }
       logger.debug("Quick access overlay shown for \(url.lastPathComponent)")
       DiagnosticLogger.shared.log(
@@ -246,7 +254,7 @@ final class PostCaptureActionHandler {
     }
 
     // Copy file to clipboard
-    if preferencesManager.isActionEnabled(.copyFile, for: captureType) {
+    if preferences.isActionEnabled(.copyFile, for: captureType) {
       copyToClipboard(url: url, isVideo: captureType == .recording)
       let label = captureType == .screenshot ? "screenshot" : "recording"
       logger.debug("Clipboard copy executed for \(url.lastPathComponent)")
@@ -259,7 +267,7 @@ final class PostCaptureActionHandler {
     }
 
     // Open Annotate Editor (screenshots only)
-    if captureType == .screenshot && preferencesManager.isActionEnabled(.openAnnotate, for: captureType) {
+    if captureType == .screenshot && preferences.isActionEnabled(.openAnnotate, for: captureType) {
       AnnotateManager.shared.openAnnotation(url: url)
       logger.debug("Annotate editor opened for \(url.lastPathComponent)")
       DiagnosticLogger.shared.log(
@@ -274,8 +282,8 @@ final class PostCaptureActionHandler {
   /// Copy file to clipboard (format-aware image data for screenshots, file URL for videos)
   private func copyToClipboard(url: URL, isVideo: Bool) {
     if isVideo {
-      let fileAccess = fileAccessManager.beginAccessingURL(url)
-      defer { fileAccess.stop() }
+      let scopedAccess = fileAccess.beginAccessingURL(url)
+      defer { scopedAccess.stop() }
       let pasteboard = NSPasteboard.general
       pasteboard.clearContents()
       pasteboard.writeObjects([url as NSURL])

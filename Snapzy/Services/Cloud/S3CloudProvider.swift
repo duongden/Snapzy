@@ -20,8 +20,10 @@ final class S3CloudProvider: CloudProvider {
   private let region: String
   private let endpoint: URL
   private let customDomain: String?
+  private let session: URLSessionProtocol
 
-  init(config: CloudConfiguration, accessKey: String, secretKey: String) {
+  init(config: CloudConfiguration, accessKey: String, secretKey: String, session: URLSessionProtocol = URLSession.shared) {
+    self.session = session
     self.accessKey = accessKey
     self.secretKey = secretKey
     self.bucket = config.bucket
@@ -132,16 +134,17 @@ final class S3CloudProvider: CloudProvider {
       payloadHash: AWSV4Signer.sha256Hex("")
     )
 
-    let (_, response) = try await URLSession.shared.data(for: signedRequest)
+    let (_, response) = try await session.data(for: signedRequest)
 
     guard let httpResponse = response as? HTTPURLResponse else {
       throw CloudError.invalidResponse
     }
 
+    if httpResponse.statusCode == 403 {
+      throw CloudError.invalidCredentials
+    }
+
     guard (200...404).contains(httpResponse.statusCode) else {
-      if httpResponse.statusCode == 403 {
-        throw CloudError.invalidCredentials
-      }
       throw CloudError.uploadFailed(
         statusCode: httpResponse.statusCode,
         message: L10n.CloudOperation.bucketValidationFailed
@@ -166,7 +169,7 @@ final class S3CloudProvider: CloudProvider {
       payloadHash: AWSV4Signer.sha256Hex("")
     )
 
-    let (data, response) = try await URLSession.shared.data(for: signedRequest)
+    let (data, response) = try await session.data(for: signedRequest)
 
     guard let httpResponse = response as? HTTPURLResponse else {
       throw CloudError.invalidResponse
@@ -236,7 +239,7 @@ final class S3CloudProvider: CloudProvider {
       payloadHash: AWSV4Signer.sha256Hex("")
     )
 
-    let (data, response) = try await URLSession.shared.data(for: signedRequest)
+    let (data, response) = try await session.data(for: signedRequest)
 
     guard let httpResponse = response as? HTTPURLResponse else {
       throw CloudError.invalidResponse
@@ -281,6 +284,7 @@ final class S3CloudProvider: CloudProvider {
     let md5Hash = bodyData.md5Base64()
     request.setValue(md5Hash, forHTTPHeaderField: "Content-MD5")
 
+    request.httpBody = bodyData
     let payloadHash = AWSV4Signer.sha256Hex(bodyData)
     let signedRequest = try AWSV4Signer.sign(
       request: request,
@@ -290,7 +294,7 @@ final class S3CloudProvider: CloudProvider {
       payloadHash: payloadHash
     )
 
-    let (data, response) = try await URLSession.shared.upload(for: signedRequest, from: bodyData)
+    let (data, response) = try await session.data(for: signedRequest)
 
     guard let httpResponse = response as? HTTPURLResponse else {
       throw CloudError.invalidResponse
@@ -324,7 +328,7 @@ final class S3CloudProvider: CloudProvider {
       payloadHash: AWSV4Signer.sha256Hex("")
     )
 
-    let (data, response) = try await URLSession.shared.data(for: signedRequest)
+    let (data, response) = try await session.data(for: signedRequest)
 
     guard let httpResponse = response as? HTTPURLResponse else {
       throw CloudError.invalidResponse

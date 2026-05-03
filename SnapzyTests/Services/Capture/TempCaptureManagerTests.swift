@@ -4,11 +4,6 @@
 //
 //  Unit tests for TempCaptureManager file lifecycle management.
 //
-//  NOTE: Tests use the shared TempCaptureManager.shared instance since it's
-//  a @MainActor singleton. For full isolation, DI refactor is needed.
-//  These tests cover: isTempFile, deleteTempFile, makeRecoveredRecordingURL,
-//  and shouldPreserveForHistoryRetention logic.
-//
 
 import XCTest
 @testable import Snapzy
@@ -16,8 +11,21 @@ import XCTest
 @MainActor
 final class TempCaptureManagerTests: XCTestCase {
 
-  private let manager = TempCaptureManager.shared
+  private var fakePreferences: FakePreferencesProvider!
+  private var defaults: UserDefaults!
+  private var manager: TempCaptureManager!
   private var testFiles: [URL] = []
+
+  override func setUp() {
+    super.setUp()
+    fakePreferences = FakePreferencesProvider()
+    defaults = UserDefaultsFactory.make()
+    manager = TempCaptureManager(
+      preferences: fakePreferences,
+      fileAccess: SandboxFileAccessManager.shared,
+      defaults: defaults
+    )
+  }
 
   override func tearDown() async throws {
     // Clean up any test files created in temp directory
@@ -140,7 +148,7 @@ final class TempCaptureManagerTests: XCTestCase {
 
   func testResolveSaveDirectory_autoSaveOn_returnsExportDir() {
     // Ensure auto-save is enabled for screenshots
-    PreferencesManager.shared.setAction(.save, for: .screenshot, enabled: true)
+    fakePreferences.setAction(.save, for: .screenshot, enabled: true)
 
     let exportDir = FileManager.default.temporaryDirectory
       .appendingPathComponent("SnapzyTests_Export_\(UUID().uuidString)")
@@ -155,7 +163,7 @@ final class TempCaptureManagerTests: XCTestCase {
 
   func testResolveSaveDirectory_autoSaveOff_returnsTempDir() {
     // Disable auto-save for screenshots
-    PreferencesManager.shared.setAction(.save, for: .screenshot, enabled: false)
+    fakePreferences.setAction(.save, for: .screenshot, enabled: false)
 
     let exportDir = FileManager.default.temporaryDirectory
       .appendingPathComponent("SnapzyTests_Export_\(UUID().uuidString)")
@@ -166,9 +174,6 @@ final class TempCaptureManagerTests: XCTestCase {
     )
 
     XCTAssertEqual(result, manager.tempCaptureDirectory)
-
-    // Restore
-    PreferencesManager.shared.setAction(.save, for: .screenshot, enabled: true)
   }
 
   // MARK: - tempCaptureDirectory
@@ -202,7 +207,7 @@ final class TempCaptureManagerTests: XCTestCase {
   }
 
   func testRecordingSavePlan_autoSaveOn_finalDirIsExport() throws {
-    PreferencesManager.shared.setAction(.save, for: .recording, enabled: true)
+    fakePreferences.setAction(.save, for: .recording, enabled: true)
 
     let exportDir = FileManager.default.temporaryDirectory
       .appendingPathComponent("SnapzyTests_Export_\(UUID().uuidString)")
@@ -215,7 +220,7 @@ final class TempCaptureManagerTests: XCTestCase {
   }
 
   func testRecordingSavePlan_autoSaveOff_finalDirIsTemp() throws {
-    PreferencesManager.shared.setAction(.save, for: .recording, enabled: false)
+    fakePreferences.setAction(.save, for: .recording, enabled: false)
 
     let exportDir = FileManager.default.temporaryDirectory
       .appendingPathComponent("SnapzyTests_Export_\(UUID().uuidString)")
@@ -224,8 +229,6 @@ final class TempCaptureManagerTests: XCTestCase {
     XCTAssertEqual(plan.finalDirectory, manager.tempCaptureDirectory)
     XCTAssertFalse(plan.autoSaveEnabled)
 
-    // Restore
-    PreferencesManager.shared.setAction(.save, for: .recording, enabled: true)
     try? FileManager.default.removeItem(at: plan.processingDirectory)
   }
 

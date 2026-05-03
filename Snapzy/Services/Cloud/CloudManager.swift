@@ -126,11 +126,17 @@ final class CloudManager: ObservableObject {
   }
 
   /// Apply lifecycle expiration rule using explicit credentials before persistence.
+  /// Skipped entirely when expiration is permanent — no lifecycle API calls needed.
   func applyLifecycleRule(
     config: CloudConfiguration,
     accessKey: String,
     secretKey: String
   ) async throws {
+    guard !config.expireTime.isPermanent else {
+      logger.info("Skipping lifecycle rule — expiration is permanent")
+      return
+    }
+
     let provider = createProvider(config: config, accessKey: accessKey, secretKey: secretKey)
     do {
       if let days = config.expireTime.days {

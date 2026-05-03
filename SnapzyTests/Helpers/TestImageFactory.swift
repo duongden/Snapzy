@@ -93,6 +93,37 @@ enum TestImageFactory {
     return makeCGImage(width: width, height: height, bytesPerRow: bytesPerRow, pixels: pixels)
   }
 
+  /// Create a frame for scrolling-capture tests where each row has a
+  /// deterministic color signature based on its logical content position.
+  /// Two frames with overlapping logical ranges produce pixel-perfect overlap,
+  /// yielding deterministic `appended` outcomes with an exact `deltaY`.
+  static func scrollingFrame(
+    width: Int,
+    height: Int,
+    logicalYOffset: Int = 0
+  ) -> CGImage? {
+    let bytesPerRow = width * 4
+    var pixels = [UInt8](repeating: 0, count: height * bytesPerRow)
+
+    for y in 0..<height {
+      let logicalY = logicalYOffset + y
+      // Deterministic, high-variation row color
+      let r = UInt8(logicalY % 256)
+      let g = UInt8((logicalY * 47) % 256)
+      let b = UInt8((logicalY * 113) % 256)
+
+      for x in 0..<width {
+        let offset = y * bytesPerRow + x * 4
+        pixels[offset] = r
+        pixels[offset + 1] = g
+        pixels[offset + 2] = b
+        pixels[offset + 3] = 255
+      }
+    }
+
+    return makeCGImage(width: width, height: height, bytesPerRow: bytesPerRow, pixels: pixels)
+  }
+
   // MARK: - Private
 
   private static func makeCGImage(

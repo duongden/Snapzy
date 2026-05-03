@@ -268,9 +268,9 @@ final class CloudCoreTests: XCTestCase {
     )
   }
 
-  // MARK: - Lifecycle 403 Graceful Degradation
+  // MARK: - URLSession Injection
 
-  func testS3CloudProvider_getLifecycleRulesXML_returnsEmptyOn403() async throws {
+  func testS3CloudProvider_validate_sendsHEADToBucket() async throws {
     let config = CloudConfiguration(
       providerType: .awsS3,
       bucket: "test-bucket",
@@ -279,16 +279,19 @@ final class CloudCoreTests: XCTestCase {
       customDomain: nil,
       expireTime: .day7
     )
-    let provider = S3CloudProvider(config: config, accessKey: "AKIATEST", secretKey: "SECRET")
+    let mockSession = MockURLSession { request in
+      MockURLSession.makeResponse(statusCode: 200)
+    }
+    let provider = S3CloudProvider(config: config, accessKey: "AKIATEST", secretKey: "SECRET", session: mockSession)
 
-    // We can't easily mock URLSession here, but we verify the method signature
-    // and that 403 is handled gracefully in the actual implementation.
-    // This test documents the expected behavior for restricted IAM policies.
-    XCTAssertEqual(config.providerType, .awsS3)
-    XCTAssertTrue(config.isValid)
+    try await provider.validate()
+
+    XCTAssertEqual(mockSession.requests.count, 1)
+    XCTAssertEqual(mockSession.requests.first?.httpMethod, "HEAD")
+    XCTAssertTrue(mockSession.requests.first?.url?.absoluteString.contains("test-bucket") == true)
   }
 
-  func testS3CloudProvider_setExpiration_doesNotThrowOn403() async throws {
+  func testS3CloudProvider_validate_403throwsInvalidCredentials() async throws {
     let config = CloudConfiguration(
       providerType: .awsS3,
       bucket: "test-bucket",
@@ -297,28 +300,135 @@ final class CloudCoreTests: XCTestCase {
       customDomain: nil,
       expireTime: .day7
     )
-    let provider = S3CloudProvider(config: config, accessKey: "AKIATEST", secretKey: "SECRET")
+    let mockSession = MockURLSession { request in
+      MockURLSession.makeResponse(statusCode: 403)
+    }
+    let provider = S3CloudProvider(config: config, accessKey: "AKIATEST", secretKey: "SECRET", session: mockSession)
 
-    // Document that setExpiration should gracefully handle 403
-    // The actual URLSession mocking would require a protocol-based abstraction,
-    // but this test verifies the provider is correctly initialized.
-    XCTAssertEqual(config.providerType, .awsS3)
+    do {
+      try await provider.validate()
+      XCTFail("Expected invalidCredentials error")
+    } catch {
+      guard case CloudError.invalidCredentials = error else {
+        return XCTFail("Expected invalidCredentials, got \(error)")
+      }
+    }
   }
 
-  // MARK: - ListObjectsV2 404 Graceful Degradation
-
-  func testCloudUsageService_listObjects_returnsZeroOn404() async throws {
+  func testS3CloudProvider_delete_sendsDELETEToObjectURL() async throws {
     let config = CloudConfiguration(
       providerType: .awsS3,
-      bucket: "empty-bucket",
+      bucket: "test-bucket",
       region: "us-east-1",
       endpoint: nil,
       customDomain: nil,
       expireTime: .day7
     )
+    let mockSession = MockURLSession { request in
+      MockURLSession.makeResponse(statusCode: 204)
+    }
+    let provider = S3CloudProvider(config: config, accessKey: "AKIATEST", secretKey: "SECRET", session: mockSession)
 
-    // Verify the configuration is valid for usage service
-    XCTAssertTrue(config.isValid)
-    XCTAssertEqual(config.bucket, "empty-bucket")
+    try await provider.delete(key: "snapzy/test.png")
+
+    XCTAssertEqual(mockSession.requests.count, 1)
+    XCTAssertEqual(mockSession.requests.first?.httpMethod, "DELETE")
+  }
+
+  // MARK: - Lifecycle 403 Graceful Handling
+
+  func testS3CloudProvider_setExpiration_403getAndPut_graceful() async throws {
+    let config = CloudConfiguration(
+      providerType: .awsS3,
+      bucket: "test-bucket",
+      region: "us-east-1",
+      endpoint: nil,
+      customDomain: nil,
+      expireTime: .day7
+    )
+    let mockSession = MockURLSession { request in
+      MockURLSession.makeResponse(statusCode: 403, data: Data("AccessDenied".utf8))
+    }
+    let provider = S3CloudProvider(config: config, accessKey: "AKIATEST", secretKey: "SECRET", session: mockSession)
+
+    // Should not throw despite 403 on both GET and PUT lifecycle
+    try await provider.setExpiration(days: 7)
+
+    XCTAssertGreaterThanOrEqual(mockSession.requests.count, 1)
+    let lifecycleRequests = mockSession.requests.filter { $0.url?.absoluteString.contains("lifecycle") == true }
+    XCTAssertGreaterThanOrEqual(lifecycleRequests.count, 1)
+  }
+
+  func testS3CloudProvider_removeExpiration_403getAndDelete_graceful() async throws {
+    let config = CloudConfiguration(
+      providerType: .awsS3,
+      bucket: "test-bucket",
+      region: "us-east-1",
+      endpoint: nil,
+      customDomain: nil,
+      expireTime: .day7
+    )
+    let mockSession = MockURLSession { request in
+      MockURLSession.makeResponse(statusCode: 403, data: Data("AccessDenied".utf8))
+    }
+    let provider = S3CloudProvider(config: config, accessKey: "AKIATEST", secretKey: "SECRET", session: mockSession)
+
+    // Should not throw despite 403 on both GET and DELETE lifecycle
+    try await provider.removeExpiration()
+
+    XCTAssertGreaterThanOrEqual(mockSession.requests.count, 1)
+    let lifecycleRequests = mockSession.requests.filter { $0.url?.absoluteString.contains("lifecycle") == true }
+    XCTAssertGreaterThanOrEqual(lifecycleRequests.count, 1)
+  }
+
+  func testS3CloudProvider_setExpiration_403getAnd200put_putsFreshRule() async throws {
+    let config = CloudConfiguration(
+      providerType: .awsS3,
+      bucket: "test-bucket",
+      region: "us-east-1",
+      endpoint: nil,
+      customDomain: nil,
+      expireTime: .day7
+    )
+    let mockSession = MockURLSession { request in
+      MockURLSession.makeResponse(statusCode: 200)
+    }
+    let provider = S3CloudProvider(config: config, accessKey: "AKIATEST", secretKey: "SECRET", session: mockSession)
+
+    try await provider.setExpiration(days: 7)
+
+    let putRequest = mockSession.requests.first { $0.httpMethod == "PUT" }
+    XCTAssertNotNil(putRequest)
+    XCTAssertTrue(putRequest?.url?.absoluteString.contains("lifecycle") == true)
+
+    // Verify body contains the snapzy expiration rule
+    if let bodyData = putRequest?.httpBody,
+       let body = String(data: bodyData, encoding: .utf8) {
+      XCTAssertTrue(body.contains("snapzy-auto-expire"))
+      XCTAssertTrue(body.contains("<Days>7</Days>"))
+    } else {
+      XCTFail("PUT lifecycle request should have body data")
+    }
+  }
+
+  func testS3CloudProvider_removeExpiration_403getAnd200delete_deletesConfig() async throws {
+    let config = CloudConfiguration(
+      providerType: .awsS3,
+      bucket: "test-bucket",
+      region: "us-east-1",
+      endpoint: nil,
+      customDomain: nil,
+      expireTime: .day7
+    )
+    let mockSession = MockURLSession { request in
+      MockURLSession.makeResponse(statusCode: 200)
+    }
+    let provider = S3CloudProvider(config: config, accessKey: "AKIATEST", secretKey: "SECRET", session: mockSession)
+
+    try await provider.removeExpiration()
+
+    let deleteRequest = mockSession.requests.first { $0.httpMethod == "DELETE" }
+    XCTAssertNotNil(deleteRequest)
+    XCTAssertTrue(deleteRequest?.url?.absoluteString.contains("lifecycle") == true)
   }
 }

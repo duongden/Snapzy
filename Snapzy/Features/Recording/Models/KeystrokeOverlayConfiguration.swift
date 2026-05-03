@@ -54,8 +54,8 @@ struct KeystrokeOverlayConfiguration {
 
   // MARK: - Init from UserDefaults
 
-  init() {
-    let ud = UserDefaults.standard
+  init(defaults: UserDefaults = .standard) {
+    let ud = defaults
 
     let size = ud.object(forKey: PreferencesKeys.keystrokeFontSize) as? CGFloat
     self.fontSize = size ?? Self.defaultFontSize

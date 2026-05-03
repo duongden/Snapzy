@@ -22,7 +22,7 @@ final class R2CloudProvider: CloudProvider {
   ///   - config: Cloud configuration (endpoint must be R2 account endpoint)
   ///   - accessKey: R2 Access Key ID
   ///   - secretKey: R2 Secret Access Key
-  init(config: CloudConfiguration, accessKey: String, secretKey: String) {
+  init(config: CloudConfiguration, accessKey: String, secretKey: String, session: URLSessionProtocol = URLSession.shared) {
     // Force R2 defaults: region = "auto"
     let r2Config = CloudConfiguration(
       providerType: .cloudflareR2,
@@ -35,7 +35,8 @@ final class R2CloudProvider: CloudProvider {
     self.s3Provider = S3CloudProvider(
       config: r2Config,
       accessKey: accessKey,
-      secretKey: secretKey
+      secretKey: secretKey,
+      session: session
     )
   }
 

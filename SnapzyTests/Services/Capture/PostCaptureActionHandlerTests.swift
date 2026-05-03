@@ -4,13 +4,6 @@
 //
 //  Unit tests for PostCaptureActionHandler routing logic.
 //
-//  NOTE: Full action-dispatch testing requires protocol-based DI refactor
-//  (injecting PreferencesManager, QuickAccessManager, AnnotateManager).
-//  These tests cover the subset of behavior testable without mocks:
-//  - PreferencesManager.isActionEnabled routing
-//  - copyEditedCaptureToClipboardIfEnabled preference gating
-//  - Missing file safety
-//
 
 import XCTest
 @testable import Snapzy
@@ -18,16 +11,15 @@ import XCTest
 @MainActor
 final class PostCaptureActionHandlerTests: XCTestCase {
 
-  private let afterCaptureActionsKey = "afterCaptureActions"
-  private var originalAfterCaptureActions: [AfterCaptureAction: [CaptureType: Bool]]!
-  private var originalAfterCaptureActionsData: Data?
+  private var defaults: UserDefaults!
+  private var preferences: PreferencesManager!
   private var tempDirectory: URL!
   private var tempFileURL: URL!
 
   override func setUp() async throws {
     try await super.setUp()
-    originalAfterCaptureActions = PreferencesManager.shared.afterCaptureActions
-    originalAfterCaptureActionsData = UserDefaults.standard.data(forKey: afterCaptureActionsKey)
+    defaults = UserDefaultsFactory.make()
+    preferences = PreferencesManager(defaults: defaults)
     resetAfterCaptureActionsToDefaults()
 
     tempDirectory = FileManager.default.temporaryDirectory
@@ -46,12 +38,6 @@ final class PostCaptureActionHandlerTests: XCTestCase {
   }
 
   override func tearDown() async throws {
-    PreferencesManager.shared.afterCaptureActions = originalAfterCaptureActions
-    if let originalAfterCaptureActionsData {
-      UserDefaults.standard.set(originalAfterCaptureActionsData, forKey: afterCaptureActionsKey)
-    } else {
-      UserDefaults.standard.removeObject(forKey: afterCaptureActionsKey)
-    }
     if let tempDirectory {
       try? FileManager.default.removeItem(at: tempDirectory)
     }
@@ -59,8 +45,7 @@ final class PostCaptureActionHandlerTests: XCTestCase {
   }
 
   private func resetAfterCaptureActionsToDefaults() {
-    PreferencesManager.shared.afterCaptureActions = Self.defaultAfterCaptureActions()
-    UserDefaults.standard.removeObject(forKey: afterCaptureActionsKey)
+    preferences.afterCaptureActions = Self.defaultAfterCaptureActions()
   }
 
   private static func defaultAfterCaptureActions() -> [AfterCaptureAction: [CaptureType: Bool]] {
@@ -86,76 +71,59 @@ final class PostCaptureActionHandlerTests: XCTestCase {
   // MARK: - PreferencesManager Routing Logic
 
   func testIsActionEnabled_defaultValues() {
-    let prefs = PreferencesManager.shared
-
     // Default: showQuickAccess and copyFile are ON for both types
-    XCTAssertTrue(prefs.isActionEnabled(.showQuickAccess, for: .screenshot))
-    XCTAssertTrue(prefs.isActionEnabled(.showQuickAccess, for: .recording))
-    XCTAssertTrue(prefs.isActionEnabled(.copyFile, for: .screenshot))
-    XCTAssertTrue(prefs.isActionEnabled(.copyFile, for: .recording))
-    XCTAssertTrue(prefs.isActionEnabled(.save, for: .screenshot))
-    XCTAssertTrue(prefs.isActionEnabled(.save, for: .recording))
+    XCTAssertTrue(preferences.isActionEnabled(.showQuickAccess, for: .screenshot))
+    XCTAssertTrue(preferences.isActionEnabled(.showQuickAccess, for: .recording))
+    XCTAssertTrue(preferences.isActionEnabled(.copyFile, for: .screenshot))
+    XCTAssertTrue(preferences.isActionEnabled(.copyFile, for: .recording))
+    XCTAssertTrue(preferences.isActionEnabled(.save, for: .screenshot))
+    XCTAssertTrue(preferences.isActionEnabled(.save, for: .recording))
 
     // Default: openAnnotate and uploadToCloud are OFF
-    XCTAssertFalse(prefs.isActionEnabled(.openAnnotate, for: .screenshot))
-    XCTAssertFalse(prefs.isActionEnabled(.openAnnotate, for: .recording))
-    XCTAssertFalse(prefs.isActionEnabled(.uploadToCloud, for: .screenshot))
-    XCTAssertFalse(prefs.isActionEnabled(.uploadToCloud, for: .recording))
+    XCTAssertFalse(preferences.isActionEnabled(.openAnnotate, for: .screenshot))
+    XCTAssertFalse(preferences.isActionEnabled(.openAnnotate, for: .recording))
+    XCTAssertFalse(preferences.isActionEnabled(.uploadToCloud, for: .screenshot))
+    XCTAssertFalse(preferences.isActionEnabled(.uploadToCloud, for: .recording))
   }
 
   func testSetAndCheckActionEnabled() {
-    let prefs = PreferencesManager.shared
-
     // Disable quickAccess for screenshots
-    prefs.setAction(.showQuickAccess, for: .screenshot, enabled: false)
-    XCTAssertFalse(prefs.isActionEnabled(.showQuickAccess, for: .screenshot))
+    preferences.setAction(.showQuickAccess, for: .screenshot, enabled: false)
+    XCTAssertFalse(preferences.isActionEnabled(.showQuickAccess, for: .screenshot))
 
     // Re-enable
-    prefs.setAction(.showQuickAccess, for: .screenshot, enabled: true)
-    XCTAssertTrue(prefs.isActionEnabled(.showQuickAccess, for: .screenshot))
+    preferences.setAction(.showQuickAccess, for: .screenshot, enabled: true)
+    XCTAssertTrue(preferences.isActionEnabled(.showQuickAccess, for: .screenshot))
   }
 
   // MARK: - Missing File Safety
 
-  func testHandleScreenshotCapture_missingFile_doesNotCrash() async {
-    let handler = PostCaptureActionHandler.shared
+  func testHandleScreenshotCapture_missingFile_doesNotAddToQuickAccess() async {
+    let fakeQuickAccess = FakeQuickAccessManager()
+    let handler = PostCaptureActionHandler(
+      preferences: preferences,
+      quickAccess: fakeQuickAccess,
+      fileAccess: SandboxFileAccessManager.shared
+    )
     let nonexistentURL = tempDirectory.appendingPathComponent("does_not_exist.png")
 
-    // Should complete without crashing
     await handler.handleScreenshotCapture(url: nonexistentURL)
-    // No assertion needed — test passes if no crash
+
+    XCTAssertEqual(fakeQuickAccess.addedScreenshots.count, 0)
   }
 
-  func testHandleVideoCapture_missingFile_doesNotCrash() async {
-    let handler = PostCaptureActionHandler.shared
+  func testHandleVideoCapture_missingFile_doesNotAddToQuickAccess() async {
+    let fakeQuickAccess = FakeQuickAccessManager()
+    let handler = PostCaptureActionHandler(
+      preferences: preferences,
+      quickAccess: fakeQuickAccess,
+      fileAccess: SandboxFileAccessManager.shared
+    )
     let nonexistentURL = tempDirectory.appendingPathComponent("does_not_exist.mov")
 
     await handler.handleVideoCapture(url: nonexistentURL)
-  }
 
-  // MARK: - copyEditedCaptureToClipboardIfEnabled
-
-  func testCopyEditedCapture_whenDisabled_doesNotCopy() {
-    let handler = PostCaptureActionHandler.shared
-
-    // Disable clipboard copy for screenshots
-    PreferencesManager.shared.setAction(.copyFile, for: .screenshot, enabled: false)
-
-    // Should complete without crashing
-    handler.copyEditedCaptureToClipboardIfEnabled(for: .screenshot, url: tempFileURL)
-
-    // Re-enable
-    PreferencesManager.shared.setAction(.copyFile, for: .screenshot, enabled: true)
-  }
-
-  func testCopyEditedCapture_whenEnabled_copiesWithoutCrash() {
-    let handler = PostCaptureActionHandler.shared
-
-    // Ensure clipboard copy is enabled
-    PreferencesManager.shared.setAction(.copyFile, for: .screenshot, enabled: true)
-
-    // Should complete without crashing
-    handler.copyEditedCaptureToClipboardIfEnabled(for: .screenshot, url: tempFileURL)
+    XCTAssertEqual(fakeQuickAccess.addedVideos.count, 0)
   }
 
   // MARK: - AfterCaptureAction Properties

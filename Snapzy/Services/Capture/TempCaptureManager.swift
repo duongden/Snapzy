@@ -24,9 +24,19 @@ final class TempCaptureManager {
 
   static let shared = TempCaptureManager()
 
-  private let preferencesManager = PreferencesManager.shared
-  private let fileAccessManager = SandboxFileAccessManager.shared
-  private let defaults = UserDefaults.standard
+  private let preferences: PreferencesProviding
+  private let fileAccess: SandboxFileAccessing
+  private let defaults: UserDefaults
+
+  init(
+    preferences: PreferencesProviding = PreferencesManager.shared,
+    fileAccess: SandboxFileAccessing = SandboxFileAccessManager.shared,
+    defaults: UserDefaults = .standard
+  ) {
+    self.preferences = preferences
+    self.fileAccess = fileAccess
+    self.defaults = defaults
+  }
 
   /// Temp directory for unsaved captures (Application Support/Snapzy/Captures/).
   /// Uses Application Support instead of /tmp/ so macOS won't purge files
@@ -57,8 +67,6 @@ final class TempCaptureManager {
     return root
   }()
 
-  private init() {}
-
   // MARK: - Public API
 
   /// Resolve save directory based on auto-save toggle state.
@@ -67,7 +75,7 @@ final class TempCaptureManager {
     for captureType: CaptureType,
     exportDirectory: URL
   ) -> URL {
-    let autoSaveEnabled = preferencesManager.isActionEnabled(.save, for: captureType)
+    let autoSaveEnabled = preferences.isActionEnabled(.save, for: captureType)
     let typeLabel = captureType == .screenshot ? "screenshot" : "recording"
 
     if autoSaveEnabled {
@@ -96,7 +104,7 @@ final class TempCaptureManager {
   /// The final video is moved into `finalDirectory` after the writer completes,
   /// while AVAssetWriter and any transient sidecars stay in `processingDirectory`.
   func makeRecordingSavePlan(exportDirectory: URL) throws -> RecordingSavePlan {
-    let autoSaveEnabled = preferencesManager.isActionEnabled(.save, for: .recording)
+    let autoSaveEnabled = preferences.isActionEnabled(.save, for: .recording)
     let finalDirectory = autoSaveEnabled ? exportDirectory : tempCaptureDirectory
     let processingDirectory = try createRecordingProcessingDirectory()
 
@@ -175,8 +183,8 @@ final class TempCaptureManager {
       return nil
     }
 
-    let exportDir = fileAccessManager.resolvedExportDirectoryURL()
-    let exportAccess = fileAccessManager.beginAccessingURL(exportDir)
+    let exportDir = fileAccess.resolvedExportDirectoryURL()
+    let exportAccess = fileAccess.beginAccessingURL(exportDir)
     defer { exportAccess.stop() }
 
     let destinationURL = exportAccess.url.appendingPathComponent(tempURL.lastPathComponent)

@@ -13,21 +13,20 @@ final class CaptureOutputNamingTests: XCTestCase {
   // Fixed date: 2026-01-15 14:30:45.123 UTC
   private let fixedDate = Date(timeIntervalSince1970: 1_768_512_645.123)
   private var tempDirectory: URL!
+  private var defaults: UserDefaults!
 
   override func setUp() {
     super.setUp()
     tempDirectory = FileManager.default.temporaryDirectory
       .appendingPathComponent("SnapzyTests_CaptureOutputNaming_\(UUID().uuidString)", isDirectory: true)
     try? FileManager.default.createDirectory(at: tempDirectory, withIntermediateDirectories: true)
+    defaults = UserDefaultsFactory.make()
   }
 
   override func tearDown() {
     if let tempDirectory {
       try? FileManager.default.removeItem(at: tempDirectory)
     }
-    // Clean up any test UserDefaults keys
-    UserDefaults.standard.removeObject(forKey: PreferencesKeys.screenshotFileNameTemplate)
-    UserDefaults.standard.removeObject(forKey: PreferencesKeys.recordingFileNameTemplate)
     super.tearDown()
   }
 
@@ -37,7 +36,8 @@ final class CaptureOutputNamingTests: XCTestCase {
     let result = CaptureOutputNaming.resolveBaseName(
       customName: "My Screenshot",
       kind: .screenshot,
-      date: fixedDate
+      date: fixedDate,
+      defaults: defaults
     )
     XCTAssertEqual(result, "My Screenshot")
   }
@@ -46,7 +46,8 @@ final class CaptureOutputNamingTests: XCTestCase {
     let result = CaptureOutputNaming.resolveBaseName(
       customName: nil,
       kind: .screenshot,
-      date: fixedDate
+      date: fixedDate,
+      defaults: defaults
     )
     // Default template: "Snapzy_{datetime}_{ms}"
     XCTAssertTrue(result.hasPrefix("Snapzy_"), "Expected template-based name, got: \(result)")
@@ -57,7 +58,8 @@ final class CaptureOutputNamingTests: XCTestCase {
     let result = CaptureOutputNaming.resolveBaseName(
       customName: "",
       kind: .screenshot,
-      date: fixedDate
+      date: fixedDate,
+      defaults: defaults
     )
     XCTAssertTrue(result.hasPrefix("Snapzy_"), "Expected template-based name, got: \(result)")
   }
@@ -66,7 +68,8 @@ final class CaptureOutputNamingTests: XCTestCase {
     let result = CaptureOutputNaming.resolveBaseName(
       customName: "   ",
       kind: .screenshot,
-      date: fixedDate
+      date: fixedDate,
+      defaults: defaults
     )
     XCTAssertTrue(result.hasPrefix("Snapzy_"))
   }
@@ -74,34 +77,37 @@ final class CaptureOutputNamingTests: XCTestCase {
   // MARK: - Template Token Expansion
 
   func testResolveBaseName_typeToken_screenshot() {
-    UserDefaults.standard.set("{type}_capture", forKey: PreferencesKeys.screenshotFileNameTemplate)
+    defaults.set("{type}_capture", forKey: PreferencesKeys.screenshotFileNameTemplate)
 
     let result = CaptureOutputNaming.resolveBaseName(
       customName: nil,
       kind: .screenshot,
-      date: fixedDate
+      date: fixedDate,
+      defaults: defaults
     )
     XCTAssertEqual(result, "screenshot_capture")
   }
 
   func testResolveBaseName_typeToken_recording() {
-    UserDefaults.standard.set("{type}_file", forKey: PreferencesKeys.recordingFileNameTemplate)
+    defaults.set("{type}_file", forKey: PreferencesKeys.recordingFileNameTemplate)
 
     let result = CaptureOutputNaming.resolveBaseName(
       customName: nil,
       kind: .recording,
-      date: fixedDate
+      date: fixedDate,
+      defaults: defaults
     )
     XCTAssertEqual(result, "recording_file")
   }
 
   func testResolveBaseName_datetimeToken() {
-    UserDefaults.standard.set("Snap_{datetime}", forKey: PreferencesKeys.screenshotFileNameTemplate)
+    defaults.set("Snap_{datetime}", forKey: PreferencesKeys.screenshotFileNameTemplate)
 
     let result = CaptureOutputNaming.resolveBaseName(
       customName: nil,
       kind: .screenshot,
-      date: fixedDate
+      date: fixedDate,
+      defaults: defaults
     )
 
     // datetime format: yyyy-MM-dd_HH-mm-ss
@@ -114,12 +120,13 @@ final class CaptureOutputNamingTests: XCTestCase {
   }
 
   func testResolveBaseName_msToken() {
-    UserDefaults.standard.set("file_{ms}", forKey: PreferencesKeys.screenshotFileNameTemplate)
+    defaults.set("file_{ms}", forKey: PreferencesKeys.screenshotFileNameTemplate)
 
     let result = CaptureOutputNaming.resolveBaseName(
       customName: nil,
       kind: .screenshot,
-      date: fixedDate
+      date: fixedDate,
+      defaults: defaults
     )
 
     // ms token should be 3 digits
@@ -131,12 +138,13 @@ final class CaptureOutputNamingTests: XCTestCase {
   }
 
   func testResolveBaseName_timestampToken() {
-    UserDefaults.standard.set("ts_{timestamp}", forKey: PreferencesKeys.screenshotFileNameTemplate)
+    defaults.set("ts_{timestamp}", forKey: PreferencesKeys.screenshotFileNameTemplate)
 
     let result = CaptureOutputNaming.resolveBaseName(
       customName: nil,
       kind: .screenshot,
-      date: fixedDate
+      date: fixedDate,
+      defaults: defaults
     )
 
     let expected = "ts_\(Int(fixedDate.timeIntervalSince1970))"
@@ -149,7 +157,8 @@ final class CaptureOutputNamingTests: XCTestCase {
     let result = CaptureOutputNaming.resolveBaseName(
       customName: "file/with\\bad:chars?test",
       kind: .screenshot,
-      date: fixedDate
+      date: fixedDate,
+      defaults: defaults
     )
     XCTAssertFalse(result.contains("/"))
     XCTAssertFalse(result.contains("\\"))
@@ -161,7 +170,8 @@ final class CaptureOutputNamingTests: XCTestCase {
     let result = CaptureOutputNaming.resolveBaseName(
       customName: "file___name",
       kind: .screenshot,
-      date: fixedDate
+      date: fixedDate,
+      defaults: defaults
     )
     XCTAssertFalse(result.contains("___"))
     XCTAssertTrue(result.contains("_"))
@@ -171,7 +181,8 @@ final class CaptureOutputNamingTests: XCTestCase {
     let result = CaptureOutputNaming.resolveBaseName(
       customName: "myfile.png",
       kind: .screenshot,
-      date: fixedDate
+      date: fixedDate,
+      defaults: defaults
     )
     XCTAssertEqual(result, "myfile")
   }
@@ -180,7 +191,8 @@ final class CaptureOutputNamingTests: XCTestCase {
     let result = CaptureOutputNaming.resolveBaseName(
       customName: "capture.jpeg",
       kind: .screenshot,
-      date: fixedDate
+      date: fixedDate,
+      defaults: defaults
     )
     XCTAssertEqual(result, "capture")
   }
@@ -189,7 +201,8 @@ final class CaptureOutputNamingTests: XCTestCase {
     let result = CaptureOutputNaming.resolveBaseName(
       customName: "document.pdf",
       kind: .screenshot,
-      date: fixedDate
+      date: fixedDate,
+      defaults: defaults
     )
     XCTAssertEqual(result, "document.pdf")
   }
@@ -198,7 +211,8 @@ final class CaptureOutputNamingTests: XCTestCase {
     let result = CaptureOutputNaming.resolveBaseName(
       customName: "  .file. ",
       kind: .screenshot,
-      date: fixedDate
+      date: fixedDate,
+      defaults: defaults
     )
     XCTAssertEqual(result, "file")
   }
@@ -243,30 +257,30 @@ final class CaptureOutputNamingTests: XCTestCase {
   // MARK: - resolvedTemplate
 
   func testResolvedTemplate_withSavedValue_returnsSavedValue() {
-    UserDefaults.standard.set("Custom_{date}", forKey: PreferencesKeys.screenshotFileNameTemplate)
+    defaults.set("Custom_{date}", forKey: PreferencesKeys.screenshotFileNameTemplate)
 
-    let result = CaptureOutputNaming.resolvedTemplate(for: .screenshot)
+    let result = CaptureOutputNaming.resolvedTemplate(for: .screenshot, defaults: defaults)
     XCTAssertEqual(result, "Custom_{date}")
   }
 
   func testResolvedTemplate_withEmptyValue_returnsDefault() {
-    UserDefaults.standard.set("", forKey: PreferencesKeys.screenshotFileNameTemplate)
+    defaults.set("", forKey: PreferencesKeys.screenshotFileNameTemplate)
 
-    let result = CaptureOutputNaming.resolvedTemplate(for: .screenshot)
+    let result = CaptureOutputNaming.resolvedTemplate(for: .screenshot, defaults: defaults)
     XCTAssertEqual(result, CaptureOutputKind.screenshot.defaultTemplate)
   }
 
   func testResolvedTemplate_withMissingKey_returnsDefault() {
-    UserDefaults.standard.removeObject(forKey: PreferencesKeys.screenshotFileNameTemplate)
+    defaults.removeObject(forKey: PreferencesKeys.screenshotFileNameTemplate)
 
-    let result = CaptureOutputNaming.resolvedTemplate(for: .screenshot)
+    let result = CaptureOutputNaming.resolvedTemplate(for: .screenshot, defaults: defaults)
     XCTAssertEqual(result, CaptureOutputKind.screenshot.defaultTemplate)
   }
 
   func testResolvedTemplate_recording_returnsRecordingDefault() {
-    UserDefaults.standard.removeObject(forKey: PreferencesKeys.recordingFileNameTemplate)
+    defaults.removeObject(forKey: PreferencesKeys.recordingFileNameTemplate)
 
-    let result = CaptureOutputNaming.resolvedTemplate(for: .recording)
+    let result = CaptureOutputNaming.resolvedTemplate(for: .recording, defaults: defaults)
     XCTAssertEqual(result, CaptureOutputKind.recording.defaultTemplate)
   }
 
@@ -286,12 +300,13 @@ final class CaptureOutputNamingTests: XCTestCase {
 
   func testResolveBaseName_invalidTemplate_usesFallbackName() {
     // Template that resolves to empty after sanitization
-    UserDefaults.standard.set("...", forKey: PreferencesKeys.screenshotFileNameTemplate)
+    defaults.set("...", forKey: PreferencesKeys.screenshotFileNameTemplate)
 
     let result = CaptureOutputNaming.resolveBaseName(
       customName: nil,
       kind: .screenshot,
-      date: fixedDate
+      date: fixedDate,
+      defaults: defaults
     )
 
     // Fallback format: "Snapzy_{yyyy-MM-dd_HH-mm-ss-SSS}"

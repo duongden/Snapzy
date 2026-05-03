@@ -17,7 +17,7 @@
   },
   "testTargets" : [
     {
-      "parallelizable" : false,
+      "parallelizable" : true,
       "target" : {
         "containerPath" : "container:Snapzy.xcodeproj",
         "identifier" : "D00100072F9F000000000007",

@@ -101,6 +101,9 @@ enum CaptureOverlayShortcutKind: Hashable {
 }
 
 enum CaptureOverlayShortcutSettings {
+  /// Test hook: override to inject isolated UserDefaults in unit tests.
+  static var defaults: UserDefaults = .standard
+
   static let defaultApplicationCaptureShortcut = CaptureOverlayShortcut(
     keyCode: UInt32(kVK_ANSI_A),
     modifiers: 0
@@ -153,7 +156,7 @@ enum CaptureOverlayShortcutSettings {
   }
 
   static func resetApplicationCaptureShortcut() {
-    UserDefaults.standard.removeObject(forKey: PreferencesKeys.areaApplicationCaptureShortcut)
+    Self.defaults.removeObject(forKey: PreferencesKeys.areaApplicationCaptureShortcut)
   }
 
   static func setRecordingApplicationCaptureShortcut(_ shortcut: CaptureOverlayShortcut) {
@@ -161,7 +164,7 @@ enum CaptureOverlayShortcutSettings {
   }
 
   static func resetRecordingApplicationCaptureShortcut() {
-    UserDefaults.standard.removeObject(forKey: PreferencesKeys.recordingApplicationCaptureShortcut)
+    Self.defaults.removeObject(forKey: PreferencesKeys.recordingApplicationCaptureShortcut)
   }
 
   static func matchesApplicationCaptureShortcut(_ event: NSEvent) -> Bool {
@@ -186,7 +189,7 @@ enum CaptureOverlayShortcutSettings {
     defaultValue: CaptureOverlayShortcut
   ) -> CaptureOverlayShortcut {
     let decoder = JSONDecoder()
-    if let data = UserDefaults.standard.data(forKey: key),
+    if let data = Self.defaults.data(forKey: key),
        let shortcut = try? decoder.decode(CaptureOverlayShortcut.self, from: data) {
       return shortcut
     }
@@ -196,7 +199,7 @@ enum CaptureOverlayShortcutSettings {
 
   private static func setShortcut(_ shortcut: CaptureOverlayShortcut, forKey key: String) {
     guard let data = try? JSONEncoder().encode(shortcut) else { return }
-    UserDefaults.standard.set(data, forKey: key)
+    Self.defaults.set(data, forKey: key)
   }
 
   private static func effectiveDisplay(
@@ -212,7 +215,7 @@ enum CaptureOverlayShortcutSettings {
   }
 
   private static func legacyShortcut(forKey key: String) -> CaptureOverlayShortcut? {
-    guard let character = normalizedLegacyShortcut(from: UserDefaults.standard.string(forKey: key)),
+    guard let character = normalizedLegacyShortcut(from: Self.defaults.string(forKey: key)),
           let keyCode = legacyKeyCode(for: character) else {
       return nil
     }

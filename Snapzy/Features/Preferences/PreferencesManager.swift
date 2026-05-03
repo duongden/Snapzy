@@ -55,8 +55,10 @@ final class PreferencesManager: ObservableObject {
   // MARK: - Private
 
   private let afterCaptureActionsKey = "afterCaptureActions"
+  private let defaults: UserDefaults
 
-  private init() {
+  init(defaults: UserDefaults = .standard) {
+    self.defaults = defaults
     loadAfterCaptureActions()
   }
 
@@ -115,7 +117,7 @@ final class PreferencesManager: ObservableObject {
 
     do {
       let data = try JSONEncoder().encode(serializable)
-      UserDefaults.standard.set(data, forKey: afterCaptureActionsKey)
+      defaults.set(data, forKey: afterCaptureActionsKey)
     } catch {
       DiagnosticLogger.shared.logError(
         .preferences,
@@ -127,7 +129,7 @@ final class PreferencesManager: ObservableObject {
   }
 
   private func loadAfterCaptureActions() {
-    guard let data = UserDefaults.standard.data(forKey: afterCaptureActionsKey) else {
+    guard let data = defaults.data(forKey: afterCaptureActionsKey) else {
       initializeDefaults()
       return
     }

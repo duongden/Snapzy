@@ -151,27 +151,21 @@ final class ScrollingCaptureStitcherTests: XCTestCase {
     XCTAssertNil(stitcher.previewImage(maxPixelWidth: 200, maxPixelHeight: 200))
   }
 
-  // MARK: - append shifted gradient (integration)
+  // MARK: - append with shifted content (integration)
 
-  func testAppend_shiftedGradient_appendsOrIgnores() {
+  func testAppend_shiftedContent_appendsOrFailsAlignment() {
     let stitcher = ScrollingCaptureStitcher()
     let width = 200
     let height = 100
 
-    guard let image1 = TestImageFactory.verticalGradient(
-      width: width, height: height,
-      topGray: 0, bottomGray: 200
-    ) else {
-      XCTFail("Failed to create gradient image")
+    // Use distinct row signatures so there is measurable inter-frame change.
+    guard let image1 = TestImageFactory.scrollingFrame(width: width, height: height, logicalYOffset: 0) else {
+      XCTFail("Failed to create frame 1")
       return
     }
 
-    guard let image2 = TestImageFactory.shiftedGradient(
-      width: width, height: height,
-      topGray: 0, bottomGray: 200,
-      shiftPixels: 20
-    ) else {
-      XCTFail("Failed to create shifted gradient image")
+    guard let image2 = TestImageFactory.scrollingFrame(width: width, height: height, logicalYOffset: 20) else {
+      XCTFail("Failed to create frame 2")
       return
     }
 
@@ -180,20 +174,20 @@ final class ScrollingCaptureStitcherTests: XCTestCase {
 
     XCTAssertNotNil(update)
 
-    // The outcome depends on whether the stitcher can find an alignment match.
-    // With a simple gradient shift the fast-guided path should find it, but
-    // we accept both `appended` and `ignoredAlignmentFailed` since pixel
-    // matching depends on internal thresholds.
+    // Synthetic images may not align reliably through the vision-assisted matcher,
+    // so we accept either a successful append or an alignment failure,
+    // but never "no movement" because the frames are objectively different.
     switch update?.outcome {
     case .appended(let deltaY):
       XCTAssertGreaterThan(deltaY, 0, "Delta should be positive for downward scroll")
       XCTAssertGreaterThan(stitcher.outputHeight, height, "Output height should grow after append")
       XCTAssertEqual(stitcher.acceptedFrameCount, 2)
-    case .ignoredAlignmentFailed, .ignoredNoMovement:
-      // Also acceptable for synthetic test images
+    case .ignoredAlignmentFailed:
       XCTAssertEqual(stitcher.acceptedFrameCount, 1)
+    case .ignoredNoMovement:
+      XCTFail("Expected movement between shifted frames, got ignoredNoMovement")
     default:
-      break
+      XCTFail("Unexpected outcome: \(String(describing: update?.outcome))")
     }
   }
 

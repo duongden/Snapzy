@@ -12,89 +12,49 @@ import XCTest
 @MainActor
 final class RecordingConfigurationTests: XCTestCase {
 
-  private let preferenceKeys = [
-    PreferencesKeys.recordingFormat,
-    PreferencesKeys.recordingQuality,
-    PreferencesKeys.recordingCaptureAudio,
-    PreferencesKeys.recordingCaptureMicrophone,
-    PreferencesKeys.recordingOutputMode,
-    PreferencesKeys.recordingHighlightClicks,
-    PreferencesKeys.recordingShowKeystrokes,
-    PreferencesKeys.mouseHighlightSize,
-    PreferencesKeys.mouseHighlightAnimationDuration,
-    PreferencesKeys.mouseHighlightColor,
-    PreferencesKeys.mouseHighlightOpacity,
-    PreferencesKeys.mouseHighlightRippleCount,
-    PreferencesKeys.keystrokeFontSize,
-    PreferencesKeys.keystrokePosition,
-    PreferencesKeys.keystrokeDisplayDuration,
-  ]
-
-  private var originalValues: [String: Any] = [:]
-  private var originallyMissing = Set<String>()
+  private var defaults: UserDefaults!
 
   override func setUp() async throws {
     try await super.setUp()
-    originalValues.removeAll()
-    originallyMissing.removeAll()
-
-    for key in preferenceKeys {
-      if let value = UserDefaults.standard.object(forKey: key) {
-        originalValues[key] = value
-      } else {
-        originallyMissing.insert(key)
-      }
-      UserDefaults.standard.removeObject(forKey: key)
-    }
-  }
-
-  override func tearDown() async throws {
-    for key in preferenceKeys {
-      if originallyMissing.contains(key) {
-        UserDefaults.standard.removeObject(forKey: key)
-      } else if let value = originalValues[key] {
-        UserDefaults.standard.set(value, forKey: key)
-      }
-    }
-    try await super.tearDown()
+    defaults = UserDefaultsFactory.make()
   }
 
   func testRecordingToolbarPreferences_defaults() {
-    XCTAssertEqual(RecordingToolbarPreferences.selectedFormat(), .mov)
-    XCTAssertEqual(RecordingToolbarPreferences.selectedQuality(), .high)
-    XCTAssertTrue(RecordingToolbarPreferences.captureAudio())
-    XCTAssertFalse(RecordingToolbarPreferences.captureMicrophone())
-    XCTAssertEqual(RecordingToolbarPreferences.outputMode(), .video)
-    XCTAssertFalse(RecordingToolbarPreferences.highlightClicks())
-    XCTAssertFalse(RecordingToolbarPreferences.showKeystrokes())
+    XCTAssertEqual(RecordingToolbarPreferences.selectedFormat(defaults: defaults), .mov)
+    XCTAssertEqual(RecordingToolbarPreferences.selectedQuality(defaults: defaults), .high)
+    XCTAssertTrue(RecordingToolbarPreferences.captureAudio(defaults: defaults))
+    XCTAssertFalse(RecordingToolbarPreferences.captureMicrophone(defaults: defaults))
+    XCTAssertEqual(RecordingToolbarPreferences.outputMode(defaults: defaults), .video)
+    XCTAssertFalse(RecordingToolbarPreferences.highlightClicks(defaults: defaults))
+    XCTAssertFalse(RecordingToolbarPreferences.showKeystrokes(defaults: defaults))
   }
 
   func testRecordingToolbarPreferences_usePersistedRecordingOptions() {
-    UserDefaults.standard.set(VideoFormat.mp4.rawValue, forKey: PreferencesKeys.recordingFormat)
-    UserDefaults.standard.set(VideoQuality.low.rawValue, forKey: PreferencesKeys.recordingQuality)
-    UserDefaults.standard.set(false, forKey: PreferencesKeys.recordingCaptureAudio)
-    UserDefaults.standard.set(true, forKey: PreferencesKeys.recordingCaptureMicrophone)
-    UserDefaults.standard.set(RecordingOutputMode.gif.rawValue, forKey: PreferencesKeys.recordingOutputMode)
-    UserDefaults.standard.set(true, forKey: PreferencesKeys.recordingHighlightClicks)
-    UserDefaults.standard.set(true, forKey: PreferencesKeys.recordingShowKeystrokes)
+    defaults.set(VideoFormat.mp4.rawValue, forKey: PreferencesKeys.recordingFormat)
+    defaults.set(VideoQuality.low.rawValue, forKey: PreferencesKeys.recordingQuality)
+    defaults.set(false, forKey: PreferencesKeys.recordingCaptureAudio)
+    defaults.set(true, forKey: PreferencesKeys.recordingCaptureMicrophone)
+    defaults.set(RecordingOutputMode.gif.rawValue, forKey: PreferencesKeys.recordingOutputMode)
+    defaults.set(true, forKey: PreferencesKeys.recordingHighlightClicks)
+    defaults.set(true, forKey: PreferencesKeys.recordingShowKeystrokes)
 
-    XCTAssertEqual(RecordingToolbarPreferences.selectedFormat(), .mp4)
-    XCTAssertEqual(RecordingToolbarPreferences.selectedQuality(), .low)
-    XCTAssertFalse(RecordingToolbarPreferences.captureAudio())
-    XCTAssertTrue(RecordingToolbarPreferences.captureMicrophone())
-    XCTAssertEqual(RecordingToolbarPreferences.outputMode(), .gif)
-    XCTAssertTrue(RecordingToolbarPreferences.highlightClicks())
-    XCTAssertTrue(RecordingToolbarPreferences.showKeystrokes())
+    XCTAssertEqual(RecordingToolbarPreferences.selectedFormat(defaults: defaults), .mp4)
+    XCTAssertEqual(RecordingToolbarPreferences.selectedQuality(defaults: defaults), .low)
+    XCTAssertFalse(RecordingToolbarPreferences.captureAudio(defaults: defaults))
+    XCTAssertTrue(RecordingToolbarPreferences.captureMicrophone(defaults: defaults))
+    XCTAssertEqual(RecordingToolbarPreferences.outputMode(defaults: defaults), .gif)
+    XCTAssertTrue(RecordingToolbarPreferences.highlightClicks(defaults: defaults))
+    XCTAssertTrue(RecordingToolbarPreferences.showKeystrokes(defaults: defaults))
   }
 
   func testRecordingToolbarPreferences_invalidRawValuesFallBackToSafeDefaults() {
-    UserDefaults.standard.set("avi", forKey: PreferencesKeys.recordingFormat)
-    UserDefaults.standard.set("ultra", forKey: PreferencesKeys.recordingQuality)
-    UserDefaults.standard.set("cinematic", forKey: PreferencesKeys.recordingOutputMode)
+    defaults.set("avi", forKey: PreferencesKeys.recordingFormat)
+    defaults.set("ultra", forKey: PreferencesKeys.recordingQuality)
+    defaults.set("cinematic", forKey: PreferencesKeys.recordingOutputMode)
 
-    XCTAssertEqual(RecordingToolbarPreferences.selectedFormat(), .mov)
-    XCTAssertEqual(RecordingToolbarPreferences.selectedQuality(), .high)
-    XCTAssertEqual(RecordingToolbarPreferences.outputMode(), .video)
+    XCTAssertEqual(RecordingToolbarPreferences.selectedFormat(defaults: defaults), .mov)
+    XCTAssertEqual(RecordingToolbarPreferences.selectedQuality(defaults: defaults), .high)
+    XCTAssertEqual(RecordingToolbarPreferences.outputMode(defaults: defaults), .video)
   }
 
   func testRecordingMouseTrackerSamplesPerSecond_clampsToSupportedRange() {
@@ -105,7 +65,7 @@ final class RecordingConfigurationTests: XCTestCase {
   }
 
   func testMouseHighlightConfiguration_defaults() {
-    let config = MouseHighlightConfiguration()
+    let config = MouseHighlightConfiguration(defaults: defaults)
 
     XCTAssertEqual(config.highlightSize, MouseHighlightConfiguration.defaultHighlightSize)
     XCTAssertEqual(config.holdCircleSize, MouseHighlightConfiguration.defaultHoldCircleSize)
@@ -122,13 +82,13 @@ final class RecordingConfigurationTests: XCTestCase {
       withRootObject: color,
       requiringSecureCoding: true
     )
-    UserDefaults.standard.set(CGFloat(100), forKey: PreferencesKeys.mouseHighlightSize)
-    UserDefaults.standard.set(1.2, forKey: PreferencesKeys.mouseHighlightAnimationDuration)
-    UserDefaults.standard.set(colorData, forKey: PreferencesKeys.mouseHighlightColor)
-    UserDefaults.standard.set(0.8, forKey: PreferencesKeys.mouseHighlightOpacity)
-    UserDefaults.standard.set(5, forKey: PreferencesKeys.mouseHighlightRippleCount)
+    defaults.set(CGFloat(100), forKey: PreferencesKeys.mouseHighlightSize)
+    defaults.set(1.2, forKey: PreferencesKeys.mouseHighlightAnimationDuration)
+    defaults.set(colorData, forKey: PreferencesKeys.mouseHighlightColor)
+    defaults.set(0.8, forKey: PreferencesKeys.mouseHighlightOpacity)
+    defaults.set(5, forKey: PreferencesKeys.mouseHighlightRippleCount)
 
-    let config = MouseHighlightConfiguration()
+    let config = MouseHighlightConfiguration(defaults: defaults)
 
     XCTAssertEqual(config.highlightSize, 100)
     XCTAssertEqual(config.holdCircleSize, 72)
@@ -139,15 +99,15 @@ final class RecordingConfigurationTests: XCTestCase {
   }
 
   func testMouseHighlightConfiguration_nonPositiveRippleCountFallsBackToDefault() {
-    UserDefaults.standard.set(0, forKey: PreferencesKeys.mouseHighlightRippleCount)
+    defaults.set(0, forKey: PreferencesKeys.mouseHighlightRippleCount)
 
-    let config = MouseHighlightConfiguration()
+    let config = MouseHighlightConfiguration(defaults: defaults)
 
     XCTAssertEqual(config.rippleCount, MouseHighlightConfiguration.defaultRippleCount)
   }
 
   func testKeystrokeOverlayConfiguration_defaults() {
-    let config = KeystrokeOverlayConfiguration()
+    let config = KeystrokeOverlayConfiguration(defaults: defaults)
 
     XCTAssertEqual(config.fontSize, KeystrokeOverlayConfiguration.defaultFontSize)
     XCTAssertEqual(config.position, KeystrokeOverlayConfiguration.defaultPosition)
@@ -156,11 +116,11 @@ final class RecordingConfigurationTests: XCTestCase {
   }
 
   func testKeystrokeOverlayConfiguration_usesPersistedValues() {
-    UserDefaults.standard.set(CGFloat(22), forKey: PreferencesKeys.keystrokeFontSize)
-    UserDefaults.standard.set(KeystrokeOverlayPosition.topRight.rawValue, forKey: PreferencesKeys.keystrokePosition)
-    UserDefaults.standard.set(2.5, forKey: PreferencesKeys.keystrokeDisplayDuration)
+    defaults.set(CGFloat(22), forKey: PreferencesKeys.keystrokeFontSize)
+    defaults.set(KeystrokeOverlayPosition.topRight.rawValue, forKey: PreferencesKeys.keystrokePosition)
+    defaults.set(2.5, forKey: PreferencesKeys.keystrokeDisplayDuration)
 
-    let config = KeystrokeOverlayConfiguration()
+    let config = KeystrokeOverlayConfiguration(defaults: defaults)
 
     XCTAssertEqual(config.fontSize, 22)
     XCTAssertEqual(config.position, .topRight)
@@ -168,9 +128,9 @@ final class RecordingConfigurationTests: XCTestCase {
   }
 
   func testKeystrokeOverlayConfiguration_invalidPositionFallsBackToDefault() {
-    UserDefaults.standard.set("middle", forKey: PreferencesKeys.keystrokePosition)
+    defaults.set("middle", forKey: PreferencesKeys.keystrokePosition)
 
-    let config = KeystrokeOverlayConfiguration()
+    let config = KeystrokeOverlayConfiguration(defaults: defaults)
 
     XCTAssertEqual(config.position, KeystrokeOverlayConfiguration.defaultPosition)
   }

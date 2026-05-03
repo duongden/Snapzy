@@ -12,10 +12,16 @@ import XCTest
 
 final class CaptureOverlayShortcutSettingsTests: XCTestCase {
 
+  private var defaults: UserDefaults!
+
+  override func setUp() {
+    super.setUp()
+    defaults = UserDefaultsFactory.make()
+    CaptureOverlayShortcutSettings.defaults = defaults
+  }
+
   override func tearDown() {
-    // Clean up test keys
-    UserDefaults.standard.removeObject(forKey: PreferencesKeys.areaApplicationCaptureShortcut)
-    UserDefaults.standard.removeObject(forKey: PreferencesKeys.recordingApplicationCaptureShortcut)
+    CaptureOverlayShortcutSettings.defaults = .standard
     super.tearDown()
   }
 
@@ -165,7 +171,7 @@ final class CaptureOverlayShortcutSettingsTests: XCTestCase {
 
   func testLegacyStringMigration_singleLetter_migratesCorrectly() {
     // Simulate legacy data: plain string stored in UserDefaults
-    UserDefaults.standard.set("b", forKey: PreferencesKeys.areaApplicationCaptureShortcut)
+    defaults.set("b", forKey: PreferencesKeys.areaApplicationCaptureShortcut)
 
     let shortcut = CaptureOverlayShortcutSettings.applicationCaptureShortcut
     XCTAssertEqual(shortcut.keyCode, UInt32(kVK_ANSI_B))
@@ -173,7 +179,7 @@ final class CaptureOverlayShortcutSettingsTests: XCTestCase {
   }
 
   func testLegacyStringMigration_uppercaseLetter_migratesCorrectly() {
-    UserDefaults.standard.set("C", forKey: PreferencesKeys.areaApplicationCaptureShortcut)
+    defaults.set("C", forKey: PreferencesKeys.areaApplicationCaptureShortcut)
 
     let shortcut = CaptureOverlayShortcutSettings.applicationCaptureShortcut
     XCTAssertEqual(shortcut.keyCode, UInt32(kVK_ANSI_C))
@@ -182,7 +188,7 @@ final class CaptureOverlayShortcutSettingsTests: XCTestCase {
 
   func testLegacyStringMigration_invalidValue_returnsDefault() {
     // Non-letter string should fall back to default
-    UserDefaults.standard.set("123", forKey: PreferencesKeys.areaApplicationCaptureShortcut)
+    defaults.set("123", forKey: PreferencesKeys.areaApplicationCaptureShortcut)
 
     let shortcut = CaptureOverlayShortcutSettings.applicationCaptureShortcut
     XCTAssertEqual(shortcut.keyCode, UInt32(kVK_ANSI_A)) // default
@@ -190,7 +196,7 @@ final class CaptureOverlayShortcutSettingsTests: XCTestCase {
   }
 
   func testLegacyStringMigration_whitespace_returnsDefault() {
-    UserDefaults.standard.set("  ", forKey: PreferencesKeys.areaApplicationCaptureShortcut)
+    defaults.set("  ", forKey: PreferencesKeys.areaApplicationCaptureShortcut)
 
     let shortcut = CaptureOverlayShortcutSettings.applicationCaptureShortcut
     XCTAssertEqual(shortcut.keyCode, UInt32(kVK_ANSI_A))

@@ -46,7 +46,8 @@ enum CaptureOutputNaming {
   static func resolveBaseName(
     customName: String?,
     kind: CaptureOutputKind,
-    date: Date = Date()
+    date: Date = Date(),
+    defaults: UserDefaults = .standard
   ) -> String {
     if let customName {
       let sanitizedCustomName = sanitizeBaseName(customName)
@@ -55,7 +56,7 @@ enum CaptureOutputNaming {
       }
     }
 
-    let template = resolvedTemplate(for: kind)
+    let template = resolvedTemplate(for: kind, defaults: defaults)
     let parsed = parseTemplate(template, kind: kind, date: date)
     let sanitizedParsed = sanitizeBaseName(parsed)
     if !sanitizedParsed.isEmpty {
@@ -65,8 +66,8 @@ enum CaptureOutputNaming {
     return fallbackName(for: kind, date: date)
   }
 
-  static func resolvedTemplate(for kind: CaptureOutputKind) -> String {
-    guard let raw = UserDefaults.standard.string(forKey: kind.templatePreferenceKey) else {
+  static func resolvedTemplate(for kind: CaptureOutputKind, defaults: UserDefaults = .standard) -> String {
+    guard let raw = defaults.string(forKey: kind.templatePreferenceKey) else {
       return kind.defaultTemplate
     }
 
