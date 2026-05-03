@@ -30,6 +30,15 @@ jobs:
           mkdir -p build/swift-module-cache
           swift -module-cache-path build/swift-module-cache tools/localization/CatalogTool.swift verify
 
+      - name: Run tests
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -project Snapzy.xcodeproj \
+            -scheme Snapzy \
+            -destination 'platform=macOS' \
+            test
+
       - name: Build
         run: |
           set -euo pipefail
