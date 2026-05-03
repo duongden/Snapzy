@@ -33,11 +33,21 @@ jobs:
       - name: Run tests
         run: |
           set -euo pipefail
-          xcodebuild \
+          mkdir -p build
+
+          if ! xcodebuild \
             -project Snapzy.xcodeproj \
             -scheme Snapzy \
             -destination 'platform=macOS' \
-            test
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            test > build/ci-test.log 2>&1; then
+            tail -100 build/ci-test.log
+            exit 1
+          fi
+
+          tail -20 build/ci-test.log
 
       - name: Build
         run: |
