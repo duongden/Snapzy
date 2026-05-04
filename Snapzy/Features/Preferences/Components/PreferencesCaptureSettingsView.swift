@@ -85,12 +85,6 @@ struct CaptureSettingsView: View {
     )
   }
 
-  private var isMicAvailable: Bool {
-    if #available(macOS 15.0, *) {
-      return true
-    }
-    return false
-  }
 
   var body: some View {
     VStack(spacing: 0) {
@@ -507,7 +501,7 @@ struct CaptureSettingsView: View {
             SettingRow(
               icon: "mic.fill",
               title: L10n.Onboarding.microphone,
-              description: microphoneDescription
+              description: L10n.PreferencesCapture.microphoneDescription
             ) {
               Toggle("", isOn: Binding(
                 get: { captureMicrophone },
@@ -520,7 +514,7 @@ struct CaptureSettingsView: View {
                 }
               ))
               .labelsHidden()
-              .disabled(!captureAudio || !isMicAvailable)
+              .disabled(!captureAudio)
             }
           }
           .alert(L10n.Microphone.accessRequiredTitle, isPresented: $showPermissionDeniedAlert) {
@@ -559,13 +553,6 @@ struct CaptureSettingsView: View {
   }
 
   // MARK: - Helpers
-
-  private var microphoneDescription: String {
-    if !isMicAvailable {
-      return L10n.PreferencesCapture.microphoneRequiresMacOS
-    }
-    return L10n.PreferencesCapture.microphoneDescription
-  }
 
   private var screenshotFilenamePreview: String {
     let baseName = CaptureOutputNaming.resolveBaseName(

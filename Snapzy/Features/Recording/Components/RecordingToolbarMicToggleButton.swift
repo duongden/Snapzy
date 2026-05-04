@@ -14,40 +14,21 @@ struct ToolbarMicToggleButton: View {
   @State private var isHovered = false
   @State private var showPermissionDeniedAlert = false
 
-  /// Microphone capture via ScreenCaptureKit requires macOS 15.0+
-  private var isAvailable: Bool {
-    if #available(macOS 15.0, *) {
-      return true
-    }
-    return false
-  }
-
   private var systemName: String {
-    if !isAvailable {
-      return "mic.slash"
-    }
-    return state.captureMicrophone ? "mic.fill" : "mic.slash.fill"
+    state.captureMicrophone ? "mic.fill" : "mic.slash.fill"
   }
 
   private var accessibilityLabel: String {
-    if !isAvailable {
-      return L10n.Microphone.unavailableVersion
-    }
-    return state.captureMicrophone ? L10n.Microphone.mute : L10n.Microphone.unmute
+    state.captureMicrophone ? L10n.Microphone.mute : L10n.Microphone.unmute
   }
 
   private var tooltipText: String {
-    if !isAvailable {
-      return L10n.PreferencesCapture.microphoneRequiresMacOS
-    }
-    return state.captureMicrophone ? L10n.Microphone.on : L10n.Microphone.off
+    state.captureMicrophone ? L10n.Microphone.on : L10n.Microphone.off
   }
 
   var body: some View {
     Button {
-      if isAvailable {
-        handleMicToggle()
-      }
+      handleMicToggle()
     } label: {
       Image(systemName: systemName)
         .font(.system(size: ToolbarConstants.iconSize, weight: .medium))
@@ -58,17 +39,16 @@ struct ToolbarMicToggleButton: View {
         )
         .background(
           RoundedRectangle(cornerRadius: ToolbarConstants.buttonCornerRadius)
-            .fill(Color.primary.opacity(isHovered && isAvailable ? 0.1 : 0))
+            .fill(Color.primary.opacity(isHovered ? 0.1 : 0))
         )
         .contentShape(RoundedRectangle(cornerRadius: ToolbarConstants.buttonCornerRadius))
         .animation(ToolbarConstants.hoverAnimation, value: isHovered)
     }
     .buttonStyle(.plain)
     .onHover { isHovered = $0 }
-    .disabled(!isAvailable)
     .help(tooltipText)
     .accessibilityLabel(accessibilityLabel)
-    .accessibilityHint(isAvailable ? L10n.Microphone.doubleTapToToggle : "")
+    .accessibilityHint(L10n.Microphone.doubleTapToToggle)
     .alert(L10n.Microphone.accessRequiredTitle, isPresented: $showPermissionDeniedAlert) {
       Button(L10n.Common.openSystemSettings) {
         openMicrophoneSettings()
@@ -80,10 +60,7 @@ struct ToolbarMicToggleButton: View {
   }
 
   private var foregroundColor: Color {
-    if !isAvailable {
-      return .primary.opacity(0.3)
-    }
-    return .primary.opacity(state.captureMicrophone ? 1.0 : 0.5)
+    .primary.opacity(state.captureMicrophone ? 1.0 : 0.5)
   }
 
   /// Request microphone permission when user enables toggle

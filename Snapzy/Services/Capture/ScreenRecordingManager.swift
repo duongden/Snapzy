@@ -207,6 +207,7 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
 
   private var stream: SCStream?
   private let session = RecordingSession()  // Thread-safe session for frame writing
+  private var microphoneCapturer: MicrophoneAudioCapturer?
 
   // MARK: - Timing
 
@@ -493,6 +494,13 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
         content: content
       )
 
+      // Setup independent microphone capture if requested
+      if captureMicrophone {
+        let capturer = MicrophoneAudioCapturer()
+        capturer.delegate = self
+        microphoneCapturer = capturer
+      }
+
       mouseTracker = RecordingMouseTracker(recordingRect: captureGeometry.globalCaptureRect, fps: fps)
       DiagnosticLogger.shared.log(.info, .recording, "Recording prepare completed", context: [
         "file": outputURL?.lastPathComponent ?? "nil",
@@ -558,6 +566,9 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
       cleanup()
       throw RecordingError.setupFailed(error.localizedDescription)
     }
+
+    // Start independent microphone capture
+    microphoneCapturer?.start()
 
     state = .recording
     DiagnosticLogger.shared.log(.info, .recording, "Recording started", context: [
@@ -687,6 +698,8 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
       await teardownStream(activeStream)
     }
 
+    microphoneCapturer?.stop()
+
     session.finishInputs()
 
     await session.finishWriting()
@@ -758,6 +771,7 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
       await teardownStream(activeStream)
     }
 
+    microphoneCapturer?.stop()
     session.setOnFirstVideoFrame(nil)
     session.cancelWriting()
     mouseTracker?.reset()
@@ -1177,9 +1191,8 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
       config.channelCount = 2
     }
 
-    // Microphone configuration (requires macOS 15.0+)
+    // Microphone permission check (captured independently via MicrophoneAudioCapturer)
     if captureMicrophone {
-      // Check microphone permission before configuring
       let micStatus = AVCaptureDevice.authorizationStatus(for: .audio)
       switch micStatus {
       case .notDetermined:
@@ -1200,17 +1213,6 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
         DiagnosticLogger.shared.log(.warning, .recording, "Unknown microphone permission status")
         break
       }
-
-      if #available(macOS 15.0, *) {
-        config.captureMicrophone = true
-        config.microphoneCaptureDeviceID = AVCaptureDevice.default(for: .audio)?.uniqueID
-      } else {
-        DiagnosticLogger.shared.log(
-          .warning,
-          .recording,
-          "Microphone capture requested but ScreenCaptureKit microphone output requires macOS 15"
-        )
-      }
     }
 
     stream = SCStream(filter: filter, configuration: config, delegate: self)
@@ -1221,17 +1223,6 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
     if captureSystemAudio {
       try stream?.addStreamOutput(self, type: .audio, sampleHandlerQueue: audioProcessingQueue)
       registeredOutputTypes.insert(.audio)
-    }
-
-    if captureMicrophone {
-      if #available(macOS 15.0, *) {
-        try stream?.addStreamOutput(
-          self,
-          type: .microphone,
-          sampleHandlerQueue: microphoneProcessingQueue
-        )
-        registeredOutputTypes.insert(.microphone)
-      }
     }
 
     DiagnosticLogger.shared.log(.info, .recording, "Stream configuration", context: [
@@ -1425,6 +1416,8 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
       "droppedBackpressure": "\(stats.droppedFramesDueToBackpressure)",
       "failedAppend": "\(stats.failedAppendFrames)",
       "dropRatePercent": String(format: "%.2f", dropRate),
+      "microphoneSamplesReceived": "\(stats.microphoneSamplesReceived)",
+      "microphoneSamplesAppended": "\(stats.microphoneSamplesAppended)",
     ]
 
     if let outputURL {
@@ -1446,6 +1439,9 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
            minFrameDuration.seconds > 0 {
           context["outputFrameDurationMs"] = String(format: "%.2f", minFrameDuration.seconds * 1000)
         }
+      }
+      if let audioTracks = try? await asset.loadTracks(withMediaType: .audio) {
+        context["outputAudioTracks"] = "\(audioTracks.count)"
       }
     }
 
@@ -1469,6 +1465,7 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
     excludeDesktopIconsFromCapture = false
     excludeDesktopWidgetsFromCapture = false
     mouseTracker = nil
+    microphoneCapturer = nil
     session.reset()
     cleanupRecordingProcessingDirectoryIfNeeded()
     finalOutputURL = nil
@@ -1541,6 +1538,14 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
     case .microphone: return "microphone"
     @unknown default: return "unknown"
     }
+  }
+}
+
+// MARK: - MicrophoneAudioCapturerDelegate
+
+extension ScreenRecordingManager: MicrophoneAudioCapturerDelegate {
+  nonisolated func microphoneCapturer(_ capturer: MicrophoneAudioCapturer, didOutput sampleBuffer: CMSampleBuffer) {
+    session.appendMicrophoneSample(sampleBuffer)
   }
 }
 

@@ -20,6 +20,8 @@ final class RecordingSession: @unchecked Sendable {
     let appendedFrames: Int
     let droppedFramesDueToBackpressure: Int
     let failedAppendFrames: Int
+    let microphoneSamplesReceived: Int
+    let microphoneSamplesAppended: Int
   }
 
   private let lock = NSLock()
@@ -37,6 +39,8 @@ final class RecordingSession: @unchecked Sendable {
   private var _videoFramesAppended = 0
   private var _videoFramesDroppedBackpressure = 0
   private var _videoFramesFailedAppend = 0
+  private var _microphoneSamplesReceived = 0
+  private var _microphoneSamplesAppended = 0
   private var _expectedVideoWidth: Int?
   private var _expectedVideoHeight: Int?
   private var _didLogMissingPixelBuffer = false
@@ -109,7 +113,9 @@ final class RecordingSession: @unchecked Sendable {
         receivedFrames: _videoFramesReceived,
         appendedFrames: _videoFramesAppended,
         droppedFramesDueToBackpressure: _videoFramesDroppedBackpressure,
-        failedAppendFrames: _videoFramesFailedAppend
+        failedAppendFrames: _videoFramesFailedAppend,
+        microphoneSamplesReceived: _microphoneSamplesReceived,
+        microphoneSamplesAppended: _microphoneSamplesAppended
       )
     }
   }
@@ -281,10 +287,14 @@ final class RecordingSession: @unchecked Sendable {
     // Skip mic samples that arrived before video start
     guard CMTimeCompare(timestamp, firstTs) >= 0 else { return }
 
+    lock.withLock { _microphoneSamplesReceived += 1 }
+
     // Session starts at first video timestamp, so original timestamps are valid.
     if microphoneInput.isReadyForMoreMediaData {
       let success = microphoneInput.append(sampleBuffer)
-      if !success {
+      if success {
+        lock.withLock { _microphoneSamplesAppended += 1 }
+      } else {
         let shouldLog = lock.withLock {
           if _didLogMicrophoneAppendFailure { return false }
           _didLogMicrophoneAppendFailure = true
@@ -359,6 +369,8 @@ final class RecordingSession: @unchecked Sendable {
       _videoFramesAppended = 0
       _videoFramesDroppedBackpressure = 0
       _videoFramesFailedAppend = 0
+      _microphoneSamplesReceived = 0
+      _microphoneSamplesAppended = 0
       _expectedVideoWidth = nil
       _expectedVideoHeight = nil
       _didLogMissingPixelBuffer = false
