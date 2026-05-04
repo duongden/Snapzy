@@ -447,6 +447,10 @@ struct AnnotateBottomBarView: View {
     alert.beginSheetModal(for: window) { [state] response in
       guard response == .alertFirstButtonReturn else { return }
 
+      // Clear matching history record FIRST so the user does not see a stale
+      // "file missing" entry after the underlying file is trashed.
+      CaptureHistoryStore.shared.removeByFilePath(sourceURL.path)
+
       // Remove QuickAccess card if it exists
       if let itemId = state.quickAccessItemId {
         QuickAccessManager.shared.removeItem(id: itemId)

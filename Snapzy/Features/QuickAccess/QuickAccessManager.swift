@@ -724,6 +724,14 @@ final class QuickAccessManager: ObservableObject {
       "Quick access delete requested",
       context: ["fileName": url.lastPathComponent, "temp": isTempFile ? "true" : "false"]
     )
+
+    // Remove matching history record up-front so:
+    //  - Temp files: removeItem's history-preservation check now sees no record,
+    //    so the temp file is actually deleted (matches the user's explicit intent).
+    //  - Saved files: history is cleared before the file is trashed, avoiding a
+    //    "file missing" ghost entry in the history panel.
+    CaptureHistoryStore.shared.removeByFilePath(url.path)
+
     removeItem(id: id)
 
     // removeItem already handles temp file deletion,
