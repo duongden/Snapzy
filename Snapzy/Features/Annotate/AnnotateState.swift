@@ -372,7 +372,7 @@ final class AnnotateState: ObservableObject {
       handleCanvasEffectDidChange()
     }
   }
-  @Published var cornerRadius: CGFloat = 8 {
+  @Published var cornerRadius: CGFloat = AnnotateCanvasDefaults.cornerRadius {
     didSet {
       handleCanvasEffectDidChange()
     }

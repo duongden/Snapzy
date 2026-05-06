@@ -12,6 +12,11 @@ import XCTest
 
 final class AnnotateCoreTests: XCTestCase {
 
+  func testAnnotateCanvasDefaultsUseNoCornerRadius() {
+    XCTAssertEqual(AnnotateCanvasDefaults.cornerRadius, 0)
+    XCTAssertEqual(AnnotationCanvasEffects().cornerRadius, 0)
+  }
+
   func testAnnotationFactory_createsCounterCenteredAtStart() {
     let annotation = AnnotationFactory.createAnnotation(
       tool: .counter,
