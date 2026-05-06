@@ -246,7 +246,7 @@ final class OCRService {
         }
 
         let lines = observations.compactMap { observation -> OCRTextLine? in
-          guard let candidate = observation.topCandidates(1).first else { return nil }
+          guard let candidate = self.bestTextCandidate(for: observation, request: request) else { return nil }
           return OCRTextLine(
             text: candidate.string,
             confidence: candidate.confidence,
@@ -296,6 +296,93 @@ final class OCRService {
         resumeOnce(with: .failure(OCRError.recognitionFailed(error)))
       }
     }
+  }
+
+  private func bestTextCandidate(
+    for observation: VNRecognizedTextObservation,
+    request: OCRRequest
+  ) -> VNRecognizedText? {
+    let candidates = observation.topCandidates(5)
+    guard let topCandidate = candidates.first else { return nil }
+    let preferredLanguage = AppLanguageManager.normalizedLanguageIdentifier(from: request.preferredLanguageIdentifier)
+
+    guard shouldPreferDiacriticCandidates(for: preferredLanguage) else {
+      return topCandidate
+    }
+
+    return candidates
+      .filter { isViableDiacriticAlternative($0, topCandidate: topCandidate) }
+      .max {
+        languageCandidateScore($0, preferredLanguage: preferredLanguage)
+          < languageCandidateScore($1, preferredLanguage: preferredLanguage)
+      }
+      ?? topCandidate
+  }
+
+  private func shouldPreferDiacriticCandidates(for languageIdentifier: String?) -> Bool {
+    switch languageIdentifier {
+    case "vi", "es", "fr", "de":
+      return true
+    default:
+      return false
+    }
+  }
+
+  private func isViableDiacriticAlternative(_ candidate: VNRecognizedText, topCandidate: VNRecognizedText) -> Bool {
+    guard candidate.confidence >= topCandidate.confidence - 0.28 else { return false }
+
+    let candidateText = candidate.string.trimmingCharacters(in: .whitespacesAndNewlines)
+    let topText = topCandidate.string.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !candidateText.isEmpty, !topText.isEmpty else { return false }
+
+    if candidateText == topText {
+      return true
+    }
+
+    let foldedCandidate = foldedForDiacriticComparison(candidateText)
+    let foldedTop = foldedForDiacriticComparison(topText)
+    guard foldedCandidate == foldedTop else { return false }
+
+    return diacriticMarkCount(in: candidateText) >= diacriticMarkCount(in: topText)
+  }
+
+  private func languageCandidateScore(_ candidate: VNRecognizedText, preferredLanguage: String?) -> Float {
+    var score = candidate.confidence
+    let text = candidate.string
+
+    if shouldPreferDiacriticCandidates(for: preferredLanguage) {
+      score += min(Float(diacriticMarkCount(in: text)) * 0.025, 0.18)
+    }
+
+    if preferredLanguage == "vi", containsVietnameseToneOrVowelMark(in: text) {
+      score += 0.08
+    }
+
+    return score
+  }
+
+  private func foldedForDiacriticComparison(_ text: String) -> String {
+    text
+      .folding(
+        options: [.diacriticInsensitive, .caseInsensitive, .widthInsensitive],
+        locale: Locale(identifier: "en_US_POSIX")
+      )
+      .filter { !$0.isWhitespace }
+  }
+
+  private func diacriticMarkCount(in text: String) -> Int {
+    text.decomposedStringWithCanonicalMapping.unicodeScalars.reduce(into: 0) { count, scalar in
+      if CharacterSet.nonBaseCharacters.contains(scalar) {
+        count += 1
+      }
+    }
+  }
+
+  private func containsVietnameseToneOrVowelMark(in text: String) -> Bool {
+    text.range(
+      of: "[ăâđêôơưĂÂĐÊÔƠƯàáảãạằắẳẵặầấẩẫậèéẻẽẹềếểễệìíỉĩịòóỏõọồốổỗộờớởỡợùúủũụừứửữựỳýỷỹỵ]",
+      options: .regularExpression
+    ) != nil
   }
 
   private func shouldAccept(

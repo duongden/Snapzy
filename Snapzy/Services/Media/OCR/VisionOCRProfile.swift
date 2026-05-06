@@ -24,6 +24,16 @@ struct VisionOCRProfile {
     }
 
     switch AppLanguageManager.normalizedLanguageIdentifier(from: request.preferredLanguageIdentifier) {
+    case "vi":
+      return .vietnameseInterface
+    case "es":
+      return .spanishInterface
+    case "ru":
+      return .russianInterface
+    case "fr":
+      return .frenchInterface
+    case "de":
+      return .germanInterface
     case "ja":
       return .japaneseInterface
     case "ko":
@@ -41,8 +51,13 @@ struct VisionOCRProfile {
 
   static func recoveryProfiles(for request: OCRRequest, primary primaryProfile: VisionOCRProfile) -> [VisionOCRProfile] {
     switch primaryProfile.id {
-    case englishInterface.id:
-      return [defaultInterface, cjkRecovery, autoRecovery]
+    case englishInterface.id,
+         vietnameseInterface.id,
+         spanishInterface.id,
+         russianInterface.id,
+         frenchInterface.id,
+         germanInterface.id:
+      return [defaultInterface, autoRecovery, cjkRecovery]
     case japaneseInterface.id, koreanInterface.id, simplifiedChineseInterface.id, traditionalChineseInterface.id:
       return [cjkRecovery, autoRecovery]
     case code.id:
@@ -65,6 +80,13 @@ struct VisionOCRProfile {
       return [cjkRecovery, autoRecovery, defaultInterface]
     case denseDocument.id:
       return [autoRecovery, cjkRecovery, defaultInterface]
+    case englishInterface.id,
+         vietnameseInterface.id,
+         spanishInterface.id,
+         russianInterface.id,
+         frenchInterface.id,
+         germanInterface.id:
+      return [defaultInterface, autoRecovery, cjkRecovery]
     default:
       return [cjkRecovery, autoRecovery]
     }
@@ -119,6 +141,75 @@ private extension VisionOCRProfile {
     automaticallyDetectsLanguage: false,
     minimumTextHeight: 0.008,
     minimumAcceptableConfidence: 0.62,
+    prefersCJKContent: false
+  )
+
+  static let vietnameseInterface = VisionOCRProfile(
+    id: "vietnamese-interface",
+    recognitionLanguages: ["vi-VT", "en-US"],
+    customWords: sharedProductWords + [
+      "Tài sản",
+      "Cài đặt",
+      "Sao chép",
+      "Ghi chú",
+      "Hướng dẫn",
+      "Nội bộ",
+      "Chỉnh sửa",
+      "Thủ công",
+      "Màn hình",
+      "Phím tắt",
+      "Văn bản",
+      "Trích xuất",
+      "Chính xác"
+    ],
+    usesLanguageCorrection: true,
+    automaticallyDetectsLanguage: false,
+    minimumTextHeight: 0.006,
+    minimumAcceptableConfidence: 0.50,
+    prefersCJKContent: false
+  )
+
+  static let spanishInterface = VisionOCRProfile(
+    id: "spanish-interface",
+    recognitionLanguages: ["es-ES", "en-US"],
+    customWords: sharedProductWords + ["captura", "rápido", "fiable", "párrafos", "documentación"],
+    usesLanguageCorrection: true,
+    automaticallyDetectsLanguage: false,
+    minimumTextHeight: 0.006,
+    minimumAcceptableConfidence: 0.52,
+    prefersCJKContent: false
+  )
+
+  static let russianInterface = VisionOCRProfile(
+    id: "russian-interface",
+    recognitionLanguages: ["ru-RU", "en-US"],
+    customWords: sharedProductWords + ["скриншот", "заметки", "заголовки", "настройки", "документация"],
+    usesLanguageCorrection: true,
+    automaticallyDetectsLanguage: false,
+    minimumTextHeight: 0.006,
+    minimumAcceptableConfidence: 0.52,
+    prefersCJKContent: false
+  )
+
+  static let frenchInterface = VisionOCRProfile(
+    id: "french-interface",
+    recognitionLanguages: ["fr-FR", "en-US"],
+    customWords: sharedProductWords + ["captures", "écran", "préférences", "raccourcis", "documentation"],
+    usesLanguageCorrection: true,
+    automaticallyDetectsLanguage: false,
+    minimumTextHeight: 0.006,
+    minimumAcceptableConfidence: 0.52,
+    prefersCJKContent: false
+  )
+
+  static let germanInterface = VisionOCRProfile(
+    id: "german-interface",
+    recognitionLanguages: ["de-DE", "en-US"],
+    customWords: sharedProductWords + ["Bildschirmfoto", "Einstellungen", "Überschriften", "Dokumentation", "zuverlässig"],
+    usesLanguageCorrection: true,
+    automaticallyDetectsLanguage: false,
+    minimumTextHeight: 0.006,
+    minimumAcceptableConfidence: 0.52,
     prefersCJKContent: false
   )
 
