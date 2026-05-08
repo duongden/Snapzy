@@ -11,18 +11,111 @@ import CoreMedia
 import Foundation
 
 /// Delegate for receiving captured microphone samples.
-protocol MicrophoneAudioCapturerDelegate: AnyObject {
+nonisolated protocol MicrophoneAudioCapturerDelegate: AnyObject {
   /// Called on the capturer's internal queue for each captured sample buffer.
   func microphoneCapturer(_ capturer: MicrophoneAudioCapturer, didOutput sampleBuffer: CMSampleBuffer)
 }
 
+nonisolated protocol MicrophoneCaptureSession: AnyObject {
+  func canAddInput(_ input: AVCaptureInput) -> Bool
+  func addInput(_ input: AVCaptureInput)
+  func canAddOutput(_ output: AVCaptureOutput) -> Bool
+  func addOutput(_ output: AVCaptureOutput)
+  func startRunning()
+  func stopRunning()
+}
+
+nonisolated final class AVFoundationMicrophoneCaptureSession: MicrophoneCaptureSession {
+  private let session = AVCaptureSession()
+
+  func canAddInput(_ input: AVCaptureInput) -> Bool {
+    session.canAddInput(input)
+  }
+
+  func addInput(_ input: AVCaptureInput) {
+    session.addInput(input)
+  }
+
+  func canAddOutput(_ output: AVCaptureOutput) -> Bool {
+    session.canAddOutput(output)
+  }
+
+  func addOutput(_ output: AVCaptureOutput) {
+    session.addOutput(output)
+  }
+
+  func startRunning() {
+    session.startRunning()
+  }
+
+  func stopRunning() {
+    session.stopRunning()
+  }
+}
+
+nonisolated enum MicrophoneCaptureSetupError: Error {
+  case noDefaultDevice
+  case cannotAddDeviceInput
+  case cannotAddDataOutput
+}
+
+nonisolated protocol MicrophoneCaptureSessionFactory {
+  func authorizationStatus() -> AVAuthorizationStatus
+  func makeSession() -> MicrophoneCaptureSession
+  func configureInput(on session: MicrophoneCaptureSession) throws -> String
+  func configureOutput(
+    on session: MicrophoneCaptureSession,
+    delegate: AVCaptureAudioDataOutputSampleBufferDelegate,
+    queue: DispatchQueue
+  ) throws
+}
+
+nonisolated struct AVFoundationMicrophoneCaptureSessionFactory: MicrophoneCaptureSessionFactory {
+  func authorizationStatus() -> AVAuthorizationStatus {
+    AVCaptureDevice.authorizationStatus(for: .audio)
+  }
+
+  func makeSession() -> MicrophoneCaptureSession {
+    AVFoundationMicrophoneCaptureSession()
+  }
+
+  func configureInput(on session: MicrophoneCaptureSession) throws -> String {
+    guard let device = AVCaptureDevice.default(for: .audio) else {
+      throw MicrophoneCaptureSetupError.noDefaultDevice
+    }
+
+    let input = try AVCaptureDeviceInput(device: device)
+    guard session.canAddInput(input) else {
+      throw MicrophoneCaptureSetupError.cannotAddDeviceInput
+    }
+
+    session.addInput(input)
+    return device.localizedName
+  }
+
+  func configureOutput(
+    on session: MicrophoneCaptureSession,
+    delegate: AVCaptureAudioDataOutputSampleBufferDelegate,
+    queue: DispatchQueue
+  ) throws {
+    let output = AVCaptureAudioDataOutput()
+    output.setSampleBufferDelegate(delegate, queue: queue)
+    guard session.canAddOutput(output) else {
+      throw MicrophoneCaptureSetupError.cannotAddDataOutput
+    }
+
+    session.addOutput(output)
+  }
+}
+
 /// Captures microphone audio via AVCaptureSession, delivering CMSampleBuffer objects
 /// that can be written directly to an AVAssetWriter audio input.
-final class MicrophoneAudioCapturer: NSObject {
+nonisolated final class MicrophoneAudioCapturer: NSObject, @unchecked Sendable {
 
   weak var delegate: MicrophoneAudioCapturerDelegate?
 
-  private var captureSession: AVCaptureSession?
+  private let captureSessionFactory: MicrophoneCaptureSessionFactory
+  private var captureSession: MicrophoneCaptureSession?
   private let sessionQueue = DispatchQueue(
     label: "com.trongduong.snapzy.microphone.session",
     qos: .userInteractive
@@ -33,6 +126,11 @@ final class MicrophoneAudioCapturer: NSObject {
   )
 
   private var isRunning = false
+
+  init(captureSessionFactory: MicrophoneCaptureSessionFactory = AVFoundationMicrophoneCaptureSessionFactory()) {
+    self.captureSessionFactory = captureSessionFactory
+    super.init()
+  }
 
   /// Whether the capturer is currently running.
   var running: Bool {
@@ -64,53 +162,89 @@ final class MicrophoneAudioCapturer: NSObject {
   // MARK: - Private
 
   private func setupAndStartSession() {
-    let session = AVCaptureSession()
+    let authorizationStatus = captureSessionFactory.authorizationStatus()
+    guard authorizationStatus == .authorized else {
+      log(.warning, "MicrophoneAudioCapturer: microphone permission unavailable", context: [
+        "status": "\(authorizationStatus.rawValue)"
+      ])
+      resetCaptureState()
+      return
+    }
+
+    let session = captureSessionFactory.makeSession()
     captureSession = session
 
-    // Find the default audio capture device.
-    guard let device = AVCaptureDevice.default(for: .audio) else {
-      DiagnosticLogger.shared.log(.warning, .recording, "MicrophoneAudioCapturer: no default audio device found")
-      isRunning = false
-      captureSession = nil
-      return
-    }
-
     do {
-      let input = try AVCaptureDeviceInput(device: device)
-      guard session.canAddInput(input) else {
-        DiagnosticLogger.shared.log(.warning, .recording, "MicrophoneAudioCapturer: cannot add device input")
-        isRunning = false
-        captureSession = nil
-        return
-      }
-      session.addInput(input)
+      let deviceName = try captureSessionFactory.configureInput(on: session)
+      try captureSessionFactory.configureOutput(on: session, delegate: self, queue: dataOutputQueue)
+      session.startRunning()
+      log(.info, "MicrophoneAudioCapturer: session started", context: [
+        "device": deviceName
+      ])
+    } catch MicrophoneCaptureSetupError.noDefaultDevice {
+      log(.warning, "MicrophoneAudioCapturer: no default audio device found")
+      resetCaptureState()
+    } catch MicrophoneCaptureSetupError.cannotAddDeviceInput {
+      log(.warning, "MicrophoneAudioCapturer: cannot add device input")
+      resetCaptureState()
+    } catch MicrophoneCaptureSetupError.cannotAddDataOutput {
+      log(.warning, "MicrophoneAudioCapturer: cannot add data output")
+      resetCaptureState()
     } catch {
-      DiagnosticLogger.shared.logError(.recording, error, "MicrophoneAudioCapturer: failed to create device input")
-      isRunning = false
-      captureSession = nil
-      return
+      logError(error, "MicrophoneAudioCapturer: failed to create device input")
+      resetCaptureState()
     }
+  }
 
-    let output = AVCaptureAudioDataOutput()
-    output.setSampleBufferDelegate(self, queue: dataOutputQueue)
-    guard session.canAddOutput(output) else {
-      DiagnosticLogger.shared.log(.warning, .recording, "MicrophoneAudioCapturer: cannot add data output")
-      isRunning = false
-      captureSession = nil
-      return
+  private func resetCaptureState() {
+    isRunning = false
+    captureSession = nil
+  }
+
+  private func log(
+    _ level: DiagnosticLogLevel,
+    _ message: String,
+    context: [String: String]? = nil,
+    file: String = #fileID,
+    function: String = #function,
+    line: Int = #line
+  ) {
+    Task { @MainActor in
+      DiagnosticLogger.shared.log(
+        level,
+        .recording,
+        message,
+        context: context,
+        file: file,
+        function: function,
+        line: line
+      )
     }
-    session.addOutput(output)
+  }
 
-    session.startRunning()
-    DiagnosticLogger.shared.log(.info, .recording, "MicrophoneAudioCapturer: session started", context: [
-      "device": device.localizedName
-    ])
+  private func logError(
+    _ error: Error,
+    _ message: String,
+    file: String = #fileID,
+    function: String = #function,
+    line: Int = #line
+  ) {
+    Task { @MainActor in
+      DiagnosticLogger.shared.logError(
+        .recording,
+        error,
+        message,
+        file: file,
+        function: function,
+        line: line
+      )
+    }
   }
 }
 
 // MARK: - AVCaptureAudioDataOutputSampleBufferDelegate
 
-extension MicrophoneAudioCapturer: AVCaptureAudioDataOutputSampleBufferDelegate {
+nonisolated extension MicrophoneAudioCapturer: AVCaptureAudioDataOutputSampleBufferDelegate {
 
   func captureOutput(
     _ output: AVCaptureOutput,

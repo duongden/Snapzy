@@ -7,20 +7,50 @@
 
 import Foundation
 
+@MainActor
+protocol QuickAccessCountdownTimerClock: AnyObject {
+  var now: TimeInterval { get }
+  func sleep(for duration: TimeInterval) async
+}
+
+@MainActor
+final class ContinuousQuickAccessCountdownTimerClock: QuickAccessCountdownTimerClock {
+  private let origin = ContinuousClock.now
+
+  var now: TimeInterval {
+    Self.seconds(from: ContinuousClock.now - origin)
+  }
+
+  func sleep(for duration: TimeInterval) async {
+    guard duration > 0 else { return }
+    try? await Task.sleep(nanoseconds: UInt64(duration * 1_000_000_000))
+  }
+
+  private static func seconds(from duration: ContinuousClock.Duration) -> TimeInterval {
+    Double(duration.components.seconds) + Double(duration.components.attoseconds) / 1e18
+  }
+}
+
 /// A pausable countdown timer that tracks remaining time accurately using ContinuousClock.
 @MainActor
 final class QuickAccessCountdownTimer {
 
   private var remainingTime: TimeInterval
-  private var startedAt: ContinuousClock.Instant?
+  private var startedAt: TimeInterval?
   private var task: Task<Void, Never>?
   private var onExpire: (() -> Void)?
+  private let clock: QuickAccessCountdownTimerClock
 
   private(set) var isPaused: Bool = false
   var isRunning: Bool { task != nil && !isPaused }
 
-  init(duration: TimeInterval, onExpire: @escaping () -> Void) {
+  init(
+    duration: TimeInterval,
+    clock: QuickAccessCountdownTimerClock? = nil,
+    onExpire: @escaping () -> Void
+  ) {
     self.remainingTime = duration
+    self.clock = clock ?? ContinuousQuickAccessCountdownTimerClock()
     self.onExpire = onExpire
   }
 
@@ -39,9 +69,7 @@ final class QuickAccessCountdownTimer {
 
     // Calculate elapsed time and update remaining
     if let startedAt {
-      let elapsed = ContinuousClock.now - startedAt
-      let elapsedSeconds = Double(elapsed.components.seconds)
-        + Double(elapsed.components.attoseconds) / 1e18
+      let elapsedSeconds = clock.now - startedAt
       remainingTime = max(0, remainingTime - elapsedSeconds)
     }
 
@@ -78,14 +106,13 @@ final class QuickAccessCountdownTimer {
   private func scheduleTask() {
     task?.cancel()
     let delay = remainingTime
-    startedAt = ContinuousClock.now
+    startedAt = clock.now
+    let clock = clock
 
-    task = Task { [weak self] in
-      try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+    task = Task { @MainActor [weak self, clock] in
+      await clock.sleep(for: delay)
       guard !Task.isCancelled else { return }
-      await MainActor.run {
-        self?.onExpire?()
-      }
+      self?.onExpire?()
     }
   }
 }

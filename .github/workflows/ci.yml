@@ -34,20 +34,35 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p build
+          rm -rf build/ci-test.xcresult
 
           if ! xcodebuild \
             -project Snapzy.xcodeproj \
             -scheme Snapzy \
             -destination 'platform=macOS' \
+            -derivedDataPath build/DerivedData \
+            -resultBundlePath build/ci-test.xcresult \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
             test > build/ci-test.log 2>&1; then
-            tail -100 build/ci-test.log
+            echo "::group::Likely test failures"
+            grep -E "Test case '.*' failed|Failing tests:|\\*\\* TEST FAILED \\*\\*|error:" build/ci-test.log || true
+            echo "::endgroup::"
+            tail -200 build/ci-test.log
             exit 1
           fi
 
           tail -20 build/ci-test.log
+
+      - name: Upload test diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-test-diagnostics
+          path: |
+            build/ci-test.log
+            build/ci-test.xcresult
 
       - name: Build
         run: |

@@ -43,6 +43,14 @@ xcodebuild test -project Snapzy.xcodeproj -scheme Snapzy -configuration Debug
 The shared `Snapzy` scheme uses `Snapzy.xctestplan`, which includes the
 `SnapzyTests` target for command-line runs and Xcode editor gutter test runs.
 
+Tests that require real macOS privacy permissions or hardware devices are kept
+out of the default flow. To run the real microphone smoke test locally, grant
+Microphone access first, then run:
+
+```bash
+SNAPZY_RUN_MICROPHONE_INTEGRATION=1 xcodebuild test -project Snapzy.xcodeproj -scheme Snapzy -configuration Debug -only-testing:SnapzyTests/MicrophoneAudioCapturerTests/testMicrophoneAudioCapturerStartStopRealMicrophoneIntegration
+```
+
 ## Related docs
 
 - For archive, export, and DMG packaging commands, see [BUILD.md](BUILD.md).
