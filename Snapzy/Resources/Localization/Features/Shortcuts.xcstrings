@@ -120,13 +120,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "注释编辑器内常见操作的快捷方式。"
+            "value" : "标注编辑器内常用操作的快捷键。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "注釋編輯器內常見操作的快捷方式。"
+            "value" : "標註編輯器中常用操作的快速鍵。"
           }
         }
       }
@@ -250,13 +250,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "在区域捕获覆盖层中"
+            "value" : "在区域截屏叠加层中使用"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "在區域擷取覆蓋層中"
+            "value" : "於區域截圖疊加層中使用"
           }
         }
       }
@@ -315,13 +315,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "应用捕获"
+            "value" : "应用窗口截屏"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "應用程式擷取"
+            "value" : "應用程式視窗截圖"
           }
         }
       }
@@ -329,10 +329,46 @@
     "preferences-shortcuts.application-recording-description" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einzeltaste (A) koppelt mit „Bildschirm aufzeichnen“; Modifikator-Kombination (⇧⌘A)\nfunktioniert unabhängig."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Single key (A) pairs with Record Screen; modifier combo (⇧⌘A)\nworks independently."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La tecla única (A) se empareja con Grabar pantalla; la combinación de modificadores (⇧⌘A)\nfunciona de forma independiente."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La touche unique (A) est associée à Enregistrer l’écran ; la combinaison de modificateurs (⇧⌘A)\nfonctionne indépendamment."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "単一キー（A）は画面録画と連動します。修飾キーの組み合わせ（⇧⌘A）は\n独立して動作します。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "단일 키(A)는 화면 녹화와 짝을 이룹니다. 조합 키(⇧⌘A)는\n독립적으로 동작합니다."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Одиночная клавиша (A) сочетается с записью экрана; комбинация модификаторов (⇧⌘A)\nработает независимо."
           }
         },
         "vi" : {
@@ -340,22 +376,82 @@
             "state" : "translated",
             "value" : "Phím đơn (A) đi cùng Ghi màn hình; combo modifier (⇧⌘A)\nchạy độc lập."
           }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "单键 (A) 与「录制屏幕」联动；修饰键组合 (⇧⌘A)\n可独立使用。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "單鍵 (A) 與「錄製螢幕」連動；修飾鍵組合 (⇧⌘A)\n可獨立使用。"
+          }
         }
       }
     },
     "preferences-shortcuts.application-recording-title" : {
       "extractionState" : "stale",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "App-Aufzeichnung"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Application Recording"
           }
         },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grabación de aplicación"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enregistrement d’application"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "アプリの画面録画"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "앱 화면 녹화"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Запись приложения"
+          }
+        },
         "vi" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ghi ứng dụng"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "应用窗口录屏"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "應用程式視窗錄製"
           }
         }
       }
@@ -414,13 +510,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "选择要捕获的区域"
+            "value" : "选择要截取的屏幕区域"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "選擇要捕獲的區域"
+            "value" : "選擇要擷取的螢幕區域"
           }
         }
       }
@@ -479,13 +575,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "立即捕获整个屏幕"
+            "value" : "立即截取整个屏幕"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "立即捕獲整個螢幕"
+            "value" : "立即擷取整個螢幕"
           }
         }
       }
@@ -544,13 +640,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "捕捉快捷键"
+            "value" : "截屏快捷键"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "捕捉快捷鍵"
+            "value" : "截圖快速鍵"
           }
         }
       }
@@ -869,13 +965,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "您将无法使用任何应用程序中的键盘快捷键来捕获屏幕截图或录音。您需要手动打开 Snapzy 才能使用捕获功能。"
+            "value" : "关闭后，你将无法在任何应用中使用键盘快捷键截屏或进行屏幕录制，需要手动打开 Snapzy 才能使用相关功能。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "您將無法使用任何應用程序中的鍵盤快捷鍵來捕獲螢幕截圖或錄音。您需要手動打開 Snapzy 才能使用捕獲功能。"
+            "value" : "關閉後，你將無法在任何應用程式中使用鍵盤快速鍵來截圖或進行螢幕錄製；必須手動開啟 Snapzy 才能使用這些功能。"
           }
         }
       }
@@ -999,13 +1095,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "从任何应用程序捕获"
+            "value" : "可在任意前台应用中使用快捷键截屏"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "從任何應用程序捕獲"
+            "value" : "在任何前景 App 都能使用鍵盤快速鍵截圖"
           }
         }
       }
@@ -1064,13 +1160,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "启用快捷方式"
+            "value" : "启用快捷键"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "啓用快捷方式"
+            "value" : "啟用快速鍵"
           }
         }
       }
@@ -1194,13 +1290,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "使用键盘快捷键从任何地方进行捕捉。"
+            "value" : "通过键盘快捷键随时截屏"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "使用鍵盤快捷鍵從任何地方進行捕捉。"
+            "value" : "使用鍵盤快速鍵隨時截圖"
           }
         }
       }
@@ -1714,13 +1810,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "单击快捷按钮来记录新按键。使用行切换开关关闭快捷方式。按 Esc 键取消。"
+            "value" : "点击快捷键按钮录制新的按键组合。可通过行内开关停用某项快捷键，按 Esc 取消。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "單擊快捷按鈕來記錄新按鍵。使用行切換開關關閉快捷方式。按 Esc 鍵取消。"
+            "value" : "按一下快速鍵按鈕以設定新的組合鍵；可用列內開關停用單一快速鍵。按 Esc 取消。"
           }
         }
       }
@@ -2364,13 +2460,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "工具快捷方式"
+            "value" : "工具快捷键"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "工具快捷方式"
+            "value" : "工具快速鍵"
           }
         }
       }
@@ -2624,13 +2720,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "应用捕获：%@"
+            "value" : "应用窗口截屏：%@"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "應用程式擷取：%@"
+            "value" : "應用程式視窗截圖：%@"
           }
         }
       }
@@ -3746,13 +3842,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "捕捉"
+            "value" : "截屏"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "捕捉"
+            "value" : "截圖"
           }
         }
       }
@@ -4591,13 +4687,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "macOS 捕获区域"
+            "value" : "macOS 截取区域"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "macOS 捕獲區域"
+            "value" : "macOS 區域截取"
           }
         }
       }
@@ -4656,13 +4752,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "macOS 捕捉全屏"
+            "value" : "macOS 全屏截屏"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "macOS 捕捉全屏"
+            "value" : "macOS 全螢幕截圖"
           }
         }
       }
