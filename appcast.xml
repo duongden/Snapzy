@@ -6,6 +6,22 @@
     <description>Snapzy application updates</description>
     <language>en</language>
     <item>
+      <title>Version 1.13.0</title>
+      <sparkle:version>89</sparkle:version>
+      <sparkle:shortVersionString>1.13.0</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <pubDate>Fri, 08 May 2026 18:29:05 +0000</pubDate>
+      <description><![CDATA[
+        <style>:root { color-scheme: light dark; } body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 13px; line-height: 1.5; padding: 8px 16px; } h3 { font-size: 14px; margin: 12px 0 6px; } ul { padding-left: 20px; margin: 4px 0; } li { margin: 3px 0; }</style>
+        <h3>✨ Features</h3><ul><li>open images from Finder's Open
+      ]]></description>
+      <enclosure
+        url="https://github.com/duongductrong/Snapzy/releases/download/v1.13.0/Snapzy-v1.13.0.dmg"
+        sparkle:edSignature="8ztz73Z9SW7KGf1d1KTevNv/3q4DCCxHVBuuvg+h3q4eTOtcp+Rm9ZEnb+6R772IpLIZgFv2Cil80wWiEYvuCQ=="
+        length="45136749"
+        type="application/octet-stream"/>
+    </item>
+    <item>
       <title>Version 1.12.7</title>
       <sparkle:version>88</sparkle:version>
       <sparkle:shortVersionString>1.12.7</sparkle:shortVersionString>
