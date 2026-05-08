@@ -532,6 +532,10 @@ final class OCRService {
   private func shouldReflowParagraph(_ paragraph: [OCRTextLine], request: OCRRequest) -> Bool {
     guard paragraph.count > 1 else { return false }
 
+    if isSingleVisualRow(paragraph) {
+      return true
+    }
+
     let averageWidth = paragraph.map(\.boundingBox.width).reduce(0, +) / CGFloat(paragraph.count)
     let longestLineLength = paragraph.map { meaningfulCharacterCount(in: $0.text) }.max() ?? 0
     let preferredLanguage = AppLanguageManager.normalizedLanguageIdentifier(from: request.preferredLanguageIdentifier)
@@ -544,6 +548,17 @@ final class OCRService {
     }
 
     return averageWidth >= 0.36 || longestLineLength >= 28 || paragraph.count >= 4
+  }
+
+  private func isSingleVisualRow(_ paragraph: [OCRTextLine]) -> Bool {
+    guard paragraph.count > 1 else { return false }
+
+    let minY = paragraph.map(\.boundingBox.minY).min() ?? 0
+    let maxY = paragraph.map(\.boundingBox.maxY).max() ?? 0
+    let averageHeight = paragraph.map(\.boundingBox.height).reduce(0, +) / CGFloat(paragraph.count)
+    guard averageHeight > 0 else { return false }
+
+    return maxY - minY <= averageHeight * 1.45
   }
 
   private func reflowedParagraphText(from paragraph: [OCRTextLine], request: OCRRequest) -> String {

@@ -18,9 +18,9 @@ struct QuickAccessDraggableView<Content: View>: NSViewRepresentable {
   let onDragStarted: () -> Void
   let onDragEnded: (Bool) -> Void
 
-  func makeNSView(context: Context) -> DraggableHostingView<Content> {
+  func makeNSView(context: Context) -> DraggableHostingView {
     let view = DraggableHostingView(
-      rootView: content,
+      rootView: AnyView(content),
       fileURL: fileURL,
       isVideo: isVideo,
       thumbnail: thumbnail,
@@ -30,8 +30,8 @@ struct QuickAccessDraggableView<Content: View>: NSViewRepresentable {
     return view
   }
 
-  func updateNSView(_ nsView: DraggableHostingView<Content>, context: Context) {
-    nsView.rootView = content
+  func updateNSView(_ nsView: DraggableHostingView, context: Context) {
+    nsView.rootView = AnyView(content)
     nsView.fileURL = fileURL
     nsView.isVideo = isVideo
     nsView.thumbnail = thumbnail
@@ -39,8 +39,8 @@ struct QuickAccessDraggableView<Content: View>: NSViewRepresentable {
 }
 
 /// Custom NSView that hosts SwiftUI content and handles drag operations
-final class DraggableHostingView<Content: View>: NSView, NSDraggingSource {
-  var rootView: Content {
+final class DraggableHostingView: NSView, NSDraggingSource {
+  var rootView: AnyView {
     didSet {
       hostingView.rootView = rootView
     }
@@ -51,12 +51,12 @@ final class DraggableHostingView<Content: View>: NSView, NSDraggingSource {
   var onDragStarted: () -> Void
   var onDragEnded: (Bool) -> Void
 
-  private var hostingView: NSHostingView<Content>!
+  private var hostingView: NSHostingView<AnyView>!
   private var isDragging = false
   private var dragStartLocation: NSPoint?
 
   init(
-    rootView: Content,
+    rootView: AnyView,
     fileURL: URL,
     isVideo: Bool,
     thumbnail: NSImage,
@@ -138,21 +138,5 @@ final class DraggableHostingView<Content: View>: NSView, NSDraggingSource {
     isDragging = false
     let success = operation != []
     onDragEnded(success)
-  }
-}
-
-// MARK: - Coordinator for accessing NSView from SwiftUI
-
-extension QuickAccessDraggableView {
-  class Coordinator {
-    var nsView: DraggableHostingView<Content>?
-
-    func startDrag(at location: CGPoint) {
-      nsView?.startDrag(at: NSPoint(x: location.x, y: location.y))
-    }
-  }
-
-  func makeCoordinator() -> Coordinator {
-    Coordinator()
   }
 }
