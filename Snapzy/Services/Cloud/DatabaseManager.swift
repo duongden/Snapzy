@@ -19,10 +19,7 @@ final class DatabaseManager: @unchecked Sendable {
   let dbPool: DatabasePool
 
   private init() {
-    let appSupport = FileManager.default.urls(
-      for: .applicationSupportDirectory, in: .userDomainMask
-    ).first!
-    let dir = appSupport.appendingPathComponent("Snapzy", isDirectory: true)
+    let dir = Self.databaseDirectory()
     try! FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     let dbPath = dir.appendingPathComponent("snapzy.db").path
 
@@ -33,6 +30,27 @@ final class DatabaseManager: @unchecked Sendable {
     } catch {
       fatalError("DatabaseManager: failed to open database — \(error)")
     }
+  }
+
+  private static func databaseDirectory() -> URL {
+    #if DEBUG
+      if isRunningUnderXCTest {
+        let processID = ProcessInfo.processInfo.processIdentifier
+        return FileManager.default.temporaryDirectory
+          .appendingPathComponent("SnapzyTests", isDirectory: true)
+          .appendingPathComponent("Databases", isDirectory: true)
+          .appendingPathComponent("runner-\(processID)", isDirectory: true)
+      }
+    #endif
+
+    let appSupport = FileManager.default.urls(
+      for: .applicationSupportDirectory, in: .userDomainMask
+    ).first!
+    return appSupport.appendingPathComponent("Snapzy", isDirectory: true)
+  }
+
+  private static var isRunningUnderXCTest: Bool {
+    ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
   }
 
   // MARK: - Migrations
