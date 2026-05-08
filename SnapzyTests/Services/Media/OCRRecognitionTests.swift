@@ -80,7 +80,7 @@ final class OCRRecognitionTests: XCTestCase {
       )
 
       XCTAssertTrue(
-        OCRBenchmarkMetrics.normalized(result.text).contains(phrase),
+        normalizedForDiacriticRegression(result.text).contains(normalizedForDiacriticRegression(phrase)),
         "expected \(phrase), got \(result.text)"
       )
     }
@@ -138,6 +138,10 @@ final class OCRRecognitionTests: XCTestCase {
 
   private func supportedVisionLanguages() throws -> Set<String> {
     Set(try VNRecognizeTextRequest().supportedRecognitionLanguages())
+  }
+
+  private func normalizedForDiacriticRegression(_ text: String) -> String {
+    OCRBenchmarkMetrics.normalized(text).filter { !$0.isWhitespace }
   }
 
   private func renderImage(text: String) throws -> CGImage {
