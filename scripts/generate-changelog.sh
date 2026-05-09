@@ -24,7 +24,23 @@ FIXES=$(git log "$RANGE" --pretty=format:"%s (%h)" --grep="^fix" 2>/dev/null | s
 CHORES=$(git log "$RANGE" --pretty=format:"%s (%h)" --grep="^chore\|^refactor\|^perf\|^style\|^ci\|^docs\|^build" 2>/dev/null || true)
 
 # Collect contributors
-CONTRIBUTORS=$(git log "$RANGE" --pretty=format:"%an" 2>/dev/null | sort -u | sed 's/^/- @/' || true)
+# Prefer GitHub usernames when running in CI with gh CLI available
+CONTRIBUTORS=""
+if [ -n "${GITHUB_REPOSITORY:-}" ] && { [ -n "${GITHUB_TOKEN:-}" ] || [ -n "${GH_TOKEN:-}" ]; }; then
+  export GH_TOKEN="${GH_TOKEN:-$GITHUB_TOKEN}"
+  if command -v gh >/dev/null 2>&1; then
+    if [ -n "$PREVIOUS_TAG" ] && git rev-parse "$PREVIOUS_TAG" >/dev/null 2>&1; then
+      CONTRIBUTORS=$(gh api "repos/${GITHUB_REPOSITORY}/compare/${PREVIOUS_TAG}...HEAD" --jq '.commits[]? | select(.author != null) | "- @" + .author.login' 2>/dev/null | sort -u | grep -v '^- @$' || true)
+    else
+      CONTRIBUTORS=$(gh api "repos/${GITHUB_REPOSITORY}/commits?sha=HEAD&per_page=100" --jq '.[]? | select(.author != null) | "- @" + .author.login' 2>/dev/null | sort -u | grep -v '^- @$' || true)
+    fi
+  fi
+fi
+
+# Fallback to author names from git log
+if [ -z "${CONTRIBUTORS:-}" ]; then
+  CONTRIBUTORS=$(git log "$RANGE" --pretty=format:"%an" 2>/dev/null | sort -u | sed 's/^/- @/' || true)
+fi
 
 # Build changelog
 CHANGELOG=""
