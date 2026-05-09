@@ -15,17 +15,10 @@ struct TextEditOverlay: View {
   let canvasBounds: CGRect
 
   @State private var editingText: String = ""
-  @State private var textHeight: CGFloat = 28
 
   // MARK: - Constants
 
   private let minTextFieldWidth: CGFloat = AnnotateTextLayout.minWidth
-  /// TextEditor has internal horizontal insets (~5pt each side) that reduce
-  /// the actual text rendering width compared to the frame width.
-  /// We must subtract these when measuring to predict wrap points correctly.
-  private let textEditorHorizontalInsets: CGFloat = 10
-  /// Extra vertical padding for TextEditor's internal chrome (top/bottom insets)
-  private let textEditorVerticalPadding: CGFloat = 4
 
   var body: some View {
     GeometryReader { _ in
@@ -40,13 +33,13 @@ struct TextEditOverlay: View {
           scale: scale
         )
         let fieldWidth = max(displayBounds.width, minTextFieldWidth)
-        // Use measured textHeight with the inline editor's text insets
-        // plus vertical padding for its editing chrome.
-        let fieldHeight = max(textHeight + textEditorVerticalPadding, displayBounds.height)
+        let fieldHeight = max(displayBounds.height, 1)
+        let textContainerInset = AnnotateTextLayout.textEditorInset(scale: scale)
 
         InlineAnnotationTextEditor(
           text: $editingText,
           font: displayFont,
+          textContainerInset: textContainerInset,
           textColor: NSColor(annotation.properties.strokeColor),
           onCommit: { commitEdit(id: editingId) },
           onCancel: cancelEdit,
@@ -59,16 +52,15 @@ struct TextEditOverlay: View {
             alignment: .topLeading
           )
           .background(Color.clear)
+          .clipped()
           .position(
             x: displayBounds.minX + fieldWidth / 2,
             y: displayBounds.minY + fieldHeight / 2
           )
           .onAppear {
             editingText = currentText
-            recalculateHeight(text: currentText, font: displayFont, width: fieldWidth)
           }
           .onChange(of: editingText) { newValue in
-            recalculateHeight(text: newValue, font: displayFont, width: fieldWidth)
             // Live-update annotation text and bounds
             if let editingId = state.editingTextAnnotationId {
               state.updateAnnotationText(id: editingId, text: newValue)
@@ -76,18 +68,6 @@ struct TextEditOverlay: View {
           }
       }
     }
-  }
-
-  /// Recalculate editor height based on wrapped text content.
-  /// We subtract the inline editor's horizontal insets from the measurement
-  /// width so that wrap predictions match the actual narrower rendering area.
-  private func recalculateHeight(text: String, font: NSFont, width: CGFloat) {
-    let effectiveWidth = max(width - textEditorHorizontalInsets, minTextFieldWidth)
-    textHeight = AnnotateTextLayout.measuredHeight(
-      text: text,
-      font: font,
-      constrainedWidth: effectiveWidth
-    )
   }
 
   /// Convert image bounds to display coordinates
@@ -137,6 +117,7 @@ struct TextEditOverlay: View {
 private struct InlineAnnotationTextEditor: NSViewRepresentable {
   @Binding var text: String
   let font: NSFont
+  let textContainerInset: NSSize
   let textColor: NSColor
   let onCommit: () -> Void
   let onCancel: () -> Void
@@ -166,16 +147,14 @@ private struct InlineAnnotationTextEditor: NSViewRepresentable {
     textView.isHorizontallyResizable = false
     textView.isVerticallyResizable = true
     textView.autoresizingMask = [.width]
-    textView.textContainerInset = NSSize(width: 5, height: 0)
+    textView.textContainerInset = textContainerInset
     textView.textContainer?.widthTracksTextView = true
     textView.textContainer?.heightTracksTextView = false
     textView.textContainer?.lineFragmentPadding = 0
+    textView.textContainer?.lineBreakMode = .byWordWrapping
     textView.font = font
     textView.textColor = textColor
-
-    DispatchQueue.main.async {
-      textView.window?.makeFirstResponder(textView)
-    }
+    textView.requestInitialFocus()
 
     return textView
   }
@@ -194,6 +173,9 @@ private struct InlineAnnotationTextEditor: NSViewRepresentable {
     }
     if textView.font != font {
       textView.font = font
+    }
+    if textView.textContainerInset != textContainerInset {
+      textView.textContainerInset = textContainerInset
     }
     if textView.textColor != textColor {
       textView.textColor = textColor
@@ -234,8 +216,40 @@ private struct InlineAnnotationTextEditor: NSViewRepresentable {
     var onCancel: (() -> Void)?
     var onUndo: (() -> Void)?
     var onRedo: (() -> Void)?
+    private var wantsInitialFocus = false
 
     override var undoManager: UndoManager? { nil }
+
+    func requestInitialFocus() {
+      wantsInitialFocus = true
+      focusWhenReady(attempt: 0)
+    }
+
+    override func viewDidMoveToWindow() {
+      super.viewDidMoveToWindow()
+      if wantsInitialFocus {
+        focusWhenReady(attempt: 0)
+      }
+    }
+
+    private func focusWhenReady(attempt: Int) {
+      let delay = attempt == 0 ? 0 : 0.01
+      DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+        guard let self, self.wantsInitialFocus else { return }
+
+        if let window = self.window {
+          window.makeFirstResponder(self)
+          if window.firstResponder === self {
+            self.wantsInitialFocus = false
+            return
+          }
+        }
+
+        if attempt < 8 {
+          self.focusWhenReady(attempt: attempt + 1)
+        }
+      }
+    }
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
       guard event.type == .keyDown else {

@@ -263,6 +263,7 @@ struct AnnotateCanvasView: View {
               canvasBounds: foregroundBounds
             )
             .frame(width: foregroundWidth, height: foregroundHeight)
+            .clipped()
           }
         }
         .offset(x: offset.x, y: offset.y)

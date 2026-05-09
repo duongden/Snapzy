@@ -6,6 +6,7 @@
 //
 
 import CoreGraphics
+import AppKit
 import SwiftUI
 import XCTest
 @testable import Snapzy
@@ -106,6 +107,88 @@ final class AnnotateCoreTests: XCTestCase {
 
     let redone = try XCTUnwrap(state.annotations.first)
     XCTAssertEqual(redone.properties.fontSize, 36)
+  }
+
+  @MainActor
+  func testAnnotateState_updateTextKeepsWidthAndTopLeftAnchor() throws {
+    let state = makeAnnotateState()
+    state.sourceImage = NSImage(size: CGSize(width: 300, height: 200))
+    let originalBounds = CGRect(x: 20, y: 140, width: 80, height: 28)
+    let annotation = AnnotationItem(
+      type: .text(""),
+      bounds: originalBounds,
+      properties: AnnotationProperties(fontSize: 18)
+    )
+    state.annotations = [annotation]
+
+    state.updateAnnotationText(
+      id: annotation.id,
+      text: "A much longer textbox value"
+    )
+
+    let resized = try XCTUnwrap(state.annotations.first)
+    XCTAssertEqual(resized.bounds.minX, originalBounds.minX, accuracy: 0.0001)
+    XCTAssertEqual(resized.bounds.maxY, originalBounds.maxY, accuracy: 0.0001)
+    XCTAssertEqual(resized.bounds.width, originalBounds.width, accuracy: 0.0001)
+    XCTAssertGreaterThan(resized.bounds.height, originalBounds.height)
+  }
+
+  @MainActor
+  func testAnnotateState_updateTextExpandsTooShortInitialHeight() throws {
+    let state = makeAnnotateState()
+    state.sourceImage = NSImage(size: CGSize(width: 300, height: 200))
+    let originalBounds = CGRect(x: 20, y: 160, width: 200, height: 8)
+    let annotation = AnnotationItem(
+      type: .text(""),
+      bounds: originalBounds,
+      properties: AnnotationProperties(fontSize: 18)
+    )
+    state.annotations = [annotation]
+
+    state.updateAnnotationText(id: annotation.id, text: "asdasdsad")
+
+    let resized = try XCTUnwrap(state.annotations.first)
+    XCTAssertEqual(resized.bounds.minX, originalBounds.minX, accuracy: 0.0001)
+    XCTAssertEqual(resized.bounds.maxY, originalBounds.maxY, accuracy: 0.0001)
+    XCTAssertGreaterThan(resized.bounds.height, originalBounds.height)
+    XCTAssertGreaterThanOrEqual(
+      resized.bounds.height,
+      AnnotateTextLayout.minimumHeight(for: AnnotateTextLayout.font(size: 18))
+    )
+  }
+
+  @MainActor
+  func testAnnotateState_updateTextWrapsAtActiveCanvasRightEdge() throws {
+    let state = makeAnnotateState()
+    state.sourceImage = NSImage(size: CGSize(width: 120, height: 120))
+    let originalBounds = CGRect(x: 80, y: 80, width: 30, height: 28)
+    let annotation = AnnotationItem(
+      type: .text(""),
+      bounds: originalBounds,
+      properties: AnnotationProperties(fontSize: 18)
+    )
+    state.annotations = [annotation]
+
+    state.updateAnnotationText(
+      id: annotation.id,
+      text: "asdasdasdaasdasdasdaasdasdasdaasdasdasda"
+    )
+
+    let resized = try XCTUnwrap(state.annotations.first)
+    XCTAssertLessThanOrEqual(resized.bounds.maxX, state.activeAnnotationBounds.maxX + 0.0001)
+    XCTAssertEqual(resized.bounds.minX, originalBounds.minX, accuracy: 0.0001)
+    XCTAssertEqual(resized.bounds.maxY, originalBounds.maxY, accuracy: 0.0001)
+    XCTAssertGreaterThan(resized.bounds.height, originalBounds.height)
+  }
+
+  func testAnnotateTextLayout_textEditorInsetScalesWithCanvasZoom() {
+    let halfScaleInset = AnnotateTextLayout.textEditorInset(scale: 0.5)
+    XCTAssertEqual(halfScaleInset.width, AnnotateTextLayout.horizontalPadding * 0.5, accuracy: 0.0001)
+    XCTAssertEqual(halfScaleInset.height, AnnotateTextLayout.verticalPadding * 0.5, accuracy: 0.0001)
+
+    let doubleScaleInset = AnnotateTextLayout.textEditorInset(scale: 2)
+    XCTAssertEqual(doubleScaleInset.width, AnnotateTextLayout.horizontalPadding * 2, accuracy: 0.0001)
+    XCTAssertEqual(doubleScaleInset.height, AnnotateTextLayout.verticalPadding * 2, accuracy: 0.0001)
   }
 
   func testAnnotationFactory_createsCounterCenteredAtStart() {

@@ -1894,23 +1894,24 @@ final class AnnotateState: ObservableObject {
   }
 
   func updateAnnotationText(id: UUID, text: String) {
-    guard let index = annotations.firstIndex(where: { $0.id == id }) else { return }
-    if case .text(let currentText) = annotations[index].type, currentText == text {
-      return
-    }
+    guard let index = annotations.firstIndex(where: { $0.id == id }),
+          case .text(let currentText) = annotations[index].type else { return }
 
-    recordTextEditingUndoIfNeeded(id: id, newText: text)
-    annotations[index].type = .text(text)
-    // Auto-size height based on wrapped text content, preserve width
     let currentBounds = annotations[index].bounds
-    let currentWidth = currentBounds.width
-    var newBounds = calculateTextBounds(
+    let newBounds = resizedTextBounds(
       text: text,
-      fontSize: annotations[index].properties.fontSize,
-      origin: currentBounds.origin,
-      constrainedWidth: currentWidth
+      properties: annotations[index].properties,
+      currentBounds: currentBounds
     )
-    newBounds.origin.y = currentBounds.maxY - newBounds.height
+
+    let textChanged = currentText != text
+    let boundsChanged = annotations[index].bounds != newBounds
+    guard textChanged || boundsChanged else { return }
+
+    if textChanged {
+      recordTextEditingUndoIfNeeded(id: id, newText: text)
+      annotations[index].type = .text(text)
+    }
     annotations[index].bounds = newBounds
     hasUnsavedChanges = true
   }
@@ -1982,15 +1983,12 @@ final class AnnotateState: ObservableObject {
       // Recalculate bounds for new font size
       if case .text(let content) = annotations[index].type {
         let currentBounds = annotations[index].bounds
-        let currentWidth = currentBounds.width
-        var newBounds = calculateTextBounds(
+        let properties = annotations[index].properties
+        annotations[index].bounds = resizedTextBounds(
           text: content,
-          fontSize: fontSize,
-          origin: currentBounds.origin,
-          constrainedWidth: currentWidth
+          properties: properties,
+          currentBounds: currentBounds
         )
-        newBounds.origin.y = currentBounds.maxY - newBounds.height
-        annotations[index].bounds = newBounds
       }
     }
     if let strokeColor = strokeColor {
@@ -2072,14 +2070,44 @@ final class AnnotateState: ObservableObject {
     text: String,
     fontSize: CGFloat,
     origin: CGPoint,
-    constrainedWidth: CGFloat? = nil
+    fontName: String? = nil,
+    constrainedWidth: CGFloat? = nil,
+    maximumHeight: CGFloat = AnnotateTextLayout.maxHeight
   ) -> CGRect {
     AnnotateTextLayout.bounds(
       text: text,
-      font: AnnotateTextLayout.font(size: fontSize),
+      font: AnnotateTextLayout.font(size: fontSize, fontName: fontName),
       origin: origin,
-      constrainedWidth: constrainedWidth
+      constrainedWidth: constrainedWidth,
+      maximumHeight: maximumHeight
     )
+  }
+
+  private func resizedTextBounds(
+    text: String,
+    properties: AnnotationProperties,
+    currentBounds: CGRect
+  ) -> CGRect {
+    let font = AnnotateTextLayout.font(size: properties.fontSize, fontName: properties.fontName)
+    let annotationBounds = activeAnnotationBounds.standardized
+    let topY = currentBounds.maxY
+    let availableWidth = max(annotationBounds.maxX - currentBounds.minX, AnnotateTextLayout.minWidth)
+    let availableHeight = max(topY - annotationBounds.minY, AnnotateTextLayout.minimumHeight(for: font))
+    let targetWidth = AnnotateTextLayout.clampedWidth(
+      currentBounds.width,
+      maximumWidth: availableWidth
+    )
+
+    var bounds = calculateTextBounds(
+      text: text,
+      fontSize: properties.fontSize,
+      origin: currentBounds.origin,
+      fontName: properties.fontName,
+      constrainedWidth: targetWidth,
+      maximumHeight: availableHeight
+    )
+    bounds.origin.y = topY - bounds.height
+    return bounds
   }
 
   /// Get selected annotation if it's a text type
@@ -3037,20 +3065,21 @@ enum AnnotateTextLayout {
     text: String,
     font: NSFont,
     origin: CGPoint,
-    constrainedWidth: CGFloat? = nil
+    constrainedWidth: CGFloat? = nil,
+    maximumHeight: CGFloat = maxHeight
   ) -> CGRect {
     let finalWidth: CGFloat
 
     if let constrainedWidth = constrainedWidth {
-      finalWidth = min(max(constrainedWidth, minWidth), maxWidth)
+      finalWidth = clampedWidth(constrainedWidth)
     } else {
-      let measuredWidth = ceil(singleLineSize(for: text, font: font).width) + horizontalPadding * 2
-      finalWidth = min(max(measuredWidth, defaultInitialWidth), maxWidth)
+      finalWidth = preferredAutoWidth(text: text, font: font)
     }
 
     let contentWidth = max(finalWidth - horizontalPadding * 2, minContentWidth)
     let contentHeight = ceil(contentSize(for: text, font: font, constrainedWidth: contentWidth).height)
-    let finalHeight = min(max(contentHeight + verticalPadding * 2, minimumHeight(for: font)), maxHeight)
+    let resolvedMaximumHeight = max(minimumHeight(for: font), min(maximumHeight, maxHeight))
+    let finalHeight = min(max(contentHeight + verticalPadding * 2, minimumHeight(for: font)), resolvedMaximumHeight)
 
     return CGRect(
       x: origin.x,
@@ -3081,6 +3110,31 @@ enum AnnotateTextLayout {
       origin: .zero,
       constrainedWidth: constrainedWidth
     ).height
+  }
+
+  static func textEditorInset(scale: CGFloat) -> NSSize {
+    let resolvedScale = max(scale, 0.0001)
+    return NSSize(
+      width: horizontalPadding * resolvedScale,
+      height: verticalPadding * resolvedScale
+    )
+  }
+
+  static func clampedWidth(_ width: CGFloat, maximumWidth: CGFloat = maxWidth) -> CGFloat {
+    let resolvedMaximumWidth = max(minWidth, min(maximumWidth, maxWidth))
+    return min(max(width, minWidth), resolvedMaximumWidth)
+  }
+
+  static func preferredAutoWidth(
+    text: String,
+    font: NSFont,
+    minimumWidth: CGFloat = defaultInitialWidth,
+    maximumWidth: CGFloat = maxWidth
+  ) -> CGFloat {
+    let measuredWidth = ceil(singleLineSize(for: text, font: font).width) + horizontalPadding * 2
+    let resolvedMaximumWidth = max(minWidth, min(maximumWidth, maxWidth))
+    let resolvedMinimumWidth = min(max(minimumWidth, minWidth), resolvedMaximumWidth)
+    return min(max(measuredWidth, resolvedMinimumWidth), resolvedMaximumWidth)
   }
 
   static func minimumHeight(for font: NSFont) -> CGFloat {

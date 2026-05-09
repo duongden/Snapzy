@@ -306,9 +306,13 @@ struct AnnotationRenderer {
       .paragraphStyle: paragraphStyle
     ]
 
-    let textRect = AnnotateTextLayout.textRect(for: content, font: font, in: bounds)
+    let textBounds = bounds.standardized
+    let textRect = AnnotateTextLayout.textRect(for: content, font: font, in: textBounds)
     let text = displayText as NSString
+    context.saveGState()
+    context.clip(to: textBounds)
     text.draw(in: textRect, withAttributes: attributes)
+    context.restoreGState()
   }
 
   private func drawWatermark(_ content: String, in bounds: CGRect, properties: AnnotationProperties) {
