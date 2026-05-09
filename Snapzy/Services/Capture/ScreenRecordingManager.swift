@@ -146,6 +146,337 @@ enum RecordingVideoEncodingSettings {
   }
 }
 
+enum RecordingAudioEncodingSettings {
+  static let sampleRate = 48_000
+  static let channelCount = 2
+  static let systemAudioBitrate = 128_000
+  static let microphoneAudioBitrate = 128_000
+  static let mixedAudioBitrate = 192_000
+
+  static func makeSystemAudioSettings() -> [String: Any] {
+    makeStereoAACSettings(bitrate: systemAudioBitrate)
+  }
+
+  static func makeMicrophoneAudioSettings() -> [String: Any] {
+    makeStereoAACSettings(bitrate: microphoneAudioBitrate)
+  }
+
+  static func makeMixedAudioSettings() -> [String: Any] {
+    makeStereoAACSettings(bitrate: mixedAudioBitrate)
+  }
+
+  private static func makeStereoAACSettings(bitrate: Int) -> [String: Any] {
+    [
+      AVFormatIDKey: kAudioFormatMPEG4AAC,
+      AVSampleRateKey: sampleRate,
+      AVNumberOfChannelsKey: channelCount,
+      AVEncoderBitRateKey: bitrate,
+      AVChannelLayoutKey: stereoChannelLayoutData(),
+    ]
+  }
+
+  private static func stereoChannelLayoutData() -> Data {
+    var layout = AudioChannelLayout()
+    layout.mChannelLayoutTag = kAudioChannelLayoutTag_Stereo
+    return Data(bytes: &layout, count: MemoryLayout<AudioChannelLayout>.size)
+  }
+}
+
+enum RecordingAudioCompatibilityExporter {
+  struct Result {
+    let outputURL: URL
+    let audioTrackCount: Int
+    let didNormalize: Bool
+  }
+
+  enum ExportError: LocalizedError {
+    case missingVideoTrack
+    case cannotAddReaderOutput(String)
+    case cannotAddWriterInput(String)
+    case readerStartFailed(String)
+    case writerStartFailed(String)
+    case appendFailed(String)
+    case readerFailed(String)
+    case writerFailed(String)
+
+    var errorDescription: String? {
+      switch self {
+      case .missingVideoTrack:
+        return "Recording audio normalization requires a video track."
+      case .cannotAddReaderOutput(let mediaType):
+        return "Cannot add \(mediaType) reader output."
+      case .cannotAddWriterInput(let mediaType):
+        return "Cannot add \(mediaType) writer input."
+      case .readerStartFailed(let message):
+        return "Audio normalization reader failed to start: \(message)"
+      case .writerStartFailed(let message):
+        return "Audio normalization writer failed to start: \(message)"
+      case .appendFailed(let mediaType):
+        return "Audio normalization failed while appending \(mediaType) samples."
+      case .readerFailed(let message):
+        return "Audio normalization reader failed: \(message)"
+      case .writerFailed(let message):
+        return "Audio normalization writer failed: \(message)"
+      }
+    }
+  }
+
+  static func requiresMixDown(audioTrackCount: Int) -> Bool {
+    audioTrackCount > 1
+  }
+
+  static func normalizeIfNeeded(at sourceURL: URL, fileType: AVFileType) async throws -> Result {
+    let asset = AVURLAsset(url: sourceURL)
+    let audioTracks = try await asset.loadTracks(withMediaType: .audio)
+    guard requiresMixDown(audioTrackCount: audioTracks.count) else {
+      return Result(outputURL: sourceURL, audioTrackCount: audioTracks.count, didNormalize: false)
+    }
+
+    guard let videoTrack = try await asset.loadTracks(withMediaType: .video).first else {
+      throw ExportError.missingVideoTrack
+    }
+
+    let duration = try await asset.load(.duration)
+    let preferredTransform = try await videoTrack.load(.preferredTransform)
+    let sourceFormatHint = try await videoTrack.load(.formatDescriptions).first
+    let normalizedURL = normalizedTemporaryURL(for: sourceURL)
+
+    do {
+      try await writeNormalizedFile(
+        asset: asset,
+        videoTrack: videoTrack,
+        audioTracks: audioTracks,
+        duration: duration,
+        preferredTransform: preferredTransform,
+        sourceFormatHint: sourceFormatHint,
+        outputURL: normalizedURL,
+        fileType: fileType
+      )
+      _ = try FileManager.default.replaceItemAt(
+        sourceURL,
+        withItemAt: normalizedURL,
+        backupItemName: nil,
+        options: []
+      )
+      return Result(outputURL: sourceURL, audioTrackCount: audioTracks.count, didNormalize: true)
+    } catch {
+      try? FileManager.default.removeItem(at: normalizedURL)
+      throw error
+    }
+  }
+
+  private static func normalizedTemporaryURL(for sourceURL: URL) -> URL {
+    let directory = sourceURL.deletingLastPathComponent()
+    let baseName = sourceURL.deletingPathExtension().lastPathComponent
+    let fileExtension = sourceURL.pathExtension
+    return directory
+      .appendingPathComponent(".\(baseName)-audio-compatible-\(UUID().uuidString)")
+      .appendingPathExtension(fileExtension)
+  }
+
+  private static func makeReaderAudioSettings() -> [String: Any] {
+    [
+      AVFormatIDKey: kAudioFormatLinearPCM,
+      AVSampleRateKey: RecordingAudioEncodingSettings.sampleRate,
+      AVNumberOfChannelsKey: RecordingAudioEncodingSettings.channelCount,
+      AVLinearPCMBitDepthKey: 32,
+      AVLinearPCMIsFloatKey: true,
+      AVLinearPCMIsBigEndianKey: false,
+      AVLinearPCMIsNonInterleaved: false,
+    ]
+  }
+
+  private static func writeNormalizedFile(
+    asset: AVAsset,
+    videoTrack: AVAssetTrack,
+    audioTracks: [AVAssetTrack],
+    duration: CMTime,
+    preferredTransform: CGAffineTransform,
+    sourceFormatHint: CMFormatDescription?,
+    outputURL: URL,
+    fileType: AVFileType
+  ) async throws {
+    try? FileManager.default.removeItem(at: outputURL)
+
+    try await withCheckedThrowingContinuation { continuation in
+      let workerQueue = DispatchQueue(label: "com.trongduong.snapzy.recording.audio-compatibility", qos: .utility)
+      workerQueue.async {
+        do {
+          try writeNormalizedFileSynchronously(
+            asset: asset,
+            videoTrack: videoTrack,
+            audioTracks: audioTracks,
+            duration: duration,
+            preferredTransform: preferredTransform,
+            sourceFormatHint: sourceFormatHint,
+            outputURL: outputURL,
+            fileType: fileType
+          )
+          continuation.resume()
+        } catch {
+          continuation.resume(throwing: error)
+        }
+      }
+    }
+  }
+
+  private static func writeNormalizedFileSynchronously(
+    asset: AVAsset,
+    videoTrack: AVAssetTrack,
+    audioTracks: [AVAssetTrack],
+    duration: CMTime,
+    preferredTransform: CGAffineTransform,
+    sourceFormatHint: CMFormatDescription?,
+    outputURL: URL,
+    fileType: AVFileType
+  ) throws {
+    let reader = try AVAssetReader(asset: asset)
+    reader.timeRange = CMTimeRange(start: .zero, duration: duration)
+
+    let writer = try AVAssetWriter(outputURL: outputURL, fileType: fileType)
+    writer.shouldOptimizeForNetworkUse = fileType == .mp4
+
+    let videoOutput = AVAssetReaderTrackOutput(track: videoTrack, outputSettings: nil)
+    videoOutput.alwaysCopiesSampleData = false
+    guard reader.canAdd(videoOutput) else {
+      throw ExportError.cannotAddReaderOutput("video")
+    }
+    reader.add(videoOutput)
+
+    let videoInput = AVAssetWriterInput(
+      mediaType: .video,
+      outputSettings: nil,
+      sourceFormatHint: sourceFormatHint
+    )
+    videoInput.expectsMediaDataInRealTime = false
+    videoInput.transform = preferredTransform
+    guard writer.canAdd(videoInput) else {
+      throw ExportError.cannotAddWriterInput("video")
+    }
+    writer.add(videoInput)
+
+    let audioOutput = AVAssetReaderAudioMixOutput(
+      audioTracks: audioTracks,
+      audioSettings: makeReaderAudioSettings()
+    )
+    audioOutput.audioMix = makeAudioMix(for: audioTracks)
+    guard reader.canAdd(audioOutput) else {
+      throw ExportError.cannotAddReaderOutput("audio")
+    }
+    reader.add(audioOutput)
+
+    let audioInput = AVAssetWriterInput(
+      mediaType: .audio,
+      outputSettings: RecordingAudioEncodingSettings.makeMixedAudioSettings()
+    )
+    audioInput.expectsMediaDataInRealTime = false
+    guard writer.canAdd(audioInput) else {
+      throw ExportError.cannotAddWriterInput("audio")
+    }
+    writer.add(audioInput)
+
+    guard writer.startWriting() else {
+      throw ExportError.writerStartFailed(writer.error?.localizedDescription ?? "unknown")
+    }
+    guard reader.startReading() else {
+      writer.cancelWriting()
+      throw ExportError.readerStartFailed(reader.error?.localizedDescription ?? "unknown")
+    }
+
+    writer.startSession(atSourceTime: .zero)
+    try copySamples(
+      reader: reader,
+      writer: writer,
+      outputsAndInputs: [
+        ("video", videoOutput, videoInput),
+        ("audio", audioOutput, audioInput),
+      ]
+    )
+
+    if reader.status == .failed {
+      throw ExportError.readerFailed(reader.error?.localizedDescription ?? "unknown")
+    }
+    if reader.status == .cancelled {
+      throw ExportError.readerFailed("cancelled")
+    }
+
+    let finishSemaphore = DispatchSemaphore(value: 0)
+    writer.finishWriting {
+      finishSemaphore.signal()
+    }
+    finishSemaphore.wait()
+
+    guard writer.status == .completed else {
+      throw ExportError.writerFailed(writer.error?.localizedDescription ?? "unknown")
+    }
+  }
+
+  private static func makeAudioMix(for audioTracks: [AVAssetTrack]) -> AVAudioMix {
+    let mix = AVMutableAudioMix()
+    mix.inputParameters = audioTracks.map { track in
+      let parameters = AVMutableAudioMixInputParameters(track: track)
+      parameters.setVolume(1.0, at: .zero)
+      return parameters
+    }
+    return mix
+  }
+
+  private static func copySamples(
+    reader: AVAssetReader,
+    writer: AVAssetWriter,
+    outputsAndInputs: [(String, AVAssetReaderOutput, AVAssetWriterInput)]
+  ) throws {
+    let group = DispatchGroup()
+    let errorLock = NSLock()
+    var firstError: Error?
+
+    func recordError(_ error: Error) {
+      errorLock.withLock {
+        if firstError == nil {
+          firstError = error
+          reader.cancelReading()
+          writer.cancelWriting()
+        }
+      }
+    }
+
+    for (label, output, input) in outputsAndInputs {
+      group.enter()
+      let queue = DispatchQueue(label: "com.trongduong.snapzy.recording.audio-compatibility.\(label)")
+      var didFinish = false
+
+      func finishInput() {
+        if !didFinish {
+          didFinish = true
+          input.markAsFinished()
+          group.leave()
+        }
+      }
+
+      input.requestMediaDataWhenReady(on: queue) {
+        while input.isReadyForMoreMediaData {
+          if let sampleBuffer = output.copyNextSampleBuffer() {
+            if !input.append(sampleBuffer) {
+              recordError(ExportError.appendFailed(label))
+              finishInput()
+              return
+            }
+          } else {
+            finishInput()
+            return
+          }
+        }
+      }
+    }
+
+    group.wait()
+
+    if let firstError {
+      throw firstError
+    }
+  }
+}
+
 // MARK: - Recording State
 
 enum RecordingState: Equatable {
@@ -709,7 +1040,8 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
     let mouseSamples = mouseTracker?.stop() ?? []
     let writerURL = outputURL
     await logRecordingFrameDiagnostics(outputURL: writerURL, stats: videoWriteStats)
-    let url = finalizeRecordingOutput(writerURL: writerURL)
+    let compatibleWriterURL = await normalizeRecordingAudioForCompatibilityIfNeeded(writerURL: writerURL)
+    let url = finalizeRecordingOutput(writerURL: compatibleWriterURL)
     outputURL = url
     if let url = url {
       if mouseSamples.count >= 2 {
@@ -800,6 +1132,39 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
   }
 
   // MARK: - Private Methods
+
+  private func normalizeRecordingAudioForCompatibilityIfNeeded(writerURL: URL?) async -> URL? {
+    guard let writerURL else { return nil }
+
+    do {
+      let result = try await RecordingAudioCompatibilityExporter.normalizeIfNeeded(
+        at: writerURL,
+        fileType: videoFormat.fileType
+      )
+      if result.didNormalize {
+        DiagnosticLogger.shared.log(.info, .recording, "Recording audio normalized for compatibility", context: [
+          "file": writerURL.lastPathComponent,
+          "sourceAudioTracks": "\(result.audioTrackCount)",
+          "outputAudioTracks": "1",
+          "audioCodec": "aac-lc",
+          "sampleRate": "\(RecordingAudioEncodingSettings.sampleRate)",
+          "channels": "\(RecordingAudioEncodingSettings.channelCount)",
+        ])
+      } else {
+        DiagnosticLogger.shared.log(.debug, .recording, "Recording audio normalization skipped", context: [
+          "file": writerURL.lastPathComponent,
+          "audioTracks": "\(result.audioTrackCount)",
+        ])
+      }
+      return result.outputURL
+    } catch {
+      DiagnosticLogger.shared.log(.warning, .recording, "Recording audio normalization failed; preserving original file", context: [
+        "file": writerURL.lastPathComponent,
+        "error": error.localizedDescription,
+      ])
+      return writerURL
+    }
+  }
 
   private func finalizeRecordingOutput(writerURL: URL?) -> URL? {
     guard let writerURL else { return nil }
@@ -1005,12 +1370,7 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
 
     // Audio settings (AAC) for system audio
     if captureSystemAudio {
-      let audioSettings: [String: Any] = [
-        AVFormatIDKey: kAudioFormatMPEG4AAC,
-        AVSampleRateKey: 48000,
-        AVNumberOfChannelsKey: 2,
-        AVEncoderBitRateKey: 128000,
-      ]
+      let audioSettings = RecordingAudioEncodingSettings.makeSystemAudioSettings()
       let audioIn = AVAssetWriterInput(mediaType: .audio, outputSettings: audioSettings)
       audioIn.expectsMediaDataInRealTime = true
       guard writer.canAdd(audioIn) else {
@@ -1023,12 +1383,7 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
 
     // Microphone audio settings (AAC) - separate track
     if captureMicrophone {
-      let micSettings: [String: Any] = [
-        AVFormatIDKey: kAudioFormatMPEG4AAC,
-        AVSampleRateKey: 48000,
-        AVNumberOfChannelsKey: 1,  // Mono for microphone
-        AVEncoderBitRateKey: 64000,
-      ]
+      let micSettings = RecordingAudioEncodingSettings.makeMicrophoneAudioSettings()
       let micIn = AVAssetWriterInput(mediaType: .audio, outputSettings: micSettings)
       micIn.expectsMediaDataInRealTime = true
       guard writer.canAdd(micIn) else {

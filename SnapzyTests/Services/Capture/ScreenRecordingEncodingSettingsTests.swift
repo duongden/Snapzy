@@ -135,10 +135,66 @@ final class ScreenRecordingEncodingSettingsTests: XCTestCase {
     XCTAssertNil(compression[AVVideoProfileLevelKey])
   }
 
+  func testMakeSystemAudioSettings_usesStereoAACCompatibilityProfile() throws {
+    let settings = RecordingAudioEncodingSettings.makeSystemAudioSettings()
+
+    XCTAssertEqual(audioFormatRawValue(settings[AVFormatIDKey]), kAudioFormatMPEG4AAC)
+    XCTAssertEqual(settings[AVSampleRateKey] as? Int, 48_000)
+    XCTAssertEqual(settings[AVNumberOfChannelsKey] as? Int, 2)
+    XCTAssertEqual(settings[AVEncoderBitRateKey] as? Int, 128_000)
+    XCTAssertEqual(try channelLayoutTag(from: settings), kAudioChannelLayoutTag_Stereo)
+  }
+
+  func testMakeMicrophoneAudioSettings_usesStereoAACCompatibilityProfile() throws {
+    let settings = RecordingAudioEncodingSettings.makeMicrophoneAudioSettings()
+
+    XCTAssertEqual(audioFormatRawValue(settings[AVFormatIDKey]), kAudioFormatMPEG4AAC)
+    XCTAssertEqual(settings[AVSampleRateKey] as? Int, 48_000)
+    XCTAssertEqual(settings[AVNumberOfChannelsKey] as? Int, 2)
+    XCTAssertEqual(settings[AVEncoderBitRateKey] as? Int, 128_000)
+    XCTAssertEqual(try channelLayoutTag(from: settings), kAudioChannelLayoutTag_Stereo)
+  }
+
+  func testMakeMixedAudioSettings_usesHigherBitrateStereoAACCompatibilityProfile() throws {
+    let settings = RecordingAudioEncodingSettings.makeMixedAudioSettings()
+
+    XCTAssertEqual(audioFormatRawValue(settings[AVFormatIDKey]), kAudioFormatMPEG4AAC)
+    XCTAssertEqual(settings[AVSampleRateKey] as? Int, 48_000)
+    XCTAssertEqual(settings[AVNumberOfChannelsKey] as? Int, 2)
+    XCTAssertEqual(settings[AVEncoderBitRateKey] as? Int, 192_000)
+    XCTAssertEqual(try channelLayoutTag(from: settings), kAudioChannelLayoutTag_Stereo)
+  }
+
+  func testAudioCompatibilityExporterRequiresMixDownOnlyForMultipleAudioTracks() {
+    XCTAssertFalse(RecordingAudioCompatibilityExporter.requiresMixDown(audioTrackCount: 0))
+    XCTAssertFalse(RecordingAudioCompatibilityExporter.requiresMixDown(audioTrackCount: 1))
+    XCTAssertTrue(RecordingAudioCompatibilityExporter.requiresMixDown(audioTrackCount: 2))
+    XCTAssertTrue(RecordingAudioCompatibilityExporter.requiresMixDown(audioTrackCount: 3))
+  }
+
   private func codecRawValue(_ value: Any?) -> String? {
     if let codec = value as? AVVideoCodecType {
       return codec.rawValue
     }
     return value as? String
+  }
+
+  private func audioFormatRawValue(_ value: Any?) -> AudioFormatID? {
+    if let format = value as? AudioFormatID {
+      return format
+    }
+    if let format = value as? Int {
+      return AudioFormatID(format)
+    }
+    return nil
+  }
+
+  private func channelLayoutTag(from settings: [String: Any]) throws -> AudioChannelLayoutTag {
+    let data = try XCTUnwrap(settings[AVChannelLayoutKey] as? Data)
+    var layout = AudioChannelLayout()
+    _ = withUnsafeMutableBytes(of: &layout) { destination in
+      data.copyBytes(to: destination)
+    }
+    return layout.mChannelLayoutTag
   }
 }
