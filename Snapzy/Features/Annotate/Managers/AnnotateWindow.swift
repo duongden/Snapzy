@@ -92,6 +92,18 @@ final class AnnotateWindow: NSWindow {
 
     let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
 
+    // Own Annotate undo/redo at the window boundary so Cmd+Z never falls
+    // through to stale AppKit text-system undo actions from inline editing.
+    if event.keyCode == 6 && flags == .command {
+      interactionState?.undo()
+      return true
+    }
+
+    if event.keyCode == 6 && flags == [.command, .shift] {
+      interactionState?.redo()
+      return true
+    }
+
     // Cmd+S while actively editing crop confirms the crop first.
     if event.keyCode == 1 && flags == .command && interactionState?.isCropInteractionActive == true && !isTextInputActive {
       interactionState?.confirmCropInteraction()
@@ -157,6 +169,14 @@ final class AnnotateWindow: NSWindow {
     }
 
     return super.performKeyEquivalent(with: event)
+  }
+
+  @objc func undo(_ sender: Any?) {
+    interactionState?.undo()
+  }
+
+  @objc func redo(_ sender: Any?) {
+    interactionState?.redo()
   }
 
   // MARK: - Scroll Wheel, Magnification Zoom & Pan

@@ -383,8 +383,8 @@ final class DrawingCanvasNSView: NSView {
       if let annotation = hitTestAnnotation(at: imagePoint),
          case .text = annotation.type {
         Task { @MainActor in
-          state.editingTextAnnotationId = annotation.id
           state.selectedAnnotationId = annotation.id
+          state.beginTextEditing(id: annotation.id)
         }
         needsDisplay = true
         return
@@ -781,7 +781,7 @@ final class DrawingCanvasNSView: NSView {
     let item = AnnotationItem(type: .text(""), bounds: bounds, properties: properties)
     state.annotations.append(item)
     state.selectedAnnotationId = item.id
-    state.editingTextAnnotationId = item.id  // Enter edit mode immediately
+    state.beginTextEditing(id: item.id, recordsUndo: false)  // Enter edit mode immediately
   }
 
   // MARK: - Drawing

@@ -17,6 +17,13 @@ final class AnnotateState: ObservableObject {
     var embeddedImageAssets: [UUID: NSImage]
   }
 
+  private struct TextEditingUndoTransaction {
+    let annotationId: UUID
+    let snapshotBeforeEdit: AnnotationSnapshot
+    let originalText: String
+    var didRecordUndo: Bool = false
+  }
+
   private struct CropInteractionContext {
     let selectedTool: AnnotationToolType
     let selectedAnnotationIds: Set<UUID>
@@ -808,7 +815,13 @@ final class AnnotateState: ObservableObject {
     }
   }
   @Published private(set) var selectedAnnotationIds: Set<UUID> = []
-  @Published var editingTextAnnotationId: UUID?
+  @Published var editingTextAnnotationId: UUID? {
+    didSet {
+      if editingTextAnnotationId == nil {
+        textEditingUndoTransaction = nil
+      }
+    }
+  }
 
   // MARK: - Counter Tool State (derived from annotations, not stored)
 
@@ -893,6 +906,7 @@ final class AnnotateState: ObservableObject {
 
   private var undoStack: [AnnotationSnapshot] = []
   private var redoStack: [AnnotationSnapshot] = []
+  private var textEditingUndoTransaction: TextEditingUndoTransaction?
 
   init(image: NSImage, url: URL, quickAccessItemId: UUID? = nil, cloudURL: URL? = nil, cloudKey: String? = nil, isCloudStale: Bool = false) {
     self.sourceImage = image
@@ -1453,8 +1467,12 @@ final class AnnotateState: ObservableObject {
   // MARK: - Undo/Redo Methods
 
   func saveState() {
-    DiagnosticLogger.shared.log(.debug, .annotate, "Undo checkpoint", context: ["annotations": "\(annotations.count)"])
-    undoStack.append(currentSnapshot())
+    pushUndoSnapshot(currentSnapshot(), annotationCount: annotations.count)
+  }
+
+  private func pushUndoSnapshot(_ snapshot: AnnotationSnapshot, annotationCount: Int) {
+    DiagnosticLogger.shared.log(.debug, .annotate, "Undo checkpoint", context: ["annotations": "\(annotationCount)"])
+    undoStack.append(snapshot)
     redoStack.removeAll()
     canUndo = true
     canRedo = false
@@ -1462,6 +1480,9 @@ final class AnnotateState: ObservableObject {
   }
 
   func undo() {
+    if editingTextAnnotationId != nil {
+      commitTextEditing()
+    }
     DiagnosticLogger.shared.log(.debug, .annotate, "Undo", context: ["stackDepth": "\(undoStack.count)"])
     guard let previous = undoStack.popLast() else { return }
     redoStack.append(currentSnapshot())
@@ -1471,6 +1492,9 @@ final class AnnotateState: ObservableObject {
   }
 
   func redo() {
+    if editingTextAnnotationId != nil {
+      commitTextEditing()
+    }
     DiagnosticLogger.shared.log(.debug, .annotate, "Redo", context: ["stackDepth": "\(redoStack.count)"])
     guard let next = redoStack.popLast() else { return }
     undoStack.append(currentSnapshot())
@@ -1484,6 +1508,44 @@ final class AnnotateState: ObservableObject {
       annotations: annotations,
       embeddedImageAssets: embeddedImageAssets
     )
+  }
+
+  func beginTextEditing(id: UUID, recordsUndo: Bool = true) {
+    if let activeId = editingTextAnnotationId, activeId != id {
+      commitTextEditing()
+    }
+
+    if recordsUndo,
+       let annotation = annotations.first(where: { $0.id == id }),
+       case .text(let text) = annotation.type {
+      textEditingUndoTransaction = TextEditingUndoTransaction(
+        annotationId: id,
+        snapshotBeforeEdit: currentSnapshot(),
+        originalText: text
+      )
+    } else {
+      textEditingUndoTransaction = nil
+    }
+
+    editingTextAnnotationId = id
+  }
+
+  func finishTextEditing() {
+    editingTextAnnotationId = nil
+  }
+
+  private func recordTextEditingUndoIfNeeded(id: UUID, newText: String) {
+    guard var transaction = textEditingUndoTransaction,
+          transaction.annotationId == id,
+          !transaction.didRecordUndo,
+          transaction.originalText != newText else { return }
+
+    pushUndoSnapshot(
+      transaction.snapshotBeforeEdit,
+      annotationCount: transaction.snapshotBeforeEdit.annotations.count
+    )
+    transaction.didRecordUndo = true
+    textEditingUndoTransaction = transaction
   }
 
   private func applySnapshot(_ snapshot: AnnotationSnapshot) {
@@ -1832,20 +1894,25 @@ final class AnnotateState: ObservableObject {
   }
 
   func updateAnnotationText(id: UUID, text: String) {
-    if let index = annotations.firstIndex(where: { $0.id == id }) {
-      annotations[index].type = .text(text)
-      // Auto-size height based on wrapped text content, preserve width
-      let currentBounds = annotations[index].bounds
-      let currentWidth = currentBounds.width
-      var newBounds = calculateTextBounds(
-        text: text,
-        fontSize: annotations[index].properties.fontSize,
-        origin: currentBounds.origin,
-        constrainedWidth: currentWidth
-      )
-      newBounds.origin.y = currentBounds.maxY - newBounds.height
-      annotations[index].bounds = newBounds
+    guard let index = annotations.firstIndex(where: { $0.id == id }) else { return }
+    if case .text(let currentText) = annotations[index].type, currentText == text {
+      return
     }
+
+    recordTextEditingUndoIfNeeded(id: id, newText: text)
+    annotations[index].type = .text(text)
+    // Auto-size height based on wrapped text content, preserve width
+    let currentBounds = annotations[index].bounds
+    let currentWidth = currentBounds.width
+    var newBounds = calculateTextBounds(
+      text: text,
+      fontSize: annotations[index].properties.fontSize,
+      origin: currentBounds.origin,
+      constrainedWidth: currentWidth
+    )
+    newBounds.origin.y = currentBounds.maxY - newBounds.height
+    annotations[index].bounds = newBounds
+    hasUnsavedChanges = true
   }
 
   func updateWatermarkText(id: UUID, text: String) {
@@ -1881,9 +1948,26 @@ final class AnnotateState: ObservableObject {
     cornerRadius: CGFloat? = nil,
     opacity: CGFloat? = nil,
     rotationDegrees: CGFloat? = nil,
-    watermarkStyle: WatermarkStyle? = nil
+    watermarkStyle: WatermarkStyle? = nil,
+    recordsUndo: Bool = false
   ) {
     guard let index = annotations.firstIndex(where: { $0.id == id }) else { return }
+
+    guard annotationPropertiesWillChange(
+      annotations[index],
+      strokeWidth: strokeWidth,
+      fontSize: fontSize,
+      strokeColor: strokeColor,
+      fillColor: fillColor,
+      cornerRadius: cornerRadius,
+      opacity: opacity,
+      rotationDegrees: rotationDegrees,
+      watermarkStyle: watermarkStyle
+    ) else { return }
+
+    if recordsUndo {
+      saveState()
+    }
 
     if let strokeWidth = strokeWidth {
       let clampedWidth = AnnotationProperties.clampedControlValue(strokeWidth)
@@ -1927,6 +2011,54 @@ final class AnnotateState: ObservableObject {
     if let watermarkStyle = watermarkStyle {
       annotations[index].properties.watermarkStyle = watermarkStyle
     }
+    hasUnsavedChanges = true
+  }
+
+  private func annotationPropertiesWillChange(
+    _ annotation: AnnotationItem,
+    strokeWidth: CGFloat? = nil,
+    fontSize: CGFloat? = nil,
+    strokeColor: Color? = nil,
+    fillColor: Color? = nil,
+    cornerRadius: CGFloat? = nil,
+    opacity: CGFloat? = nil,
+    rotationDegrees: CGFloat? = nil,
+    watermarkStyle: WatermarkStyle? = nil
+  ) -> Bool {
+    let properties = annotation.properties
+    if let strokeWidth,
+       properties.strokeWidth != AnnotationProperties.clampedControlValue(strokeWidth) {
+      return true
+    }
+    if let fontSize,
+       properties.fontSize != fontSize {
+      return true
+    }
+    if let strokeColor,
+       properties.strokeColor != strokeColor {
+      return true
+    }
+    if let fillColor,
+       properties.fillColor != fillColor {
+      return true
+    }
+    if let cornerRadius,
+       properties.cornerRadius != max(0, cornerRadius) {
+      return true
+    }
+    if let opacity,
+       properties.opacity != AnnotationProperties.clampedOpacity(opacity) {
+      return true
+    }
+    if let rotationDegrees,
+       properties.rotationDegrees != AnnotationProperties.clampedRotationDegrees(rotationDegrees) {
+      return true
+    }
+    if let watermarkStyle,
+       properties.watermarkStyle != watermarkStyle {
+      return true
+    }
+    return false
   }
 
   /// Calculate text bounds based on content and font size with word wrapping
@@ -2199,12 +2331,31 @@ final class AnnotateState: ObservableObject {
     opacity: CGFloat? = nil,
     rotationDegrees: CGFloat? = nil,
     watermarkStyle: WatermarkStyle? = nil,
+    recordsUndo: Bool = false,
     matching predicate: ((AnnotationType) -> Bool)? = nil
   ) -> Bool {
     let selected = quickPropertiesSelectionTargets.filter { annotation in
       predicate?(annotation.type) ?? true
     }
     guard !selected.isEmpty else { return false }
+
+    if recordsUndo,
+       selected.contains(where: {
+         annotationPropertiesWillChange(
+           $0,
+           strokeWidth: strokeWidth,
+           fontSize: fontSize,
+           strokeColor: strokeColor,
+           fillColor: fillColor,
+           cornerRadius: cornerRadius,
+           opacity: opacity,
+           rotationDegrees: rotationDegrees,
+           watermarkStyle: watermarkStyle
+         )
+       }) {
+      saveState()
+    }
+
     for annotation in selected {
       updateAnnotationProperties(
         id: annotation.id,
@@ -2306,6 +2457,7 @@ final class AnnotateState: ObservableObject {
         let clampedSize = min(max(newSize, 12), 72)
         if !self.updateQuickSelectionProperties(
           fontSize: clampedSize,
+          recordsUndo: true,
           matching: {
             switch $0 {
             case .text, .watermark:
@@ -2337,6 +2489,7 @@ final class AnnotateState: ObservableObject {
         guard let self else { return }
         if !self.updateQuickSelectionProperties(
           fillColor: newColor,
+          recordsUndo: true,
           matching: {
             if case .text = $0 { return true }
             return false
@@ -2449,6 +2602,7 @@ final class AnnotateState: ObservableObject {
         let clampedOpacity = AnnotationProperties.clampedOpacity(newOpacity)
         if !self.updateQuickSelectionProperties(
           opacity: clampedOpacity,
+          recordsUndo: true,
           matching: {
             if case .watermark = $0 { return true }
             return false
@@ -2475,6 +2629,7 @@ final class AnnotateState: ObservableObject {
         let clampedRotation = AnnotationProperties.clampedRotationDegrees(newRotation)
         if !self.updateQuickSelectionProperties(
           rotationDegrees: clampedRotation,
+          recordsUndo: true,
           matching: {
             if case .watermark = $0 { return true }
             return false
@@ -2659,6 +2814,7 @@ final class AnnotateState: ObservableObject {
         guard let self else { return }
         if !self.updateQuickSelectionProperties(
           strokeColor: newColor,
+          recordsUndo: true,
           matching: { $0.supportsQuickStrokeColor }
         ) {
           if let tool = self.quickPropertiesTool {
@@ -2682,6 +2838,7 @@ final class AnnotateState: ObservableObject {
         guard let self else { return }
         if !self.updateQuickSelectionProperties(
           fillColor: newColor,
+          recordsUndo: true,
           matching: { $0.supportsQuickFillColor }
         ) {
           if let tool = self.quickPropertiesTool {
@@ -2705,6 +2862,7 @@ final class AnnotateState: ObservableObject {
         guard let self else { return }
         if !self.updateQuickSelectionProperties(
           strokeWidth: newWidth,
+          recordsUndo: true,
           matching: { $0.supportsQuickStrokeWidth }
         ) {
           if let tool = self.quickPropertiesTool {
@@ -2729,6 +2887,7 @@ final class AnnotateState: ObservableObject {
         let clampedRadius = max(0, newRadius)
         if !self.updateQuickSelectionProperties(
           cornerRadius: clampedRadius,
+          recordsUndo: true,
           matching: { $0.toolType.supportsQuickCornerRadius }
         ) {
           if let tool = self.quickPropertiesTool {
@@ -2772,21 +2931,21 @@ final class AnnotateState: ObservableObject {
        case .text(let text) = annotation.type {
       let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
       if trimmed.isEmpty {
-        saveState()
+        recordTextEditingUndoIfNeeded(id: editingId, newText: trimmed)
         annotations.removeAll { $0.id == editingId }
         selectedAnnotationId = nil
+        hasUnsavedChanges = true
       } else {
-        saveState()
         updateAnnotationText(id: editingId, text: trimmed)
       }
     }
-    editingTextAnnotationId = nil
+    finishTextEditing()
   }
 
   /// Deselect current annotation
   func deselectAnnotation() {
     setSelectedAnnotationIds([])
-    editingTextAnnotationId = nil
+    finishTextEditing()
   }
 
   /// Nudge selected annotation by delta

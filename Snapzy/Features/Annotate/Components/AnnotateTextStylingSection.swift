@@ -41,7 +41,7 @@ struct TextStylingSection: View {
       Slider(
         value: Binding(
           get: { annotation.properties.fontSize },
-          set: { state.updateAnnotationProperties(id: annotation.id, fontSize: $0) }
+          set: { state.updateAnnotationProperties(id: annotation.id, fontSize: $0, recordsUndo: true) }
         ),
         in: 12...72,
         step: 1
@@ -61,7 +61,7 @@ struct TextStylingSection: View {
       HStack(spacing: 4) {
         // None/transparent button
         Button {
-          state.updateAnnotationProperties(id: annotation.id, fillColor: .clear)
+          state.updateAnnotationProperties(id: annotation.id, fillColor: .clear, recordsUndo: true)
         } label: {
           Text(L10n.Common.none)
             .font(.system(size: 9))
@@ -77,7 +77,7 @@ struct TextStylingSection: View {
         // Color swatches for background
         ForEach(backgroundColors, id: \.self) { color in
           Button {
-            state.updateAnnotationProperties(id: annotation.id, fillColor: color)
+            state.updateAnnotationProperties(id: annotation.id, fillColor: color, recordsUndo: true)
           } label: {
             Circle()
               .fill(color)

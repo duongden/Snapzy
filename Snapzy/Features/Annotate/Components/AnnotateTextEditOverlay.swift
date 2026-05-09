@@ -16,7 +16,6 @@ struct TextEditOverlay: View {
 
   @State private var editingText: String = ""
   @State private var textHeight: CGFloat = 28
-  @FocusState private var isFocused: Bool
 
   // MARK: - Constants
 
@@ -41,23 +40,25 @@ struct TextEditOverlay: View {
           scale: scale
         )
         let fieldWidth = max(displayBounds.width, minTextFieldWidth)
-        // Use measured textHeight which accounts for TextEditor's narrower
-        // rendering width, plus vertical padding for TextEditor's chrome
+        // Use measured textHeight with the inline editor's text insets
+        // plus vertical padding for its editing chrome.
         let fieldHeight = max(textHeight + textEditorVerticalPadding, displayBounds.height)
 
-        // Multiline text editor positioned at annotation bounds (top-left anchored)
-        TextEditor(text: $editingText)
-          .font(Font(displayFont))
-          .foregroundColor(annotation.properties.strokeColor)
-          .scrollContentBackground(.hidden)
-          .scrollDisabled(true)
+        InlineAnnotationTextEditor(
+          text: $editingText,
+          font: displayFont,
+          textColor: NSColor(annotation.properties.strokeColor),
+          onCommit: { commitEdit(id: editingId) },
+          onCancel: cancelEdit,
+          onUndo: { state.undo() },
+          onRedo: { state.redo() }
+        )
           .frame(
             width: fieldWidth,
             height: fieldHeight,
             alignment: .topLeading
           )
           .background(Color.clear)
-          .focused($isFocused)
           .position(
             x: displayBounds.minX + fieldWidth / 2,
             y: displayBounds.minY + fieldHeight / 2
@@ -65,13 +66,6 @@ struct TextEditOverlay: View {
           .onAppear {
             editingText = currentText
             recalculateHeight(text: currentText, font: displayFont, width: fieldWidth)
-            // Delay focus to ensure view is ready
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-              isFocused = true
-            }
-          }
-          .onExitCommand {
-            cancelEdit()
           }
           .onChange(of: editingText) { newValue in
             recalculateHeight(text: newValue, font: displayFont, width: fieldWidth)
@@ -80,17 +74,12 @@ struct TextEditOverlay: View {
               state.updateAnnotationText(id: editingId, text: newValue)
             }
           }
-          .onChange(of: isFocused) { newValue in
-            if !newValue && state.editingTextAnnotationId == editingId {
-              commitEdit(id: editingId)
-            }
-          }
       }
     }
   }
 
   /// Recalculate editor height based on wrapped text content.
-  /// We subtract TextEditor's internal horizontal insets from the measurement
+  /// We subtract the inline editor's horizontal insets from the measurement
   /// width so that wrap predictions match the actual narrower rendering area.
   private func recalculateHeight(text: String, font: NSFont, width: CGFloat) {
     let effectiveWidth = max(width - textEditorHorizontalInsets, minTextFieldWidth)
@@ -126,18 +115,10 @@ struct TextEditOverlay: View {
   }
 
   private func commitEdit(id: UUID) {
-    let trimmedText = editingText.trimmingCharacters(in: .whitespacesAndNewlines)
-
-    if trimmedText.isEmpty {
-      // Delete annotation if text is empty
-      state.saveState()
-      state.annotations.removeAll { $0.id == id }
-      state.selectedAnnotationId = nil
-    } else {
-      state.saveState()
-      state.updateAnnotationText(id: id, text: trimmedText)
+    if state.editingTextAnnotationId == id {
+      state.updateAnnotationText(id: id, text: editingText)
+      state.commitTextEditing()
     }
-    state.editingTextAnnotationId = nil
   }
 
   private func cancelEdit() {
@@ -149,6 +130,137 @@ struct TextEditOverlay: View {
       state.annotations.removeAll { $0.id == editingId }
       state.selectedAnnotationId = nil
     }
-    state.editingTextAnnotationId = nil
+    state.finishTextEditing()
+  }
+}
+
+private struct InlineAnnotationTextEditor: NSViewRepresentable {
+  @Binding var text: String
+  let font: NSFont
+  let textColor: NSColor
+  let onCommit: () -> Void
+  let onCancel: () -> Void
+  let onUndo: () -> Void
+  let onRedo: () -> Void
+
+  func makeCoordinator() -> Coordinator {
+    Coordinator(text: $text)
+  }
+
+  func makeNSView(context: Context) -> UndoIsolatedTextView {
+    let textView = UndoIsolatedTextView()
+    textView.delegate = context.coordinator
+    textView.string = text
+    textView.onCommit = onCommit
+    textView.onCancel = onCancel
+    textView.onUndo = onUndo
+    textView.onRedo = onRedo
+
+    textView.drawsBackground = false
+    textView.backgroundColor = .clear
+    textView.isRichText = false
+    textView.importsGraphics = false
+    textView.allowsUndo = false
+    textView.isEditable = true
+    textView.isSelectable = true
+    textView.isHorizontallyResizable = false
+    textView.isVerticallyResizable = true
+    textView.autoresizingMask = [.width]
+    textView.textContainerInset = NSSize(width: 5, height: 0)
+    textView.textContainer?.widthTracksTextView = true
+    textView.textContainer?.heightTracksTextView = false
+    textView.textContainer?.lineFragmentPadding = 0
+    textView.font = font
+    textView.textColor = textColor
+
+    DispatchQueue.main.async {
+      textView.window?.makeFirstResponder(textView)
+    }
+
+    return textView
+  }
+
+  func updateNSView(_ textView: UndoIsolatedTextView, context: Context) {
+    context.coordinator.text = $text
+    textView.onCommit = onCommit
+    textView.onCancel = onCancel
+    textView.onUndo = onUndo
+    textView.onRedo = onRedo
+
+    if textView.string != text {
+      context.coordinator.isApplyingExternalText = true
+      textView.string = text
+      context.coordinator.isApplyingExternalText = false
+    }
+    if textView.font != font {
+      textView.font = font
+    }
+    if textView.textColor != textColor {
+      textView.textColor = textColor
+    }
+  }
+
+  static func dismantleNSView(_ textView: UndoIsolatedTextView, coordinator: Coordinator) {
+    textView.onCommit = nil
+    textView.onCancel = nil
+    textView.onUndo = nil
+    textView.onRedo = nil
+    textView.delegate = nil
+    textView.undoManager?.removeAllActions()
+  }
+
+  final class Coordinator: NSObject, NSTextViewDelegate {
+    var text: Binding<String>
+    var isApplyingExternalText = false
+
+    init(text: Binding<String>) {
+      self.text = text
+    }
+
+    func textDidChange(_ notification: Notification) {
+      guard !isApplyingExternalText,
+            let textView = notification.object as? NSTextView else { return }
+      text.wrappedValue = textView.string
+    }
+
+    func textDidEndEditing(_ notification: Notification) {
+      guard let textView = notification.object as? UndoIsolatedTextView else { return }
+      textView.onCommit?()
+    }
+  }
+
+  final class UndoIsolatedTextView: NSTextView {
+    var onCommit: (() -> Void)?
+    var onCancel: (() -> Void)?
+    var onUndo: (() -> Void)?
+    var onRedo: (() -> Void)?
+
+    override var undoManager: UndoManager? { nil }
+
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+      guard event.type == .keyDown else {
+        return super.performKeyEquivalent(with: event)
+      }
+
+      let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+      if event.keyCode == 6 && flags == .command {
+        onUndo?()
+        return true
+      }
+      if event.keyCode == 6 && flags == [.command, .shift] {
+        onRedo?()
+        return true
+      }
+
+      return super.performKeyEquivalent(with: event)
+    }
+
+    override func keyDown(with event: NSEvent) {
+      if event.keyCode == 53 {
+        onCancel?()
+        return
+      }
+      super.keyDown(with: event)
+    }
   }
 }

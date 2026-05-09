@@ -93,7 +93,7 @@ struct AnnotationPropertiesSection: View {
       get: { annotation?.properties.strokeColor ?? .red },
       set: { newColor in
         guard let id = state.selectedAnnotationId else { return }
-        state.updateAnnotationProperties(id: id, strokeColor: newColor)
+        state.updateAnnotationProperties(id: id, strokeColor: newColor, recordsUndo: true)
       }
     )
   }
@@ -103,7 +103,7 @@ struct AnnotationPropertiesSection: View {
       get: { annotation?.properties.strokeWidth ?? 3 },
       set: { newWidth in
         guard let id = state.selectedAnnotationId else { return }
-        state.updateAnnotationProperties(id: id, strokeWidth: newWidth)
+        state.updateAnnotationProperties(id: id, strokeWidth: newWidth, recordsUndo: true)
       }
     )
   }
@@ -113,7 +113,7 @@ struct AnnotationPropertiesSection: View {
       get: { annotation?.properties.fillColor ?? .clear },
       set: { newColor in
         guard let id = state.selectedAnnotationId else { return }
-        state.updateAnnotationProperties(id: id, fillColor: newColor)
+        state.updateAnnotationProperties(id: id, fillColor: newColor, recordsUndo: true)
       }
     )
   }

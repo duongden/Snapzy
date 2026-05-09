@@ -11,10 +11,101 @@ import XCTest
 @testable import Snapzy
 
 final class AnnotateCoreTests: XCTestCase {
+  // Keep AnnotateState alive for the test process; XCTest scope cleanup can
+  // crash while deinitializing this MainActor app-level ObservableObject.
+  @MainActor private static var retainedAnnotateStates: [AnnotateState] = []
+
+  @MainActor
+  private func makeAnnotateState() -> AnnotateState {
+    let state = AnnotateState()
+    Self.retainedAnnotateStates.append(state)
+    return state
+  }
 
   func testAnnotateCanvasDefaultsUseNoCornerRadius() {
     XCTAssertEqual(AnnotateCanvasDefaults.cornerRadius, 0)
     XCTAssertEqual(AnnotationCanvasEffects().cornerRadius, 0)
+  }
+
+  @MainActor
+  func testAnnotateState_undoAfterNewTextCreationRemovesTextAnnotation() {
+    let state = makeAnnotateState()
+
+    state.saveState()
+    let annotation = AnnotationItem(
+      type: .text("Hello"),
+      bounds: CGRect(x: 20, y: 20, width: 120, height: 32),
+      properties: AnnotationProperties(fontSize: 18)
+    )
+    state.annotations.append(annotation)
+    state.selectedAnnotationId = annotation.id
+    state.beginTextEditing(id: annotation.id, recordsUndo: false)
+    state.commitTextEditing()
+
+    state.undo()
+
+    XCTAssertTrue(state.annotations.isEmpty)
+  }
+
+  @MainActor
+  func testAnnotateState_undoRedoExistingTextEditRestoresText() throws {
+    let state = makeAnnotateState()
+    let annotation = AnnotationItem(
+      type: .text("Original"),
+      bounds: CGRect(x: 20, y: 20, width: 140, height: 32),
+      properties: AnnotationProperties(fontSize: 18)
+    )
+    state.annotations = [annotation]
+    state.selectedAnnotationId = annotation.id
+
+    state.beginTextEditing(id: annotation.id)
+    state.updateAnnotationText(id: annotation.id, text: "Changed")
+    state.commitTextEditing()
+    state.undo()
+
+    let undone = try XCTUnwrap(state.annotations.first)
+    guard case .text(let undoneText) = undone.type else {
+      return XCTFail("Expected text annotation after undo")
+    }
+    XCTAssertEqual(undoneText, "Original")
+
+    state.redo()
+
+    let redone = try XCTUnwrap(state.annotations.first)
+    guard case .text(let redoneText) = redone.type else {
+      return XCTFail("Expected text annotation after redo")
+    }
+    XCTAssertEqual(redoneText, "Changed")
+  }
+
+  @MainActor
+  func testAnnotateState_undoRedoTextFontSizeRestoresPropertiesAndBounds() throws {
+    let state = makeAnnotateState()
+    let originalBounds = CGRect(x: 20, y: 20, width: 180, height: 32)
+    let annotation = AnnotationItem(
+      type: .text("Resizable text"),
+      bounds: originalBounds,
+      properties: AnnotationProperties(fontSize: 18)
+    )
+    state.annotations = [annotation]
+    state.selectedAnnotationId = annotation.id
+
+    state.updateAnnotationProperties(id: annotation.id, fontSize: 36, recordsUndo: true)
+
+    let resized = try XCTUnwrap(state.annotations.first)
+    XCTAssertEqual(resized.properties.fontSize, 36)
+    XCTAssertNotEqual(resized.bounds, originalBounds)
+
+    state.undo()
+
+    let undone = try XCTUnwrap(state.annotations.first)
+    XCTAssertEqual(undone.properties.fontSize, 18)
+    XCTAssertEqual(undone.bounds, originalBounds)
+
+    state.redo()
+
+    let redone = try XCTUnwrap(state.annotations.first)
+    XCTAssertEqual(redone.properties.fontSize, 36)
   }
 
   func testAnnotationFactory_createsCounterCenteredAtStart() {
