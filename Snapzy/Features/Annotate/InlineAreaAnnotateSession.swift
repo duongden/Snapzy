@@ -19,10 +19,6 @@ final class InlineAreaAnnotateSession: ObservableObject {
 
   @Published var phase: Phase = .selecting
   @Published var selectionRect: CGRect?
-  @Published var isUploading = false
-  @Published var uploadProgress: Double = 0
-  @Published var showCloudNotConfiguredAlert = false
-  @Published var uploadErrorMessage: String?
   @Published var isMoveModifierActive = false
 
   let state = AnnotateState()
@@ -186,49 +182,6 @@ final class InlineAreaAnnotateSession: ObservableObject {
     SoundManager.play("Pop")
   }
 
-  func shareCurrentImage(from view: NSView) {
-    guard let image = AnnotateExporter.renderFinalImage(state: state) else { return }
-    NSSharingServicePicker(items: [image]).show(relativeTo: view.bounds, of: view, preferredEdge: .minY)
-  }
-
-  func uploadCurrentImage() {
-    guard CloudManager.shared.isConfigured else {
-      showCloudNotConfiguredAlert = true
-      return
-    }
-    guard !isUploading, let image = AnnotateExporter.renderFinalImage(state: state) else { return }
-
-    isUploading = true
-    uploadProgress = 0.15
-    uploadErrorMessage = nil
-
-    Task {
-      var scratchURL: URL?
-      defer {
-        if let scratchURL {
-          try? FileManager.default.removeItem(at: scratchURL)
-        }
-      }
-
-      do {
-        let url = try writeUploadScratchFile(image)
-        scratchURL = url
-        uploadProgress = 0.75
-        let result = try await CloudManager.shared.upload(fileURL: url)
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(result.publicURL.absoluteString, forType: .string)
-        uploadProgress = 1
-        isUploading = false
-        SoundManager.play("Pop")
-      } catch {
-        isUploading = false
-        uploadProgress = 0
-        uploadErrorMessage = error.localizedDescription
-        DiagnosticLogger.shared.logError(.cloud, error, "Inline area annotate upload failed")
-      }
-    }
-  }
-
   private func cropImage(for localRect: CGRect) -> NSImage? {
     do {
       let result = try frozenSession.cropImage(for: AreaSelectionResult(
@@ -263,21 +216,6 @@ final class InlineAreaAnnotateSession: ObservableObject {
     result.origin.x = min(max(result.minX, 0), max(0, screenFrame.width - result.width))
     result.origin.y = min(max(result.minY, 0), max(0, screenFrame.height - result.height))
     return result
-  }
-
-  private func writeUploadScratchFile(_ image: NSImage) throws -> URL {
-    let directory = TempCaptureManager.shared.tempCaptureDirectory
-    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-    let url = CaptureOutputNaming.makeUniqueFileURL(
-      in: directory,
-      baseName: "Snapzy_Inline_Annotate_\(Int(Date().timeIntervalSince1970))",
-      fileExtension: outputFormat.fileExtension
-    )
-    guard let data = AnnotateExporter.imageData(from: image, for: outputFormat.fileExtension) else {
-      throw CaptureError.saveFailed(L10n.ScreenCapture.failedToCropCapturedImage)
-    }
-    try data.write(to: url, options: .atomic)
-    return url
   }
 
   private func installKeyMonitors() {

@@ -135,25 +135,6 @@ private struct InlineAreaAnnotateRootView: View {
       .gesture(selectionGesture)
     }
     .ignoresSafeArea()
-    .alert(L10n.AnnotateUI.cloudNotConfiguredTitle, isPresented: $session.showCloudNotConfiguredAlert) {
-      Button(L10n.Common.ok, role: .cancel) {}
-    } message: {
-      Text(L10n.AnnotateUI.cloudNotConfiguredMessage)
-    }
-    .alert(L10n.AnnotateUI.inlineUploadFailedTitle, isPresented: uploadErrorBinding) {
-      Button(L10n.Common.ok, role: .cancel) {
-        session.uploadErrorMessage = nil
-      }
-    } message: {
-      Text(session.uploadErrorMessage ?? "")
-    }
-  }
-
-  private var uploadErrorBinding: Binding<Bool> {
-    Binding(
-      get: { session.uploadErrorMessage != nil },
-      set: { if !$0 { session.uploadErrorMessage = nil } }
-    )
   }
 
   private var selectionGesture: some Gesture {
@@ -1511,20 +1492,6 @@ private struct InlineAreaActionRail: View {
       InlineAreaIconButton(icon: "doc.on.doc", tooltip: L10n.AnnotateUI.copyToClipboard) {
         session.copyCurrentImage()
       }
-
-      InlineAreaIconButton(icon: "square.and.arrow.up", tooltip: L10n.Common.share) {
-        if let view = NSApp.keyWindow?.contentView {
-          session.shareCurrentImage(from: view)
-        }
-      }
-
-      InlineAreaIconButton(
-        icon: "icloud.and.arrow.up",
-        tooltip: L10n.AnnotateUI.uploadToCloud,
-        isEnabled: !session.isUploading
-      ) {
-        session.uploadCurrentImage()
-      }
     }
     .padding(6)
     .background(
@@ -1535,13 +1502,6 @@ private struct InlineAreaActionRail: View {
       RoundedRectangle(cornerRadius: InlineAreaChrome.cornerRadius, style: .continuous)
         .stroke(InlineAreaChrome.border, lineWidth: 1)
     )
-    .overlay(alignment: .bottom) {
-      ProgressView(value: session.uploadProgress)
-        .progressViewStyle(.linear)
-        .frame(width: 28, height: 3)
-        .opacity(session.isUploading ? 1 : 0)
-        .offset(y: 5)
-    }
     .shadow(color: InlineAreaChrome.panelShadow, radius: 14, x: 0, y: 9)
   }
 }
