@@ -5,6 +5,7 @@
 //  Unit tests for video export sizing and zoom segment value models.
 //
 
+import AVFoundation
 import CoreGraphics
 import XCTest
 @testable import Snapzy
@@ -92,16 +93,112 @@ final class VideoEditorExportSettingsTests: XCTestCase {
     var settings = ExportSettings()
     settings.audioMode = .keep
     settings.audioVolume = 0.25
+    settings.systemAudioVolume = 0.5
+    settings.microphoneAudioVolume = 1.5
     XCTAssertTrue(settings.shouldIncludeAudio)
     XCTAssertEqual(settings.effectiveVolume, 1)
+    XCTAssertEqual(settings.effectiveVolume(for: .systemAudio), 1)
+    XCTAssertEqual(settings.effectiveVolume(for: .microphone), 1)
 
     settings.audioMode = .mute
     XCTAssertFalse(settings.shouldIncludeAudio)
     XCTAssertEqual(settings.effectiveVolume, 0)
+    XCTAssertEqual(settings.effectiveVolume(for: .systemAudio), 0)
+    XCTAssertEqual(settings.effectiveVolume(for: .microphone), 0)
 
     settings.audioMode = .custom
+    settings.audioVolume = 2.5
     XCTAssertTrue(settings.shouldIncludeAudio)
-    XCTAssertEqual(settings.effectiveVolume, 0.25)
+    XCTAssertEqual(settings.effectiveVolume, 2.0)
+    XCTAssertEqual(settings.effectiveVolume(for: .systemAudio), 0.5)
+    XCTAssertEqual(settings.effectiveVolume(for: .microphone), 1.5)
+  }
+
+  func testExportSettingsAudioTrackRolesUseSnapzyRecordingOrder() {
+    XCTAssertEqual(VideoEditorAudioTrackRole.roles(forAudioTrackCount: 0), [])
+    XCTAssertEqual(VideoEditorAudioTrackRole.roles(forAudioTrackCount: 1), [.mixed])
+    XCTAssertEqual(
+      VideoEditorAudioTrackRole.roles(forAudioTrackCount: 3),
+      [.systemAudio, .microphone, .additional(3)]
+    )
+  }
+
+  func testExportSettingsSetAudioVolumeClampsPerRole() {
+    var settings = ExportSettings()
+    settings.setAudioVolume(-0.25, for: .systemAudio)
+    settings.setAudioVolume(2.5, for: .microphone)
+    settings.setAudioVolume(0.75, for: .mixed)
+
+    XCTAssertEqual(settings.audioVolume(for: .systemAudio), 0)
+    XCTAssertEqual(settings.audioVolume(for: .microphone), 2)
+    XCTAssertEqual(settings.audioVolume(for: .mixed), 0.75)
+  }
+
+  func testAudioMixFactoryBuildsPerRoleVolumeParameters() {
+    let composition = AVMutableComposition()
+    let systemTrack = composition.addMutableTrack(
+      withMediaType: .audio,
+      preferredTrackID: kCMPersistentTrackID_Invalid
+    )
+    let microphoneTrack = composition.addMutableTrack(
+      withMediaType: .audio,
+      preferredTrackID: kCMPersistentTrackID_Invalid
+    )
+    XCTAssertNotNil(systemTrack)
+    XCTAssertNotNil(microphoneTrack)
+
+    var settings = ExportSettings()
+    settings.audioMode = .custom
+    settings.systemAudioVolume = 0.25
+    settings.microphoneAudioVolume = 1.5
+
+    let mix = VideoEditorAudioMixFactory.makeAudioMix(
+      for: [systemTrack, microphoneTrack].compactMap { $0 },
+      settings: settings
+    )
+
+    XCTAssertEqual(mix?.inputParameters.count, 2)
+    XCTAssertEqual(volume(at: mix?.inputParameters.first), 0.25, accuracy: 0.0001)
+    XCTAssertEqual(volume(at: mix?.inputParameters.dropFirst().first), 1.5, accuracy: 0.0001)
+  }
+
+  func testAudioMixFactoryUsesExplicitTrackRolesWhenProvided() {
+    let composition = AVMutableComposition()
+    let track = composition.addMutableTrack(
+      withMediaType: .audio,
+      preferredTrackID: kCMPersistentTrackID_Invalid
+    )
+    XCTAssertNotNil(track)
+
+    var settings = ExportSettings()
+    settings.audioMode = .custom
+    settings.audioVolume = 1
+    settings.microphoneAudioVolume = 0.3
+
+    let mix = VideoEditorAudioMixFactory.makeAudioMix(
+      for: [track].compactMap { $0 },
+      settings: settings,
+      roles: [.microphone]
+    )
+
+    XCTAssertEqual(mix?.inputParameters.count, 1)
+    XCTAssertEqual(volume(at: mix?.inputParameters.first), 0.3, accuracy: 0.0001)
+  }
+
+  func testAudioMixFactoryIgnoresNonCustomModes() {
+    let composition = AVMutableComposition()
+    let track = composition.addMutableTrack(
+      withMediaType: .audio,
+      preferredTrackID: kCMPersistentTrackID_Invalid
+    )
+    XCTAssertNotNil(track)
+
+    var settings = ExportSettings()
+    settings.audioMode = .keep
+    XCTAssertNil(VideoEditorAudioMixFactory.makeAudioMix(for: [track].compactMap { $0 }, settings: settings))
+
+    settings.audioMode = .mute
+    XCTAssertNil(VideoEditorAudioMixFactory.makeAudioMix(for: [track].compactMap { $0 }, settings: settings))
   }
 
   func testZoomSegmentClampsAndFormatsValues() {
@@ -135,5 +232,22 @@ final class VideoEditorExportSettingsTests: XCTestCase {
     let clamped = ZoomSegment(startTime: 9, duration: 5).clamped(to: 10)
     XCTAssertEqual(clamped.startTime, 9)
     XCTAssertEqual(clamped.duration, 1)
+  }
+
+  private func volume(at params: AVAudioMixInputParameters?) -> Float {
+    guard let params else { return -1 }
+    var startVolume: Float = -1
+    var endVolume: Float = -1
+    var timeRange = CMTimeRange.invalid
+    XCTAssertTrue(
+      params.getVolumeRamp(
+        for: .zero,
+        startVolume: &startVolume,
+        endVolume: &endVolume,
+        timeRange: &timeRange
+      )
+    )
+    XCTAssertEqual(startVolume, endVolume, accuracy: 0.0001)
+    return startVolume
   }
 }

@@ -27,27 +27,57 @@ enum RecordingCoordinateSpace: String, Codable {
   case topLeftNormalized
 }
 
+enum RecordingAudioSourceTrackRole: String, Codable, Equatable {
+  case systemAudio
+  case microphone
+
+  static func roles(capturesSystemAudio: Bool, capturesMicrophone: Bool) -> [RecordingAudioSourceTrackRole] {
+    var roles: [RecordingAudioSourceTrackRole] = []
+    if capturesSystemAudio {
+      roles.append(.systemAudio)
+    }
+    if capturesMicrophone {
+      roles.append(.microphone)
+    }
+    return roles
+  }
+}
+
+struct RecordingAudioSourceTrack: Codable, Equatable {
+  var trackID: Int
+  var role: RecordingAudioSourceTrackRole
+}
+
 struct RecordingMetadata: Codable, Equatable {
-  static let currentVersion = 2
+  static let currentVersion = 5
 
   var version: Int
   var coordinateSpace: RecordingCoordinateSpace
   var captureSize: CGSize
   var samplesPerSecond: Int
   var mouseSamples: [RecordedMouseSample]
+  var audioSourceURL: URL?
+  var audioSourceTrackRoles: [RecordingAudioSourceTrackRole]
+  var audioSourceTracks: [RecordingAudioSourceTrack]
 
   init(
     version: Int = RecordingMetadata.currentVersion,
     coordinateSpace: RecordingCoordinateSpace = .topLeftNormalized,
     captureSize: CGSize,
     samplesPerSecond: Int,
-    mouseSamples: [RecordedMouseSample]
+    mouseSamples: [RecordedMouseSample],
+    audioSourceURL: URL? = nil,
+    audioSourceTrackRoles: [RecordingAudioSourceTrackRole] = [],
+    audioSourceTracks: [RecordingAudioSourceTrack] = []
   ) {
     self.version = version
     self.coordinateSpace = coordinateSpace
     self.captureSize = captureSize
     self.samplesPerSecond = samplesPerSecond
     self.mouseSamples = mouseSamples
+    self.audioSourceURL = audioSourceURL
+    self.audioSourceTrackRoles = audioSourceTrackRoles
+    self.audioSourceTracks = audioSourceTracks
   }
 
   private enum CodingKeys: String, CodingKey {
@@ -56,6 +86,9 @@ struct RecordingMetadata: Codable, Equatable {
     case captureSize
     case samplesPerSecond
     case mouseSamples
+    case audioSourceURL
+    case audioSourceTrackRoles
+    case audioSourceTracks
   }
 
   init(from decoder: Decoder) throws {
@@ -68,13 +101,22 @@ struct RecordingMetadata: Codable, Equatable {
 
     version = decodedVersion
     coordinateSpace = decodedCoordinateSpace ?? (
-      decodedVersion >= RecordingMetadata.currentVersion
+      decodedVersion >= 2
         ? .topLeftNormalized
         : .bottomLeftNormalized
     )
     captureSize = try container.decode(CGSize.self, forKey: .captureSize)
     samplesPerSecond = try container.decode(Int.self, forKey: .samplesPerSecond)
     mouseSamples = try container.decode([RecordedMouseSample].self, forKey: .mouseSamples)
+    audioSourceURL = try container.decodeIfPresent(URL.self, forKey: .audioSourceURL)
+    audioSourceTrackRoles = try container.decodeIfPresent(
+      [RecordingAudioSourceTrackRole].self,
+      forKey: .audioSourceTrackRoles
+    ) ?? []
+    audioSourceTracks = try container.decodeIfPresent(
+      [RecordingAudioSourceTrack].self,
+      forKey: .audioSourceTracks
+    ) ?? []
   }
 
   func encode(to encoder: Encoder) throws {
@@ -84,6 +126,13 @@ struct RecordingMetadata: Codable, Equatable {
     try container.encode(captureSize, forKey: .captureSize)
     try container.encode(samplesPerSecond, forKey: .samplesPerSecond)
     try container.encode(mouseSamples, forKey: .mouseSamples)
+    try container.encodeIfPresent(audioSourceURL, forKey: .audioSourceURL)
+    if !audioSourceTrackRoles.isEmpty {
+      try container.encode(audioSourceTrackRoles, forKey: .audioSourceTrackRoles)
+    }
+    if !audioSourceTracks.isEmpty {
+      try container.encode(audioSourceTracks, forKey: .audioSourceTracks)
+    }
   }
 }
 
@@ -92,6 +141,7 @@ enum RecordingMetadataStore {
   private struct StoreLocation {
     let entriesURL: URL
     let indexURL: URL
+    let audioSourcesURL: URL
   }
 
   private struct MetadataIndex: Codable {
@@ -114,6 +164,7 @@ enum RecordingMetadataStore {
   private static let capturesFolderName = "Captures"
   private static let storeFolderName = "RecordingMetadata"
   private static let entriesFolderName = "Entries"
+  private static let audioSourcesFolderName = "AudioSources"
   private static let indexFileName = "index.json"
   private static let metadataFileExtension = "json"
   private static let legacySidecarExtension = "snapzy-recording.json"
@@ -197,6 +248,17 @@ enum RecordingMetadataStore {
     try deleteLegacySidecarIfPresent(for: videoURL)
   }
 
+  static func storeAudioSource(from sourceURL: URL) throws -> URL {
+    let location = try requiredStoreLocation()
+    let fileExtension = sourceURL.pathExtension.isEmpty ? "mov" : sourceURL.pathExtension
+    let destinationURL = location.audioSourcesURL
+      .appendingPathComponent(UUID().uuidString)
+      .appendingPathExtension(fileExtension)
+
+    try FileManager.default.copyItem(at: sourceURL, to: destinationURL)
+    return destinationURL
+  }
+
   static func moveAssociation(from oldURL: URL, to newURL: URL) throws {
     let unifiedLocation = try requiredStoreLocation()
     var unifiedIndex = loadIndex(from: unifiedLocation)
@@ -271,8 +333,8 @@ enum RecordingMetadataStore {
       index.entries = keptEntries
       try saveIndex(index, to: location)
 
-      for metadataURL in metadataURLsToDelete where FileManager.default.fileExists(atPath: metadataURL.path) {
-        try? FileManager.default.removeItem(at: metadataURL)
+      for metadataURL in metadataURLsToDelete {
+        deleteMetadataFileAndAudioSource(at: metadataURL, location: location)
       }
     }
   }
@@ -293,6 +355,7 @@ enum RecordingMetadataStore {
       partial.appendingPathComponent(component, isDirectory: true)
     }
     let entriesURL = rootURL.appendingPathComponent(entriesFolderName, isDirectory: true)
+    let audioSourcesURL = rootURL.appendingPathComponent(audioSourcesFolderName, isDirectory: true)
     let indexURL = rootURL.appendingPathComponent(indexFileName)
 
     if createIfNeeded {
@@ -301,11 +364,20 @@ enum RecordingMetadataStore {
         withIntermediateDirectories: true,
         attributes: nil
       )
+      try FileManager.default.createDirectory(
+        at: audioSourcesURL,
+        withIntermediateDirectories: true,
+        attributes: nil
+      )
     } else if !FileManager.default.fileExists(atPath: rootURL.path) {
       return nil
     }
 
-    return StoreLocation(entriesURL: entriesURL, indexURL: indexURL)
+    return StoreLocation(
+      entriesURL: entriesURL,
+      indexURL: indexURL,
+      audioSourcesURL: audioSourcesURL
+    )
   }
 
   private static func requiredStoreLocation() throws -> StoreLocation {
@@ -410,9 +482,7 @@ enum RecordingMetadataStore {
     index.entries.remove(at: resolved.index)
     try saveIndex(index, to: location)
 
-    if FileManager.default.fileExists(atPath: metadataURL.path) {
-      try FileManager.default.removeItem(at: metadataURL)
-    }
+    deleteMetadataFileAndAudioSource(at: metadataURL, location: location)
   }
 
   private static func resolveEntry(
@@ -543,6 +613,28 @@ enum RecordingMetadataStore {
       .appendingPathExtension(metadataFileExtension)
   }
 
+  private static func deleteMetadataFileAndAudioSource(at metadataURL: URL, location: StoreLocation) {
+    if
+      let data = try? Data(contentsOf: metadataURL),
+      let metadata = try? JSONDecoder().decode(RecordingMetadata.self, from: data),
+      let audioSourceURL = metadata.audioSourceURL,
+      isStoredAudioSourceURL(audioSourceURL, location: location),
+      FileManager.default.fileExists(atPath: audioSourceURL.path)
+    {
+      try? FileManager.default.removeItem(at: audioSourceURL)
+    }
+
+    if FileManager.default.fileExists(atPath: metadataURL.path) {
+      try? FileManager.default.removeItem(at: metadataURL)
+    }
+  }
+
+  private static func isStoredAudioSourceURL(_ url: URL, location: StoreLocation) -> Bool {
+    let sourcePath = url.standardizedFileURL.resolvingSymlinksInPath().path
+    let rootPath = location.audioSourcesURL.standardizedFileURL.resolvingSymlinksInPath().path
+    return sourcePath.hasPrefix(rootPath + "/")
+  }
+
   private static func migrateLegacySidecarIfNeeded(
     for videoURL: URL,
     location: StoreLocation,
@@ -614,7 +706,10 @@ private extension RecordingMetadata {
       coordinateSpace: .topLeftNormalized,
       captureSize: captureSize,
       samplesPerSecond: samplesPerSecond,
-      mouseSamples: normalizedSamples
+      mouseSamples: normalizedSamples,
+      audioSourceURL: audioSourceURL,
+      audioSourceTrackRoles: audioSourceTrackRoles,
+      audioSourceTracks: audioSourceTracks
     )
   }
 }

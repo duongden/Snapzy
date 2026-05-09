@@ -155,6 +155,108 @@ enum AudioExportMode: String, CaseIterable, Identifiable {
     }
 }
 
+// MARK: - Audio Track Roles
+
+enum VideoEditorAudioTrackRole: Equatable, Identifiable {
+  case mixed
+  case systemAudio
+  case microphone
+  case additional(Int)
+
+  var id: String {
+    switch self {
+    case .mixed:
+      return "mixed"
+    case .systemAudio:
+      return "systemAudio"
+    case .microphone:
+      return "microphone"
+    case .additional(let index):
+      return "additional-\(index)"
+    }
+  }
+
+  var localizedLabel: String {
+    switch self {
+    case .mixed:
+      return L10n.VideoEditor.audioVolume
+    case .systemAudio:
+      return L10n.VideoEditor.systemAudio
+    case .microphone:
+      return L10n.VideoEditor.microphoneAudio
+    case .additional(let index):
+      return L10n.VideoEditor.additionalAudioTrack(index)
+    }
+  }
+
+  var compactLabel: String {
+    switch self {
+    case .mixed:
+      return L10n.VideoEditor.audioVolume
+    case .systemAudio:
+      return L10n.VideoEditor.systemAudioShort
+    case .microphone:
+      return L10n.VideoEditor.microphoneAudioShort
+    case .additional(let index):
+      return L10n.VideoEditor.additionalAudioTrackShort(index)
+    }
+  }
+
+  var icon: String {
+    switch self {
+    case .mixed:
+      return "speaker.wave.2"
+    case .systemAudio:
+      return "desktopcomputer"
+    case .microphone:
+      return "mic"
+    case .additional:
+      return "waveform"
+    }
+  }
+
+  static func roles(forAudioTrackCount count: Int) -> [VideoEditorAudioTrackRole] {
+    guard count > 0 else { return [] }
+    guard count > 1 else { return [.mixed] }
+
+    return (0..<count).map { index in
+      switch index {
+      case 0:
+        return .systemAudio
+      case 1:
+        return .microphone
+      default:
+        return .additional(index + 1)
+      }
+    }
+  }
+}
+
+enum VideoEditorAudioMixFactory {
+  static func makeAudioMix(
+    for audioTracks: [AVAssetTrack],
+    settings: ExportSettings,
+    roles: [VideoEditorAudioTrackRole] = []
+  ) -> AVMutableAudioMix? {
+    guard settings.audioMode == .custom else { return nil }
+    guard !audioTracks.isEmpty else { return nil }
+
+    let resolvedRoles: [VideoEditorAudioTrackRole]
+    if roles.count == audioTracks.count {
+      resolvedRoles = roles
+    } else {
+      resolvedRoles = VideoEditorAudioTrackRole.roles(forAudioTrackCount: audioTracks.count)
+    }
+    let mix = AVMutableAudioMix()
+    mix.inputParameters = zip(audioTracks, resolvedRoles).map { audioTrack, role in
+      let params = AVMutableAudioMixInputParameters(track: audioTrack)
+      params.setVolume(settings.effectiveVolume(for: role), at: .zero)
+      return params
+    }
+    return mix
+  }
+}
+
 // MARK: - Export Dimensions
 
 enum ExportDimensionPreset: String, CaseIterable, Identifiable {
@@ -256,13 +358,18 @@ enum ExportDimensionPreset: String, CaseIterable, Identifiable {
 // MARK: - Export Settings Container
 
 struct ExportSettings: Equatable {
+    static let minimumAudioVolume: Float = 0
+    static let maximumAudioVolume: Float = 2
+
     var quality: ExportQuality = .high
     var dimensionPreset: ExportDimensionPreset = .original
     var customWidth: Int = 1920
     var customHeight: Int = 1080
     var aspectRatioLocked: Bool = true
     var audioMode: AudioExportMode = .keep
-    var audioVolume: Float = 1.0 // 0.0 to 2.0 (0% to 200%)
+    var audioVolume: Float = 1.0 // Mixed/fallback track, 0.0 to 2.0 (0% to 200%)
+    var systemAudioVolume: Float = 1.0 // First Snapzy recording audio track
+    var microphoneAudioVolume: Float = 1.0 // Second Snapzy recording audio track
 
   /// Compute actual export dimensions for VIDEO CONTENT ONLY
   /// Note: Background padding is applied separately during rendering
@@ -316,10 +423,62 @@ struct ExportSettings: Equatable {
 
     /// Get effective volume (0.0 to 2.0)
     var effectiveVolume: Float {
-        switch audioMode {
-        case .keep: return 1.0
-        case .mute: return 0.0
-        case .custom: return audioVolume
-        }
+        effectiveVolume(for: .mixed)
+    }
+
+    func audioVolume(for role: VideoEditorAudioTrackRole) -> Float {
+      switch role {
+      case .mixed, .additional:
+        return Self.clampedAudioVolume(audioVolume)
+      case .systemAudio:
+        return Self.clampedAudioVolume(systemAudioVolume)
+      case .microphone:
+        return Self.clampedAudioVolume(microphoneAudioVolume)
+      }
+    }
+
+    func effectiveVolume(for role: VideoEditorAudioTrackRole) -> Float {
+      switch audioMode {
+      case .keep:
+        return 1.0
+      case .mute:
+        return 0.0
+      case .custom:
+        return audioVolume(for: role)
+      }
+    }
+
+    mutating func setAudioVolume(_ volume: Float, for role: VideoEditorAudioTrackRole) {
+      let clampedVolume = Self.clampedAudioVolume(volume)
+      switch role {
+      case .mixed, .additional:
+        audioVolume = clampedVolume
+      case .systemAudio:
+        systemAudioVolume = clampedVolume
+      case .microphone:
+        microphoneAudioVolume = clampedVolume
+      }
+    }
+
+    mutating func muteAllAudioVolumes() {
+      audioVolume = 0
+      systemAudioVolume = 0
+      microphoneAudioVolume = 0
+    }
+
+    mutating func resetMutedAudioVolumesToDefault() {
+      if audioVolume == 0 {
+        audioVolume = 1.0
+      }
+      if systemAudioVolume == 0 {
+        systemAudioVolume = 1.0
+      }
+      if microphoneAudioVolume == 0 {
+        microphoneAudioVolume = 1.0
+      }
+    }
+
+    private static func clampedAudioVolume(_ volume: Float) -> Float {
+      min(max(volume, minimumAudioVolume), maximumAudioVolume)
     }
 }

@@ -54,9 +54,23 @@ private enum VideoEditorExportInspectorTab: CaseIterable, Identifiable {
       case .mute:
         return AudioExportMode.mute.localizedLabel
       case .custom:
-        return "\(Int(state.exportSettings.audioVolume * 100))%"
+        return customAudioVolumeSummary(state: state)
       }
     }
+  }
+
+  private func customAudioVolumeSummary(state: VideoEditorState) -> String {
+    let roles = state.audioTrackRoles.isEmpty ? [.mixed] : state.audioTrackRoles
+    guard roles.count > 1 else {
+      return "\(Int(state.exportSettings.audioVolume(for: roles[0]) * 100))%"
+    }
+
+    return roles
+      .prefix(2)
+      .map { role in
+        "\(role.compactLabel) \(Int(state.exportSettings.audioVolume(for: role) * 100))%"
+      }
+      .joined(separator: " · ")
   }
 }
 
@@ -388,7 +402,11 @@ struct VideoExportSettingsPanel: View {
       }
 
       if state.exportSettings.audioMode == .custom {
-        volumeSlider
+        VStack(alignment: .leading, spacing: 8) {
+          ForEach(customAudioVolumeRoles) { role in
+            volumeSlider(for: role)
+          }
+        }
       }
     }
   }
@@ -398,9 +416,9 @@ struct VideoExportSettingsPanel: View {
       var settings = state.exportSettings
       settings.audioMode = mode
       if mode == .mute {
-        settings.audioVolume = 0
-      } else if mode == .keep && settings.audioVolume == 0 {
-        settings.audioVolume = 1.0
+        settings.muteAllAudioVolumes()
+      } else if mode == .keep {
+        settings.resetMutedAudioVolumesToDefault()
       }
       state.updateExportSettings(settings)
     } label: {
@@ -433,17 +451,27 @@ struct VideoExportSettingsPanel: View {
     .buttonStyle(.plain)
   }
 
-  private var volumeSlider: some View {
+  private var customAudioVolumeRoles: [VideoEditorAudioTrackRole] {
+    state.audioTrackRoles.isEmpty ? [.mixed] : state.audioTrackRoles
+  }
+
+  private func volumeSlider(for role: VideoEditorAudioTrackRole) -> some View {
     HStack(spacing: 8) {
+      Label(role.localizedLabel, systemImage: role.icon)
+        .font(.system(size: 10, weight: .medium))
+        .foregroundColor(.secondary)
+        .lineLimit(1)
+        .frame(width: 108, alignment: .leading)
+
       Text("0%")
         .font(.system(size: 9))
         .foregroundColor(.secondary)
 
-      Slider(value: volumeBinding, in: 0...2, step: 0.05)
+      Slider(value: volumeBinding(for: role), in: 0...2, step: 0.05)
         .frame(width: 140)
         .controlSize(.small)
 
-      Text("\(Int(state.exportSettings.audioVolume * 100))%")
+      Text("\(Int(state.exportSettings.audioVolume(for: role) * 100))%")
         .font(.system(size: 11, weight: .medium))
         .foregroundColor(.secondary)
         .monospacedDigit()
@@ -535,12 +563,12 @@ struct VideoExportSettingsPanel: View {
     )
   }
 
-  private var volumeBinding: Binding<Float> {
+  private func volumeBinding(for role: VideoEditorAudioTrackRole) -> Binding<Float> {
     Binding(
-      get: { state.exportSettings.audioVolume },
+      get: { state.exportSettings.audioVolume(for: role) },
       set: { newValue in
         var settings = state.exportSettings
-        settings.audioVolume = newValue
+        settings.setAudioVolume(newValue, for: role)
         state.updateExportSettings(settings)
       }
     )

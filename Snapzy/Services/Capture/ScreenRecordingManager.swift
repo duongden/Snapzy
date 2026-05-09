@@ -187,6 +187,7 @@ enum RecordingAudioCompatibilityExporter {
     let outputURL: URL
     let audioTrackCount: Int
     let didNormalize: Bool
+    let audioSourceURL: URL?
   }
 
   enum ExportError: LocalizedError {
@@ -225,11 +226,20 @@ enum RecordingAudioCompatibilityExporter {
     audioTrackCount > 1
   }
 
-  static func normalizeIfNeeded(at sourceURL: URL, fileType: AVFileType) async throws -> Result {
+  static func normalizeIfNeeded(
+    at sourceURL: URL,
+    fileType: AVFileType,
+    preservesAudioSource: Bool = true
+  ) async throws -> Result {
     let asset = AVURLAsset(url: sourceURL)
     let audioTracks = try await asset.loadTracks(withMediaType: .audio)
     guard requiresMixDown(audioTrackCount: audioTracks.count) else {
-      return Result(outputURL: sourceURL, audioTrackCount: audioTracks.count, didNormalize: false)
+      return Result(
+        outputURL: sourceURL,
+        audioTrackCount: audioTracks.count,
+        didNormalize: false,
+        audioSourceURL: nil
+      )
     }
 
     guard let videoTrack = try await asset.loadTracks(withMediaType: .video).first else {
@@ -240,6 +250,7 @@ enum RecordingAudioCompatibilityExporter {
     let preferredTransform = try await videoTrack.load(.preferredTransform)
     let sourceFormatHint = try await videoTrack.load(.formatDescriptions).first
     let normalizedURL = normalizedTemporaryURL(for: sourceURL)
+    let preservedSourceURL = preservesAudioSource ? preservedAudioSourceTemporaryURL(for: sourceURL) : nil
 
     do {
       try await writeNormalizedFile(
@@ -252,15 +263,27 @@ enum RecordingAudioCompatibilityExporter {
         outputURL: normalizedURL,
         fileType: fileType
       )
+      if let preservedSourceURL {
+        try? FileManager.default.removeItem(at: preservedSourceURL)
+        try FileManager.default.copyItem(at: sourceURL, to: preservedSourceURL)
+      }
       _ = try FileManager.default.replaceItemAt(
         sourceURL,
         withItemAt: normalizedURL,
         backupItemName: nil,
         options: []
       )
-      return Result(outputURL: sourceURL, audioTrackCount: audioTracks.count, didNormalize: true)
+      return Result(
+        outputURL: sourceURL,
+        audioTrackCount: audioTracks.count,
+        didNormalize: true,
+        audioSourceURL: preservedSourceURL
+      )
     } catch {
       try? FileManager.default.removeItem(at: normalizedURL)
+      if let preservedSourceURL {
+        try? FileManager.default.removeItem(at: preservedSourceURL)
+      }
       throw error
     }
   }
@@ -271,6 +294,15 @@ enum RecordingAudioCompatibilityExporter {
     let fileExtension = sourceURL.pathExtension
     return directory
       .appendingPathComponent(".\(baseName)-audio-compatible-\(UUID().uuidString)")
+      .appendingPathExtension(fileExtension)
+  }
+
+  private static func preservedAudioSourceTemporaryURL(for sourceURL: URL) -> URL {
+    let directory = sourceURL.deletingLastPathComponent()
+    let baseName = sourceURL.deletingPathExtension().lastPathComponent
+    let fileExtension = sourceURL.pathExtension
+    return directory
+      .appendingPathComponent(".\(baseName)-audio-sources-\(UUID().uuidString)")
       .appendingPathExtension(fileExtension)
   }
 
@@ -589,6 +621,11 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
     label: "com.trongduong.snapzy.recording.microphone",
     qos: .userInteractive
   )
+
+  private struct RecordingAudioNormalizationResult {
+    let outputURL: URL?
+    let audioSourceURL: URL?
+  }
 
   private override init() {
     super.init()
@@ -1040,28 +1077,44 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
     let mouseSamples = mouseTracker?.stop() ?? []
     let writerURL = outputURL
     await logRecordingFrameDiagnostics(outputURL: writerURL, stats: videoWriteStats)
-    let compatibleWriterURL = await normalizeRecordingAudioForCompatibilityIfNeeded(writerURL: writerURL)
-    let url = finalizeRecordingOutput(writerURL: compatibleWriterURL)
+    let audioNormalization = await normalizeRecordingAudioForCompatibilityIfNeeded(writerURL: writerURL)
+    let editorAudioSourceURL = storeRecordingAudioSourceIfNeeded(audioNormalization.audioSourceURL)
+    let url = finalizeRecordingOutput(writerURL: audioNormalization.outputURL)
     outputURL = url
     if let url = url {
-      if mouseSamples.count >= 2 {
+      let audioSourceTrackRoles = editorAudioSourceURL == nil ? [] : RecordingAudioSourceTrackRole.roles(
+        capturesSystemAudio: captureSystemAudio,
+        capturesMicrophone: captureMicrophone
+      )
+      let audioSourceTracks = await recordingAudioSourceTracks(
+        for: editorAudioSourceURL,
+        roles: audioSourceTrackRoles
+      )
+      if mouseSamples.count >= 2 || editorAudioSourceURL != nil {
         do {
           let metadata = RecordingMetadata(
             coordinateSpace: .topLeftNormalized,
             captureSize: recordingRect.size,
             samplesPerSecond: mouseTracker?.samplesPerSecond ?? fps,
-            mouseSamples: mouseSamples
+            mouseSamples: mouseSamples,
+            audioSourceURL: editorAudioSourceURL,
+            audioSourceTrackRoles: audioSourceTrackRoles,
+            audioSourceTracks: audioSourceTracks
           )
           try RecordingMetadataStore.save(metadata, for: url)
-          DiagnosticLogger.shared.log(.info, .recording, "Mouse tracking metadata saved", context: [
+          DiagnosticLogger.shared.log(.info, .recording, "Recording metadata saved", context: [
             "file": url.lastPathComponent,
             "samples": "\(mouseSamples.count)",
+            "hasEditorAudioSource": editorAudioSourceURL == nil ? "false" : "true",
+            "editorAudioSourceRoles": audioSourceTrackRoles.map(\.rawValue).joined(separator: ","),
+            "editorAudioSourceTrackIDs": audioSourceTracks.map { "\($0.trackID):\($0.role.rawValue)" }.joined(separator: ","),
           ])
         } catch {
-          DiagnosticLogger.shared.logError(.recording, error, "Failed to save mouse tracking data")
+          DiagnosticLogger.shared.logError(.recording, error, "Failed to save recording metadata")
+          deleteStoredRecordingAudioSourceIfUnused(editorAudioSourceURL)
         }
       } else {
-        DiagnosticLogger.shared.log(.debug, .recording, "Mouse tracking metadata skipped", context: [
+        DiagnosticLogger.shared.log(.debug, .recording, "Recording metadata skipped", context: [
           "samples": "\(mouseSamples.count)"
         ])
       }
@@ -1076,6 +1129,7 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
       }
       DiagnosticLogger.shared.log(.info, .recording, "Recording stopped: \(url.lastPathComponent) (\(elapsedSeconds)s)")
     } else {
+      deleteStoredRecordingAudioSourceIfUnused(editorAudioSourceURL)
       DiagnosticLogger.shared.log(.error, .recording, "Recording stopped without output URL")
     }
 
@@ -1133,8 +1187,12 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
 
   // MARK: - Private Methods
 
-  private func normalizeRecordingAudioForCompatibilityIfNeeded(writerURL: URL?) async -> URL? {
-    guard let writerURL else { return nil }
+  private func normalizeRecordingAudioForCompatibilityIfNeeded(
+    writerURL: URL?
+  ) async -> RecordingAudioNormalizationResult {
+    guard let writerURL else {
+      return RecordingAudioNormalizationResult(outputURL: nil, audioSourceURL: nil)
+    }
 
     do {
       let result = try await RecordingAudioCompatibilityExporter.normalizeIfNeeded(
@@ -1149,6 +1207,7 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
           "audioCodec": "aac-lc",
           "sampleRate": "\(RecordingAudioEncodingSettings.sampleRate)",
           "channels": "\(RecordingAudioEncodingSettings.channelCount)",
+          "editorAudioSource": result.audioSourceURL?.lastPathComponent ?? "nil",
         ])
       } else {
         DiagnosticLogger.shared.log(.debug, .recording, "Recording audio normalization skipped", context: [
@@ -1156,13 +1215,83 @@ final class ScreenRecordingManager: NSObject, ObservableObject {
           "audioTracks": "\(result.audioTrackCount)",
         ])
       }
-      return result.outputURL
+      return RecordingAudioNormalizationResult(
+        outputURL: result.outputURL,
+        audioSourceURL: result.audioSourceURL
+      )
     } catch {
       DiagnosticLogger.shared.log(.warning, .recording, "Recording audio normalization failed; preserving original file", context: [
         "file": writerURL.lastPathComponent,
         "error": error.localizedDescription,
       ])
-      return writerURL
+      return RecordingAudioNormalizationResult(outputURL: writerURL, audioSourceURL: nil)
+    }
+  }
+
+  private func storeRecordingAudioSourceIfNeeded(_ sourceURL: URL?) -> URL? {
+    guard let sourceURL else { return nil }
+    defer {
+      try? FileManager.default.removeItem(at: sourceURL)
+    }
+
+    do {
+      let storedURL = try RecordingMetadataStore.storeAudioSource(from: sourceURL)
+      DiagnosticLogger.shared.log(.info, .recording, "Stored editor audio source", context: [
+        "file": storedURL.lastPathComponent
+      ])
+      return storedURL
+    } catch {
+      DiagnosticLogger.shared.log(.warning, .recording, "Failed to store editor audio source", context: [
+        "file": sourceURL.lastPathComponent,
+        "error": error.localizedDescription,
+      ])
+      return nil
+    }
+  }
+
+  private func deleteStoredRecordingAudioSourceIfUnused(_ sourceURL: URL?) {
+    guard let sourceURL else { return }
+    do {
+      try FileManager.default.removeItem(at: sourceURL)
+      DiagnosticLogger.shared.log(.debug, .recording, "Removed unused editor audio source", context: [
+        "file": sourceURL.lastPathComponent
+      ])
+    } catch {
+      DiagnosticLogger.shared.log(.warning, .recording, "Failed to remove unused editor audio source", context: [
+        "file": sourceURL.lastPathComponent,
+        "error": error.localizedDescription,
+      ])
+    }
+  }
+
+  private func recordingAudioSourceTracks(
+    for sourceURL: URL?,
+    roles: [RecordingAudioSourceTrackRole]
+  ) async -> [RecordingAudioSourceTrack] {
+    guard let sourceURL, !roles.isEmpty else { return [] }
+
+    do {
+      let asset = AVURLAsset(url: sourceURL)
+      let audioTracks = try await asset.loadTracks(withMediaType: .audio)
+        .sorted { $0.trackID < $1.trackID }
+      guard audioTracks.count == roles.count else {
+        DiagnosticLogger.shared.log(.warning, .recording, "Editor audio source role count mismatch", context: [
+          "file": sourceURL.lastPathComponent,
+          "audioTracks": "\(audioTracks.count)",
+          "roles": "\(roles.count)",
+        ])
+        return []
+      }
+
+      return zip(audioTracks, roles).map { track, role in
+        RecordingAudioSourceTrack(trackID: Int(track.trackID), role: role)
+      }
+    } catch {
+      DiagnosticLogger.shared.log(.warning, .recording, "Failed to inspect editor audio source tracks", context: [
+        "file": sourceURL.lastPathComponent,
+        "error": error.localizedDescription,
+      ])
+      return []
     }
   }
 

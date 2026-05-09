@@ -179,7 +179,7 @@ flowchart TD
 
 - Recording metadata is stored separately from the media file and powers Smart Camera / Follow Mouse in the video editor.
 - Recording media is written to a per-session internal `Application Support/Snapzy/Captures/RecordingProcessing/` directory first. When the writer finishes, Snapzy moves only the final video into the user export folder when Save is enabled, or into the temp capture root when Save is disabled, then deletes the processing directory and AVAssetWriter sidecars.
-- Recorded system and microphone audio tracks are encoded as AAC-LC at 48 kHz stereo with an explicit stereo channel layout. When multiple audio sources are present, Snapzy normalizes the finished recording to one mixed AAC-LC stereo audio track for broad MP4/MOV compatibility across common players and upload platforms.
+- Recorded system and microphone audio tracks are encoded as AAC-LC at 48 kHz stereo with an explicit stereo channel layout. When multiple audio sources are present, Snapzy normalizes the user-facing recording to one mixed AAC-LC stereo audio track for broad MP4/MOV compatibility across common players and upload platforms, while storing an editor-only multitrack audio source sidecar plus explicit track-role metadata for later per-source volume edits.
 - GIF output is a two-step flow: record video first, then convert and swap the Quick Access item.
 - `RecordingCoordinator` owns toolbar and overlay UX. `ScreenRecordingManager` owns media capture, timing, and metadata persistence.
 - `AppStatusBarController` stays menu-first during active recording. The menu bar item keeps Snapzy's normal identity, shows the live elapsed time, and exposes stop plus pause/resume from the menu instead of left-click-to-stop.
@@ -309,6 +309,14 @@ flowchart TD
     J --> L["Saved output file"]
     K --> L
 ```
+
+### Notes
+
+- Video preview and export apply custom volume through the same `AVAudioMix` path so Custom Volume changes are audible before saving.
+- For Snapzy recordings that have an editor audio source sidecar, the editor loads that multitrack asset for preview/export while keeping save/replace operations pointed at the user-facing compatible video file.
+- When the editor source exposes separate audio tracks, the editor uses stored track-role metadata keyed by `AVAssetTrack.trackID` to map system audio and microphone controls, falling back to `ScreenRecordingManager` writer order for older metadata. Custom volume preview and export share the same role-aware `AVAudioMix` path.
+- Editor exports are normalized back to one mixed AAC-LC stereo audio track after multitrack export so saved files stay broadly compatible. Single-track videos keep one mixed volume control.
+- Existing recordings created before the editor audio source sidecar exists contain one mixed audio track, so the editor cannot recover separated microphone/system sources from those older files.
 
 ## Key Files
 

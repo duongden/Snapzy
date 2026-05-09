@@ -4350,6 +4350,47 @@ enum L10n {
       defaultValue: "Custom Volume",
       comment: "Label for using a custom audio volume while exporting video"
     )
+    static let audioVolume = string(
+      "video-editor.audio-volume",
+      defaultValue: "Volume",
+      comment: "Label for a single mixed audio volume control in the video editor"
+    )
+    static let systemAudio = string(
+      "video-editor.system-audio",
+      defaultValue: "System Audio",
+      comment: "Label for the system audio volume control in the video editor"
+    )
+    static let systemAudioShort = string(
+      "video-editor.system-audio-short",
+      defaultValue: "Sys",
+      comment: "Short label for system audio in the video editor audio summary"
+    )
+    static let microphoneAudio = string(
+      "video-editor.microphone-audio",
+      defaultValue: "Microphone",
+      comment: "Label for the microphone volume control in the video editor"
+    )
+    static let microphoneAudioShort = string(
+      "video-editor.microphone-audio-short",
+      defaultValue: "Mic",
+      comment: "Short label for microphone audio in the video editor audio summary"
+    )
+    static func additionalAudioTrack(_ index: Int) -> String {
+      format(
+        "video-editor.additional-audio-track",
+        defaultValue: "Audio Track %d",
+        comment: "Label for an additional audio track in the video editor. %d is the 1-based track index.",
+        index
+      )
+    }
+    static func additionalAudioTrackShort(_ index: Int) -> String {
+      format(
+        "video-editor.additional-audio-track-short",
+        defaultValue: "A%d",
+        comment: "Short label for an additional audio track in the video editor. %d is the 1-based track index.",
+        index
+      )
+    }
     static let videoDetails = string(
       "video-editor.video-details",
       defaultValue: "Video Details",

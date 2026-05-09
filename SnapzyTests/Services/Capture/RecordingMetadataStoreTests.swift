@@ -5,6 +5,7 @@
 //  Tests for recording Smart Camera metadata persistence and migration.
 //
 
+import AVFoundation
 import CoreGraphics
 import XCTest
 @testable import Snapzy
@@ -17,6 +18,15 @@ final class RecordingMetadataStoreTests: XCTestCase {
     var captureSize: CGSize
     var samplesPerSecond: Int
     var mouseSamples: [RecordedMouseSample]
+  }
+
+  private struct LegacyMetadataV3: Codable {
+    var version: Int
+    var coordinateSpace: RecordingCoordinateSpace
+    var captureSize: CGSize
+    var samplesPerSecond: Int
+    var mouseSamples: [RecordedMouseSample]
+    var audioSourceURL: URL?
   }
 
   private var tempDirectory: URL!
@@ -65,6 +75,40 @@ final class RecordingMetadataStoreTests: XCTestCase {
     XCTAssertEqual(decoded.version, 1)
     XCTAssertEqual(decoded.coordinateSpace, .bottomLeftNormalized)
     XCTAssertEqual(decoded.mouseSamples.first?.normalizedY, 0.25)
+  }
+
+  func testRecordingMetadata_v3WithoutAudioTrackRolesDecodesEmptyRoles() throws {
+    let sourceURL = tempDirectory.appendingPathComponent("legacy-audio-source.mov")
+    let legacy = LegacyMetadataV3(
+      version: 3,
+      coordinateSpace: .topLeftNormalized,
+      captureSize: CGSize(width: 640, height: 360),
+      samplesPerSecond: 60,
+      mouseSamples: [],
+      audioSourceURL: sourceURL
+    )
+    let data = try JSONEncoder().encode(legacy)
+    let decoded = try JSONDecoder().decode(RecordingMetadata.self, from: data)
+
+    XCTAssertEqual(decoded.version, 3)
+    XCTAssertEqual(decoded.audioSourceURL, sourceURL)
+    XCTAssertTrue(decoded.audioSourceTrackRoles.isEmpty)
+    XCTAssertTrue(decoded.audioSourceTracks.isEmpty)
+  }
+
+  func testRecordingAudioSourceTrackRolesFollowWriterOrder() {
+    XCTAssertEqual(
+      RecordingAudioSourceTrackRole.roles(capturesSystemAudio: true, capturesMicrophone: true),
+      [.systemAudio, .microphone]
+    )
+    XCTAssertEqual(
+      RecordingAudioSourceTrackRole.roles(capturesSystemAudio: true, capturesMicrophone: false),
+      [.systemAudio]
+    )
+    XCTAssertEqual(
+      RecordingAudioSourceTrackRole.roles(capturesSystemAudio: false, capturesMicrophone: true),
+      [.microphone]
+    )
   }
 
   func testRecordingMetadataStore_saveLoadRoundTripsCurrentMetadata() throws {
@@ -126,6 +170,84 @@ final class RecordingMetadataStoreTests: XCTestCase {
 
     try RecordingMetadataStore.delete(for: videoURL)
     XCTAssertNil(RecordingMetadataStore.load(for: videoURL))
+  }
+
+  func testRecordingMetadataStore_storeAudioSourceAndDeleteRemovesSidecar() throws {
+    let videoURL = try makeVideoFile(named: "audio-source.mov")
+    let sourceURL = tempDirectory.appendingPathComponent("multitrack-source.mov")
+    try Data("multitrack".utf8).write(to: sourceURL)
+
+    let storedSourceURL = try RecordingMetadataStore.storeAudioSource(from: sourceURL)
+    var metadata = makeCurrentMetadata()
+    metadata.audioSourceURL = storedSourceURL
+    metadata.audioSourceTrackRoles = [.systemAudio, .microphone]
+    metadata.audioSourceTracks = [
+      RecordingAudioSourceTrack(trackID: 2, role: .systemAudio),
+      RecordingAudioSourceTrack(trackID: 3, role: .microphone),
+    ]
+
+    try RecordingMetadataStore.save(metadata, for: videoURL)
+    let loaded = try XCTUnwrap(RecordingMetadataStore.load(for: videoURL))
+    XCTAssertEqual(loaded.audioSourceURL, storedSourceURL)
+    XCTAssertEqual(loaded.audioSourceTrackRoles, [.systemAudio, .microphone])
+    XCTAssertEqual(loaded.audioSourceTracks, metadata.audioSourceTracks)
+    XCTAssertTrue(FileManager.default.fileExists(atPath: storedSourceURL.path))
+
+    try RecordingMetadataStore.delete(for: videoURL)
+    XCTAssertNil(RecordingMetadataStore.load(for: videoURL))
+    XCTAssertFalse(FileManager.default.fileExists(atPath: storedSourceURL.path))
+  }
+
+  func testVideoEditorStateResolvesStoredAudioSourceAssetWhenAvailable() throws {
+    let videoURL = try makeVideoFile(named: "editor-compatible-output.mov")
+    let sourceURL = tempDirectory.appendingPathComponent("editor-multitrack-source.mov")
+    try Data("multitrack".utf8).write(to: sourceURL)
+    let storedSourceURL = try RecordingMetadataStore.storeAudioSource(from: sourceURL)
+
+    var metadata = makeCurrentMetadata()
+    metadata.audioSourceURL = storedSourceURL
+    metadata.audioSourceTrackRoles = [.systemAudio, .microphone]
+    try RecordingMetadataStore.save(metadata, for: videoURL)
+
+    let loaded = try XCTUnwrap(RecordingMetadataStore.load(for: videoURL))
+    XCTAssertEqual(VideoEditorState.editorAssetURL(for: videoURL, metadata: loaded), storedSourceURL)
+    XCTAssertEqual(
+      VideoEditorState.audioTrackRoles(forAudioTrackCount: 2, metadata: loaded),
+      [.systemAudio, .microphone]
+    )
+    XCTAssertEqual(
+      VideoEditorState.audioTrackRoles(forAudioTrackCount: 1, metadata: loaded),
+      [.mixed]
+    )
+  }
+
+  func testVideoEditorStateAudioTrackRolesPreferTrackIDMetadata() throws {
+    let composition = AVMutableComposition()
+    let microphoneTrack = try XCTUnwrap(composition.addMutableTrack(
+      withMediaType: .audio,
+      preferredTrackID: 42
+    ))
+    let systemTrack = try XCTUnwrap(composition.addMutableTrack(
+      withMediaType: .audio,
+      preferredTrackID: 7
+    ))
+
+    let metadata = RecordingMetadata(
+      captureSize: CGSize(width: 640, height: 360),
+      samplesPerSecond: 60,
+      mouseSamples: [],
+      audioSourceURL: tempDirectory.appendingPathComponent("source.mov"),
+      audioSourceTrackRoles: [.systemAudio, .microphone],
+      audioSourceTracks: [
+        RecordingAudioSourceTrack(trackID: Int(systemTrack.trackID), role: .systemAudio),
+        RecordingAudioSourceTrack(trackID: Int(microphoneTrack.trackID), role: .microphone),
+      ]
+    )
+
+    XCTAssertEqual(
+      VideoEditorState.audioTrackRoles(for: [microphoneTrack, systemTrack], metadata: metadata),
+      [.microphone, .systemAudio]
+    )
   }
 
   private func makeCurrentMetadata() -> RecordingMetadata {

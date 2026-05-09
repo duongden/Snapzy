@@ -24,6 +24,7 @@ enum VideoEditorExporter {
       "file": state.sourceURL.lastPathComponent,
       "hasZooms": "\(state.zoomSegments.contains { $0.isEnabled })",
       "hasBackground": "\(state.backgroundStyle != .none && state.backgroundPadding > 0)",
+      "hasCustomAudio": "\(state.exportSettings.audioMode == .custom)",
       "quality": state.exportSettings.quality.exportPreset
     ])
     let outputAccess = SandboxFileAccessManager.shared.beginAccessingURL(outputURL.deletingLastPathComponent())
@@ -32,10 +33,15 @@ enum VideoEditorExporter {
 
     let hasCameraEffects = state.zoomSegments.contains { $0.isEnabled }
     let hasBackground = state.backgroundStyle != .none && state.backgroundPadding > 0
+    let hasCustomAudio = state.exportSettings.audioMode == .custom
 
-    // If has zooms or background, use composition-based export
-    if hasCameraEffects || hasBackground {
+    // If visual effects or custom audio are enabled, use composition-based export.
+    if hasCameraEffects || hasBackground || hasCustomAudio {
       try await exportWithZooms(state: state, to: scopedOutputURL, progress: progress)
+      try await normalizeExportAudioForCompatibilityIfNeeded(
+        at: scopedOutputURL,
+        fileExtension: state.fileExtension
+      )
       return
     }
 
@@ -47,6 +53,10 @@ enum VideoEditorExporter {
 
     // Standard export without zooms
     try await exportStandard(state: state, to: scopedOutputURL, progress: progress)
+    try await normalizeExportAudioForCompatibilityIfNeeded(
+      at: scopedOutputURL,
+      fileExtension: state.fileExtension
+    )
   }
 
   /// Standard export without zoom effects
@@ -77,6 +87,14 @@ enum VideoEditorExporter {
     exportSession.outputURL = outputURL
     exportSession.outputFileType = outputFileType(for: state.fileExtension)
     exportSession.timeRange = timeRange
+    if let audioMix = try await makeAudioMix(
+      for: state.asset,
+      settings: state.exportSettings,
+      roles: state.audioTrackRoles,
+      logPrefix: "[Export]"
+    ) {
+      exportSession.audioMix = audioMix
+    }
 
     // Apply custom dimensions if not using original size
     if state.exportSettings.dimensionPreset != .original {
@@ -250,32 +268,14 @@ enum VideoEditorExporter {
     print("🔍 [ZoomExport] Applied video transform: \(transform)")
 
     // Add audio track based on export settings
-    var audioMix: AVMutableAudioMix?
-    if state.exportSettings.shouldIncludeAudio {
-      if let sourceAudioTrack = try await state.asset.loadTracks(withMediaType: .audio).first {
-        if let compositionAudioTrack = composition.addMutableTrack(
-          withMediaType: .audio,
-          preferredTrackID: kCMPersistentTrackID_Invalid
-        ) {
-          try? compositionAudioTrack.insertTimeRange(timeRange, of: sourceAudioTrack, at: .zero)
-          print("🔍 [ZoomExport] Added audio track")
-
-          // Apply volume adjustment if custom volume
-          if state.exportSettings.audioMode == .custom {
-            let mix = AVMutableAudioMix()
-            let params = AVMutableAudioMixInputParameters(track: compositionAudioTrack)
-            params.setVolume(state.exportSettings.effectiveVolume, at: .zero)
-            mix.inputParameters = [params]
-            audioMix = mix
-            print("🔍 [ZoomExport] Applied custom volume: \(state.exportSettings.effectiveVolume)")
-          }
-        }
-      } else {
-        print("🔍 [ZoomExport] No audio track in source")
-      }
-    } else {
-      print("🔍 [ZoomExport] Audio muted, skipping audio track")
-    }
+    let audioMix = try await addAudioTracks(
+      to: composition,
+      from: state.asset,
+      timeRange: timeRange,
+      settings: state.exportSettings,
+      roles: state.audioTrackRoles,
+      logPrefix: "[ZoomExport]"
+    )
 
     // Verify composition duration
     print("🔍 [ZoomExport] Composition duration: \(CMTimeGetSeconds(composition.duration))s")
@@ -595,6 +595,121 @@ enum VideoEditorExporter {
   }
 
   // MARK: - Helper Methods
+
+  private static func addAudioTracks(
+    to composition: AVMutableComposition,
+    from asset: AVAsset,
+    timeRange: CMTimeRange,
+    settings: ExportSettings,
+    roles: [VideoEditorAudioTrackRole],
+    logPrefix: String
+  ) async throws -> AVMutableAudioMix? {
+    guard settings.shouldIncludeAudio else {
+      print("\(logPrefix) Audio muted, skipping audio tracks")
+      return nil
+    }
+
+    let sourceAudioTracks = try await asset.loadTracks(withMediaType: .audio)
+    guard !sourceAudioTracks.isEmpty else {
+      print("\(logPrefix) No audio tracks in source")
+      return nil
+    }
+
+    var compositionAudioTracks: [AVAssetTrack] = []
+    for sourceAudioTrack in sourceAudioTracks {
+      guard let compositionAudioTrack = composition.addMutableTrack(
+        withMediaType: .audio,
+        preferredTrackID: kCMPersistentTrackID_Invalid
+      ) else {
+        DiagnosticLogger.shared.log(.error, .export, "Failed to add composition audio track")
+        throw ExportError.exportFailed
+      }
+
+      try compositionAudioTrack.insertTimeRange(timeRange, of: sourceAudioTrack, at: .zero)
+      compositionAudioTracks.append(compositionAudioTrack)
+    }
+
+    print("\(logPrefix) Added \(compositionAudioTracks.count) audio track(s)")
+    return makeAudioMix(
+      for: compositionAudioTracks,
+      settings: settings,
+      roles: roles,
+      logPrefix: logPrefix
+    )
+  }
+
+  private static func makeAudioMix(
+    for asset: AVAsset,
+    settings: ExportSettings,
+    roles: [VideoEditorAudioTrackRole],
+    logPrefix: String
+  ) async throws -> AVMutableAudioMix? {
+    guard settings.audioMode == .custom else { return nil }
+
+    let audioTracks = try await asset.loadTracks(withMediaType: .audio)
+    guard !audioTracks.isEmpty else {
+      print("\(logPrefix) Custom volume requested, but source has no audio tracks")
+      return nil
+    }
+
+    return makeAudioMix(
+      for: audioTracks,
+      settings: settings,
+      roles: roles,
+      logPrefix: logPrefix
+    )
+  }
+
+  private static func makeAudioMix(
+    for audioTracks: [AVAssetTrack],
+    settings: ExportSettings,
+    roles: [VideoEditorAudioTrackRole],
+    logPrefix: String
+  ) -> AVMutableAudioMix? {
+    guard settings.audioMode == .custom else { return nil }
+
+    let resolvedRoles: [VideoEditorAudioTrackRole]
+    if roles.count == audioTracks.count {
+      resolvedRoles = roles
+    } else {
+      resolvedRoles = VideoEditorAudioTrackRole.roles(forAudioTrackCount: audioTracks.count)
+    }
+    let mix = VideoEditorAudioMixFactory.makeAudioMix(
+      for: audioTracks,
+      settings: settings,
+      roles: resolvedRoles
+    )
+    zip(audioTracks, resolvedRoles).forEach { _, role in
+      let volume = settings.effectiveVolume(for: role)
+      print("\(logPrefix) Applied \(role.localizedLabel) volume: \(volume)")
+    }
+    return mix
+  }
+
+  private static func normalizeExportAudioForCompatibilityIfNeeded(
+    at outputURL: URL,
+    fileExtension: String
+  ) async throws {
+    let result = try await RecordingAudioCompatibilityExporter.normalizeIfNeeded(
+      at: outputURL,
+      fileType: outputFileType(for: fileExtension),
+      preservesAudioSource: false
+    )
+
+    guard result.didNormalize else {
+      DiagnosticLogger.shared.log(.debug, .export, "Video export audio normalization skipped", context: [
+        "output": outputURL.lastPathComponent,
+        "audioTracks": "\(result.audioTrackCount)",
+      ])
+      return
+    }
+
+    DiagnosticLogger.shared.log(.info, .export, "Video export audio normalized for compatibility", context: [
+      "output": outputURL.lastPathComponent,
+      "sourceAudioTracks": "\(result.audioTrackCount)",
+      "outputAudioTracks": "1",
+    ])
+  }
 
   /// Generate copy filename with _trimmed suffix (without directory)
   static func generateCopyFilename(from originalURL: URL) -> String {

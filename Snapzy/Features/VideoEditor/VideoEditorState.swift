@@ -116,6 +116,7 @@ final class VideoEditorState: ObservableObject {
   private(set) var sourceURL: URL
   /// Original file URL to replace (used for "Replace Original" functionality)
   private(set) var originalURL: URL
+  private(set) var assetURL: URL
   let asset: AVAsset
   let player: AVPlayer
   let playbackState = VideoEditorPlaybackState()
@@ -124,6 +125,7 @@ final class VideoEditorState: ObservableObject {
 
   @Published private(set) var duration: CMTime = .zero
   @Published private(set) var naturalSize: CGSize = .zero
+  @Published private(set) var audioTrackRoles: [VideoEditorAudioTrackRole] = []
 
   // MARK: - Trim Range
 
@@ -139,10 +141,42 @@ final class VideoEditorState: ObservableObject {
   }
   private var initialIsMuted: Bool = false
 
-  /// Sync player preview mute with export audio mode
-  func syncPlayerMuteWithExportSettings() {
-    player.isMuted = exportSettings.audioMode == .mute
-    isMuted = exportSettings.audioMode == .mute
+  /// Sync player preview audio with export audio mode and custom volume settings.
+  func syncPlayerAudioWithExportSettings() {
+    let shouldMute = exportSettings.audioMode == .mute
+    if isMuted != shouldMute {
+      isMuted = shouldMute
+    } else {
+      player.isMuted = shouldMute
+    }
+
+    guard exportSettings.audioMode == .custom else {
+      player.volume = 1.0
+      player.currentItem?.audioMix = nil
+      return
+    }
+
+    player.volume = 1.0
+    let settingsSnapshot = exportSettings
+    let audioTrackRolesSnapshot = audioTrackRoles
+    let assetSnapshot = asset
+    Task { @MainActor [weak self] in
+      do {
+        let audioTracks = try await assetSnapshot.loadTracks(withMediaType: .audio)
+        guard let self,
+              self.exportSettings == settingsSnapshot,
+              self.exportSettings.audioMode == .custom
+        else { return }
+
+        self.player.currentItem?.audioMix = VideoEditorAudioMixFactory.makeAudioMix(
+          for: audioTracks,
+          settings: settingsSnapshot,
+          roles: audioTrackRolesSnapshot
+        )
+      } catch {
+        DiagnosticLogger.shared.logError(.editor, error, "Preview audio mix failed")
+      }
+    }
   }
 
   // MARK: - Frame Thumbnails
@@ -226,7 +260,7 @@ final class VideoEditorState: ObservableObject {
   private var initialBackgroundPadding: CGFloat = 0
   private var initialBackgroundShadowIntensity: CGFloat = 0
   private var initialBackgroundCornerRadius: CGFloat = 0
-  private var initialDimensionPreset: ExportDimensionPreset = .original
+  private var initialExportSettings: ExportSettings = ExportSettings()
 
   // MARK: - Undo/Redo
 
@@ -356,15 +390,89 @@ final class VideoEditorState: ObservableObject {
   // MARK: - Initialization
 
   init(url: URL, originalURL: URL? = nil) {
+    let initialMetadata = Self.loadRecordingMetadata(for: url, originalURL: originalURL)
+    let editorAssetURL = Self.editorAssetURL(for: url, metadata: initialMetadata)
+
     self.sourceURL = url
     self.originalURL = originalURL ?? url
-    self.asset = AVAsset(url: url)
+    self.assetURL = editorAssetURL
+    self.asset = AVAsset(url: editorAssetURL)
     self.player = AVPlayer(playerItem: AVPlayerItem(asset: asset))
     self.zoomTransitionDuration = Self.loadZoomTransitionDuration()
+    self.recordingMetadata = initialMetadata
 
     setupTimeObserver()
     setupEndObserver()
     setupChangeTracking()
+  }
+
+  private static func loadRecordingMetadata(for url: URL, originalURL: URL?) -> RecordingMetadata? {
+    let candidateURLs = [url, originalURL].compactMap { $0 }
+      .reduce(into: [URL]()) { urls, url in
+        guard !urls.contains(url) else { return }
+        urls.append(url)
+      }
+
+    return candidateURLs.lazy.compactMap { RecordingMetadataStore.load(for: $0) }.first
+  }
+
+  static func editorAssetURL(for url: URL, metadata: RecordingMetadata?) -> URL {
+    guard
+      let audioSourceURL = metadata?.audioSourceURL,
+      FileManager.default.fileExists(atPath: audioSourceURL.path)
+    else {
+      return url
+    }
+
+    return audioSourceURL
+  }
+
+  static func audioTrackRoles(for audioTracks: [AVAssetTrack], metadata: RecordingMetadata?) -> [VideoEditorAudioTrackRole] {
+    let count = audioTracks.count
+    guard count > 0 else { return [] }
+
+    if let metadata,
+       metadata.audioSourceURL != nil,
+       !metadata.audioSourceTracks.isEmpty
+    {
+      let rolesByTrackID = Dictionary(
+        uniqueKeysWithValues: metadata.audioSourceTracks.map { ($0.trackID, $0.role) }
+      )
+      let resolvedRoles = audioTracks.compactMap { track in
+        rolesByTrackID[Int(track.trackID)].map(Self.videoEditorAudioTrackRole)
+      }
+      if resolvedRoles.count == count {
+        return resolvedRoles
+      }
+    }
+
+    if let metadata,
+       metadata.audioSourceURL != nil,
+       metadata.audioSourceTrackRoles.count == count
+    {
+      return metadata.audioSourceTrackRoles.map(Self.videoEditorAudioTrackRole)
+    }
+
+    return VideoEditorAudioTrackRole.roles(forAudioTrackCount: count)
+  }
+
+  static func audioTrackRoles(forAudioTrackCount count: Int, metadata: RecordingMetadata?) -> [VideoEditorAudioTrackRole] {
+    if let metadata,
+       metadata.audioSourceURL != nil,
+       metadata.audioSourceTrackRoles.count == count {
+      return metadata.audioSourceTrackRoles.map(Self.videoEditorAudioTrackRole)
+    }
+
+    return VideoEditorAudioTrackRole.roles(forAudioTrackCount: count)
+  }
+
+  private static func videoEditorAudioTrackRole(_ role: RecordingAudioSourceTrackRole) -> VideoEditorAudioTrackRole {
+    switch role {
+    case .systemAudio:
+      return .systemAudio
+    case .microphone:
+      return .microphone
+    }
   }
 
   deinit {
@@ -418,9 +526,14 @@ final class VideoEditorState: ObservableObject {
           height: abs(transformedSize.height)
         )
       }
+      let audioTracks = try await asset.loadTracks(withMediaType: .audio)
+      let audioTrackCount = audioTracks.count
+      audioTrackRoles = Self.audioTrackRoles(for: audioTracks, metadata: recordingMetadata)
       DiagnosticLogger.shared.log(.info, .editor, "Video metadata loaded", context: [
         "duration": String(format: "%.1fs", CMTimeGetSeconds(loadedDuration)),
-        "size": "\(Int(naturalSize.width))x\(Int(naturalSize.height))"
+        "size": "\(Int(naturalSize.width))x\(Int(naturalSize.height))",
+        "audioTracks": "\(audioTrackCount)",
+        "audioTrackRoles": audioTrackRoles.map(\.id).joined(separator: ",")
       ])
       // Calculate initial file size estimate after metadata loads
       recalculateEstimatedFileSize()
@@ -634,6 +747,7 @@ final class VideoEditorState: ObservableObject {
     initialBackgroundPadding = backgroundPadding
     initialBackgroundShadowIntensity = backgroundShadowIntensity
     initialBackgroundCornerRadius = backgroundCornerRadius
+    initialExportSettings = exportSettings
     clearUndoHistory()
   }
 
@@ -971,7 +1085,7 @@ final class VideoEditorState: ObservableObject {
   /// Update export settings and recalculate file size
   func updateExportSettings(_ settings: ExportSettings) {
     exportSettings = settings
-    syncPlayerMuteWithExportSettings()
+    syncPlayerAudioWithExportSettings()
     recalculateEstimatedFileSize()
   }
 
@@ -1121,6 +1235,7 @@ final class VideoEditorState: ObservableObject {
     $exportSettings
       .dropFirst()
       .sink { [weak self] _ in
+        self?.updateHasUnsavedChanges()
         self?.recalculateEstimatedFileSize()
       }
       .store(in: &cancellables)
@@ -1129,7 +1244,9 @@ final class VideoEditorState: ObservableObject {
   private func updateHasUnsavedChanges(currentZoomSegments: [ZoomSegment]? = nil) {
     // GIF mode: only track dimension changes
     if isGIF {
-      let dimensionChanged = exportSettings.dimensionPreset != initialDimensionPreset
+      let dimensionChanged = exportSettings.dimensionPreset != initialExportSettings.dimensionPreset
+        || exportSettings.customWidth != initialExportSettings.customWidth
+        || exportSettings.customHeight != initialExportSettings.customHeight
       hasUnsavedChanges = dimensionChanged
       return
     }
@@ -1146,8 +1263,9 @@ final class VideoEditorState: ObservableObject {
     let bgShadowChanged = backgroundShadowIntensity != initialBackgroundShadowIntensity
     let bgCornerChanged = backgroundCornerRadius != initialBackgroundCornerRadius
     let backgroundChanged = bgStyleChanged || bgPaddingChanged || bgShadowChanged || bgCornerChanged
+    let exportSettingsChanged = exportSettings != initialExportSettings
 
-    hasUnsavedChanges = startChanged || endChanged || muteChanged || zoomsChanged || backgroundChanged
+    hasUnsavedChanges = startChanged || endChanged || muteChanged || zoomsChanged || backgroundChanged || exportSettingsChanged
   }
 
   private func clampTime(_ time: CMTime) -> CMTime {
@@ -1216,13 +1334,7 @@ final class VideoEditorState: ObservableObject {
       return
     }
 
-    let candidateURLs = [sourceURL, originalURL]
-      .reduce(into: [URL]()) { urls, url in
-        guard !urls.contains(url) else { return }
-        urls.append(url)
-      }
-
-    recordingMetadata = candidateURLs.lazy.compactMap { RecordingMetadataStore.load(for: $0) }.first
+    recordingMetadata = Self.loadRecordingMetadata(for: sourceURL, originalURL: originalURL)
 
     rebuildAutoFocusPaths(for: zoomSegments)
   }
