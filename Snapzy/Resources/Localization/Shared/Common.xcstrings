@@ -72,61 +72,61 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Bereich aufnehmen & annotieren"
+            "value" : "Markup-Aufnahme"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Capture Area & Annotate"
+            "value" : "Capture Markup"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Capturar área y anotar"
+            "value" : "Captura con marcado"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Capturer une zone et annoter"
+            "value" : "Capture avec marquage"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "範囲をキャプチャして注釈"
+            "value" : "マークアップキャプチャ"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "영역 캡처 및 주석"
+            "value" : "마크업 캡처"
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Захватить область и аннотировать"
+            "value" : "Снимок с разметкой"
           }
         },
         "vi" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Chụp vùng chọn & chú thích"
+            "value" : "Chụp vùng và chú thích"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "区域截屏并标注"
+            "value" : "标记截屏"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "區域截圖並標註"
+            "value" : "標記截圖"
           }
         }
       }

@@ -191,8 +191,8 @@ enum L10n {
     )
     static let captureAreaAnnotate = string(
       "action.capture-area-annotate",
-      defaultValue: "Capture Area & Annotate",
-      comment: "Action title for selecting a screenshot area and annotating it inline"
+      defaultValue: "Capture Markup",
+      comment: "Action title for the inline capture markup flow"
     )
     static let captureFullscreen = string(
       "action.capture-fullscreen",
