@@ -521,6 +521,71 @@
         }
       }
     },
+    "preferences-shortcuts.capture-area-annotate-description" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Region auswählen, direkt annotieren und mit ⌘S oder Eingabetaste abschließen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Select a region, annotate in place, then finish with ⌘S or Enter"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Seleccione una región, anote en el lugar y termine con ⌘S o Intro"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sélectionnez une zone, annotez sur place, puis terminez avec ⌘S ou Entrée"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "範囲を選択し、その場で注釈して、⌘S または Enter で完了"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "영역을 선택하고 그 자리에서 주석을 추가한 뒤 ⌘S 또는 Enter로 완료"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Выберите область, аннотируйте на месте и завершите с помощью ⌘S или Enter"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chọn vùng, chú thích trực tiếp, rồi hoàn tất bằng ⌘S hoặc Enter"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "选择区域，直接标注，然后按 ⌘S 或 Enter 完成"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "選擇區域，直接標註，然後按 ⌘S 或 Enter 完成"
+          }
+        }
+      }
+    },
     "preferences-shortcuts.capture-fullscreen-description" : {
       "extractionState" : "stale",
       "localizations" : {

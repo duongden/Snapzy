@@ -132,6 +132,7 @@ enum ShortcutOverlayContentBuilder {
         isEnabled: manager.isShortcutEnabled(for: .area),
         display: .keycaps(areaConfig.displayParts)
       ),
+      globalItem(kind: .areaAnnotate, icon: "pencil.and.scribble", manager: manager),
       globalItem(kind: .scrollingCapture, icon: "arrow.up.and.down", manager: manager),
     ]
 

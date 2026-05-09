@@ -37,6 +37,7 @@ struct TextEditOverlay: View {
         let textContainerInset = AnnotateTextLayout.textEditorInset(scale: scale)
 
         InlineAnnotationTextEditor(
+          editingId: editingId,
           text: $editingText,
           font: displayFont,
           textContainerInset: textContainerInset,
@@ -115,6 +116,7 @@ struct TextEditOverlay: View {
 }
 
 private struct InlineAnnotationTextEditor: NSViewRepresentable {
+  let editingId: UUID
   @Binding var text: String
   let font: NSFont
   let textContainerInset: NSSize
@@ -154,6 +156,7 @@ private struct InlineAnnotationTextEditor: NSViewRepresentable {
     textView.textContainer?.lineBreakMode = .byWordWrapping
     textView.font = font
     textView.textColor = textColor
+    context.coordinator.focusedEditingId = editingId
     textView.requestInitialFocus()
 
     return textView
@@ -180,6 +183,10 @@ private struct InlineAnnotationTextEditor: NSViewRepresentable {
     if textView.textColor != textColor {
       textView.textColor = textColor
     }
+    if context.coordinator.focusedEditingId != editingId {
+      context.coordinator.focusedEditingId = editingId
+      textView.requestInitialFocus()
+    }
   }
 
   static func dismantleNSView(_ textView: UndoIsolatedTextView, coordinator: Coordinator) {
@@ -194,6 +201,7 @@ private struct InlineAnnotationTextEditor: NSViewRepresentable {
   final class Coordinator: NSObject, NSTextViewDelegate {
     var text: Binding<String>
     var isApplyingExternalText = false
+    var focusedEditingId: UUID?
 
     init(text: Binding<String>) {
       self.text = text
@@ -219,6 +227,7 @@ private struct InlineAnnotationTextEditor: NSViewRepresentable {
     private var wantsInitialFocus = false
 
     override var undoManager: UndoManager? { nil }
+    override var acceptsFirstResponder: Bool { true }
 
     func requestInitialFocus() {
       wantsInitialFocus = true
@@ -238,8 +247,13 @@ private struct InlineAnnotationTextEditor: NSViewRepresentable {
         guard let self, self.wantsInitialFocus else { return }
 
         if let window = self.window {
+          if !window.isKeyWindow {
+            window.makeKey()
+          }
           window.makeFirstResponder(self)
           if window.firstResponder === self {
+            let endLocation = (self.string as NSString).length
+            self.setSelectedRange(NSRange(location: endLocation, length: 0))
             self.wantsInitialFocus = false
             return
           }

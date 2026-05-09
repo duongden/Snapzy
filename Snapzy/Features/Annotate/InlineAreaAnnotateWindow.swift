@@ -1,0 +1,1555 @@
+//
+//  InlineAreaAnnotateWindow.swift
+//  Snapzy
+//
+//  Full-screen overlay for selecting and annotating a screenshot region.
+//
+
+import AppKit
+import SwiftUI
+
+@MainActor
+final class InlineAreaAnnotateCoordinator {
+  static let shared = InlineAreaAnnotateCoordinator()
+  private var activeWindow: InlineAreaAnnotatePanel?
+
+  func start(
+    screen: NSScreen,
+    displayID: CGDirectDisplayID,
+    backdrop: AreaSelectionBackdrop,
+    frozenSession: FrozenAreaCaptureSession,
+    saveDirectory: URL,
+    outputFormat: ImageFormat,
+    onComplete: @escaping (CaptureResult) -> Void
+  ) {
+    activeWindow?.close()
+    let session = InlineAreaAnnotateSession(
+      displayID: displayID,
+      screenFrame: screen.frame,
+      backdrop: backdrop,
+      frozenSession: frozenSession,
+      saveDirectory: saveDirectory,
+      outputFormat: outputFormat,
+      onComplete: onComplete
+    )
+    let window = InlineAreaAnnotatePanel(screen: screen, session: session)
+    window.onClose = { [weak self, weak window] in
+      guard let self, let window, self.activeWindow === window else { return }
+      self.activeWindow = nil
+    }
+    activeWindow = window
+    session.attach(window: window)
+    window.orderFrontRegardless()
+    window.makeKey()
+  }
+}
+
+final class InlineAreaAnnotatePanel: NSPanel {
+  var onClose: (() -> Void)?
+
+  private let session: InlineAreaAnnotateSession
+  private var didNotifyClose = false
+
+  init(screen: NSScreen, session: InlineAreaAnnotateSession) {
+    self.session = session
+    super.init(
+      contentRect: screen.frame,
+      styleMask: [.borderless, .nonactivatingPanel],
+      backing: .buffered,
+      defer: false
+    )
+
+    isFloatingPanel = true
+    isOpaque = false
+    backgroundColor = .clear
+    level = .screenSaver
+    ignoresMouseEvents = false
+    acceptsMouseMovedEvents = true
+    isReleasedWhenClosed = false
+    hasShadow = false
+    hidesOnDeactivate = false
+    collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+    animationBehavior = .none
+    becomesKeyOnlyIfNeeded = true
+
+    contentView = NSHostingView(rootView: InlineAreaAnnotateRootView(session: session))
+  }
+
+  override var canBecomeKey: Bool { true }
+  override var canBecomeMain: Bool { false }
+
+  override func keyDown(with event: NSEvent) {
+    if session.handleKeyEvent(event) { return }
+    super.keyDown(with: event)
+  }
+
+  override func keyUp(with event: NSEvent) {
+    if session.handleKeyEvent(event) { return }
+    super.keyUp(with: event)
+  }
+
+  override func close() {
+    super.close()
+    guard !didNotifyClose else { return }
+    didNotifyClose = true
+    session.windowDidClose()
+    onClose?()
+  }
+}
+
+private struct InlineAreaAnnotateRootView: View {
+  @ObservedObject var session: InlineAreaAnnotateSession
+  @State private var selectionStart: CGPoint?
+  @State private var movingStartRect: CGRect?
+  @State private var movingPreviewRect: CGRect?
+  @State private var resizingStartRect: CGRect?
+  @State private var resizePreviewRect: CGRect?
+  @State private var activeResizeHandle: InlineAreaResizeHandle?
+
+  var body: some View {
+    GeometryReader { geometry in
+      let displayRect = resizePreviewRect ?? movingPreviewRect ?? session.selectionRect
+      let isSelectionPreviewing = resizePreviewRect != nil || movingPreviewRect != nil
+
+      ZStack(alignment: .topLeading) {
+        Image(nsImage: session.backdropImage)
+          .resizable()
+          .frame(width: geometry.size.width, height: geometry.size.height)
+
+        selectionDimLayer(size: geometry.size, rect: displayRect)
+
+        if let rect = displayRect {
+          if session.phase == .annotating {
+            annotateSurface(rect: rect, usesBackdropPreview: isSelectionPreviewing)
+            if session.isMoveModifierActive {
+              spaceMoveHitArea(rect: rect)
+            }
+            resizeHandles(rect: rect, containerSize: geometry.size)
+            controls(rect: rect, containerSize: geometry.size)
+          } else {
+            selectionBorder(rect: rect)
+          }
+        }
+      }
+      .contentShape(Rectangle())
+      .gesture(selectionGesture)
+    }
+    .ignoresSafeArea()
+    .alert(L10n.AnnotateUI.cloudNotConfiguredTitle, isPresented: $session.showCloudNotConfiguredAlert) {
+      Button(L10n.Common.ok, role: .cancel) {}
+    } message: {
+      Text(L10n.AnnotateUI.cloudNotConfiguredMessage)
+    }
+    .alert(L10n.AnnotateUI.inlineUploadFailedTitle, isPresented: uploadErrorBinding) {
+      Button(L10n.Common.ok, role: .cancel) {
+        session.uploadErrorMessage = nil
+      }
+    } message: {
+      Text(session.uploadErrorMessage ?? "")
+    }
+  }
+
+  private var uploadErrorBinding: Binding<Bool> {
+    Binding(
+      get: { session.uploadErrorMessage != nil },
+      set: { if !$0 { session.uploadErrorMessage = nil } }
+    )
+  }
+
+  private var selectionGesture: some Gesture {
+    DragGesture(minimumDistance: 0, coordinateSpace: .local)
+      .onChanged { value in
+        guard session.phase == .selecting else { return }
+        let start = selectionStart ?? value.startLocation
+        selectionStart = start
+        session.selectionRect = CGRect(
+          x: min(start.x, value.location.x),
+          y: min(start.y, value.location.y),
+          width: abs(value.location.x - start.x),
+          height: abs(value.location.y - start.y)
+        )
+      }
+      .onEnded { _ in
+        guard session.phase == .selecting, let rect = session.selectionRect else { return }
+        selectionStart = nil
+        if rect.width > 5, rect.height > 5 {
+          session.beginAnnotating(with: rect)
+        } else {
+          session.selectionRect = nil
+        }
+      }
+  }
+
+  private func selectionDimLayer(size: CGSize, rect: CGRect?) -> some View {
+    Canvas { context, canvasSize in
+      var path = Path(CGRect(origin: .zero, size: canvasSize))
+      if let rect {
+        path.addPath(Path(rect.standardized))
+      }
+      context.fill(path, with: .color(.black.opacity(0.42)), style: FillStyle(eoFill: true))
+    }
+    .frame(width: size.width, height: size.height)
+  }
+
+  private func annotateSurface(rect: CGRect, usesBackdropPreview: Bool) -> some View {
+    let imageSize = session.state.sourceImage?.size ?? rect.size
+    let displayScale = max(rect.width / max(imageSize.width, 1), 0.0001)
+
+    return ZStack {
+      if !usesBackdropPreview, let image = session.state.effectiveSourceImage {
+        Image(nsImage: image)
+          .resizable()
+          .frame(width: rect.width, height: rect.height)
+      }
+
+      CanvasDrawingView(
+        state: session.state,
+        displayScale: displayScale,
+        canvasBounds: CGRect(origin: .zero, size: imageSize)
+      )
+      .frame(width: rect.width, height: rect.height)
+
+      if session.state.editingTextAnnotationId != nil {
+        TextEditOverlay(
+          state: session.state,
+          scale: displayScale,
+          canvasBounds: CGRect(origin: .zero, size: imageSize)
+        )
+        .frame(width: rect.width, height: rect.height)
+        .clipped()
+      }
+    }
+    .frame(width: rect.width, height: rect.height)
+    .overlay(
+      selectionBorder(rect: CGRect(origin: .zero, size: rect.size))
+        .allowsHitTesting(false)
+    )
+    .position(x: rect.midX, y: rect.midY)
+  }
+
+  private func spaceMoveHitArea(rect: CGRect) -> some View {
+    Color.clear
+      .contentShape(Rectangle())
+      .frame(width: rect.width, height: rect.height)
+      .position(x: rect.midX, y: rect.midY)
+      .gesture(moveGesture(for: rect))
+      .onHover { hovering in
+        if hovering {
+          NSCursor.openHand.set()
+        } else {
+          NSCursor.arrow.set()
+        }
+      }
+  }
+
+  @ViewBuilder
+  private func controls(rect: CGRect, containerSize: CGSize) -> some View {
+    let placement = controlPlacement(
+      for: rect,
+      containerSize: containerSize,
+      showsProperties: session.state.showsQuickPropertiesBar
+    )
+
+    InlineAreaControlDeck(
+      session: session,
+      maxWidth: placement.width,
+      moveGesture: moveGesture(for: rect)
+    )
+    .frame(width: placement.width, height: InlineAreaLayout.toolbarHeight)
+    .position(placement.toolbarCenter)
+    .transaction { transaction in
+      transaction.animation = nil
+    }
+
+    InlineAreaPropertiesBar(
+      state: session.state,
+      maxWidth: placement.width,
+      popoverEdge: placement.propertiesPopoverEdge
+    )
+      .frame(width: placement.width, height: InlineAreaLayout.propertiesHeight)
+      .opacity(session.state.showsQuickPropertiesBar ? 1 : 0)
+      .allowsHitTesting(session.state.showsQuickPropertiesBar)
+      .position(placement.propertiesCenter)
+      .transaction { transaction in
+        transaction.animation = nil
+      }
+
+    InlineAreaActionRail(session: session)
+      .frame(width: InlineAreaLayout.actionRailWidth, height: InlineAreaLayout.actionRailHeight)
+      .position(placement.actionRailCenter)
+      .transaction { transaction in
+        transaction.animation = nil
+      }
+  }
+
+  private func moveGesture(for rect: CGRect) -> some Gesture {
+    DragGesture(minimumDistance: 2, coordinateSpace: .global)
+      .onChanged { value in
+        guard activeResizeHandle == nil else { return }
+        if movingStartRect == nil {
+          movingStartRect = rect
+        }
+        guard let start = movingStartRect else { return }
+        let previewRect = session.clampedSelectionPreview(
+          for: start.offsetBy(dx: value.translation.width, dy: value.translation.height)
+        )
+        var transaction = Transaction()
+        transaction.animation = nil
+        withTransaction(transaction) {
+          movingPreviewRect = previewRect
+        }
+      }
+      .onEnded { value in
+        let start = movingStartRect ?? rect
+        let finalRect = session.clampedSelectionPreview(
+          for: start.offsetBy(dx: value.translation.width, dy: value.translation.height)
+        )
+        var transaction = Transaction()
+        transaction.animation = nil
+        withTransaction(transaction) {
+          session.moveSelection(to: finalRect, refreshImage: true)
+          movingPreviewRect = nil
+          movingStartRect = nil
+        }
+      }
+  }
+
+  @ViewBuilder
+  private func resizeHandles(rect: CGRect, containerSize: CGSize) -> some View {
+    InlineAreaResizeHandlesOverlay()
+      .frame(width: rect.width, height: rect.height)
+      .position(x: rect.midX, y: rect.midY)
+      .allowsHitTesting(false)
+
+    ForEach(InlineAreaResizeHandle.allCases) { handle in
+      InlineAreaResizeHandleHitTarget(handle: handle)
+        .position(handle.position(in: rect))
+        .gesture(resizeGesture(for: handle, rect: rect, containerSize: containerSize))
+    }
+  }
+
+  private func resizeGesture(
+    for handle: InlineAreaResizeHandle,
+    rect: CGRect,
+    containerSize: CGSize
+  ) -> some Gesture {
+    DragGesture(minimumDistance: 1, coordinateSpace: .global)
+      .onChanged { value in
+        if resizingStartRect == nil {
+          resizingStartRect = rect
+        }
+        guard let start = resizingStartRect else { return }
+        let previewRect = resizedSelectionRect(
+          from: start,
+          handle: handle,
+          translation: value.translation,
+          containerSize: containerSize
+        )
+        var transaction = Transaction()
+        transaction.animation = nil
+        withTransaction(transaction) {
+          activeResizeHandle = handle
+          movingPreviewRect = nil
+          resizePreviewRect = previewRect
+        }
+      }
+      .onEnded { value in
+        let start = resizingStartRect ?? rect
+        let finalRect = resizedSelectionRect(
+          from: start,
+          handle: handle,
+          translation: value.translation,
+          containerSize: containerSize
+        )
+        var transaction = Transaction()
+        transaction.animation = nil
+        withTransaction(transaction) {
+          session.resizeSelection(to: finalRect, previousRect: start)
+          resizePreviewRect = nil
+          resizingStartRect = nil
+          activeResizeHandle = nil
+        }
+      }
+  }
+
+  private func resizedSelectionRect(
+    from start: CGRect,
+    handle: InlineAreaResizeHandle,
+    translation: CGSize,
+    containerSize: CGSize
+  ) -> CGRect {
+    let rect = start.standardized
+    let minSize = InlineAreaLayout.minimumSelectionSize
+    var minX = rect.minX
+    var maxX = rect.maxX
+    var minY = rect.minY
+    var maxY = rect.maxY
+
+    if handle.adjustsLeft {
+      minX = clamped(rect.minX + translation.width, min: 0, max: maxX - minSize)
+    }
+    if handle.adjustsRight {
+      maxX = clamped(rect.maxX + translation.width, min: minX + minSize, max: containerSize.width)
+    }
+    if handle.adjustsTop {
+      minY = clamped(rect.minY + translation.height, min: 0, max: maxY - minSize)
+    }
+    if handle.adjustsBottom {
+      maxY = clamped(rect.maxY + translation.height, min: minY + minSize, max: containerSize.height)
+    }
+
+    return CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY).standardized
+  }
+
+  private func selectionBorder(rect: CGRect) -> some View {
+    Rectangle()
+      .strokeBorder(Color.white, lineWidth: InlineAreaResizeHandleChrome.borderWidth)
+      .shadow(color: .black.opacity(0.45), radius: 2)
+      .frame(width: rect.width, height: rect.height)
+      .position(x: rect.midX, y: rect.midY)
+  }
+
+  private func controlDeckWidth(for containerSize: CGSize) -> CGFloat {
+    min(664, max(320, containerSize.width - InlineAreaLayout.screenPadding * 2))
+  }
+
+  private func controlPlacement(
+    for rect: CGRect,
+    containerSize: CGSize,
+    showsProperties: Bool
+  ) -> InlineAreaControlPlacement {
+    let controlWidth = controlDeckWidth(for: containerSize)
+    let controlX = clamped(
+      rect.midX,
+      min: controlWidth / 2 + InlineAreaLayout.screenPadding,
+      max: containerSize.width - controlWidth / 2 - InlineAreaLayout.screenPadding
+    )
+    let verticalSide = preferredVerticalSide(
+      for: rect,
+      containerSize: containerSize,
+      showsProperties: showsProperties
+    )
+    let centers = controlCenters(
+      for: rect,
+      side: verticalSide,
+      containerSize: containerSize,
+      showsProperties: showsProperties
+    )
+    let splitSides = splitControlSides(
+      for: rect,
+      preferredSide: verticalSide,
+      containerSize: containerSize,
+      showsProperties: showsProperties
+    )
+    let toolbarCenterY = splitSides == nil
+      ? centers.toolbar
+      : singleControlCenter(
+        for: rect,
+        height: InlineAreaLayout.toolbarHeight,
+        side: splitSides?.toolbar ?? verticalSide,
+        containerSize: containerSize
+      )
+    let propertiesCenterY = splitSides == nil
+      ? centers.properties
+      : singleControlCenter(
+        for: rect,
+        height: InlineAreaLayout.propertiesHeight,
+        side: splitSides?.properties ?? verticalSide,
+        containerSize: containerSize
+      )
+    let propertiesSide = splitSides?.properties ?? verticalSide
+
+    return InlineAreaControlPlacement(
+      width: controlWidth,
+      toolbarCenter: CGPoint(x: controlX, y: toolbarCenterY),
+      propertiesCenter: CGPoint(x: controlX, y: propertiesCenterY),
+      propertiesPopoverEdge: propertiesSide == .above ? .bottom : .top,
+      actionRailCenter: actionRailPosition(for: rect, containerSize: containerSize)
+    )
+  }
+
+  private func preferredVerticalSide(
+    for rect: CGRect,
+    containerSize: CGSize,
+    showsProperties: Bool
+  ) -> InlineAreaVerticalSide {
+    let reservedHeight = InlineAreaLayout.reservedControlHeight(showsProperties: showsProperties)
+    let aboveSpace = rect.minY - InlineAreaLayout.screenPadding - InlineAreaLayout.selectionGap
+    let belowSpace = containerSize.height - rect.maxY - InlineAreaLayout.screenPadding - InlineAreaLayout.selectionGap
+
+    if aboveSpace >= reservedHeight {
+      return .above
+    }
+    if belowSpace >= reservedHeight {
+      return .below
+    }
+    return aboveSpace >= belowSpace ? .above : .below
+  }
+
+  private func splitControlSides(
+    for rect: CGRect,
+    preferredSide: InlineAreaVerticalSide,
+    containerSize: CGSize,
+    showsProperties: Bool
+  ) -> (toolbar: InlineAreaVerticalSide, properties: InlineAreaVerticalSide)? {
+    guard showsProperties else { return nil }
+
+    let aboveSpace = rect.minY - InlineAreaLayout.screenPadding - InlineAreaLayout.selectionGap
+    let belowSpace = containerSize.height - rect.maxY - InlineAreaLayout.screenPadding - InlineAreaLayout.selectionGap
+
+    if aboveSpace >= InlineAreaLayout.reservedControlHeight(showsProperties: true)
+        || belowSpace >= InlineAreaLayout.reservedControlHeight(showsProperties: true) {
+      return nil
+    }
+
+    switch preferredSide {
+    case .above:
+      if aboveSpace >= InlineAreaLayout.toolbarHeight,
+         belowSpace >= InlineAreaLayout.propertiesHeight {
+        return (.above, .below)
+      }
+      if aboveSpace >= InlineAreaLayout.propertiesHeight,
+         belowSpace >= InlineAreaLayout.toolbarHeight {
+        return (.below, .above)
+      }
+    case .below:
+      if belowSpace >= InlineAreaLayout.toolbarHeight,
+         aboveSpace >= InlineAreaLayout.propertiesHeight {
+        return (.below, .above)
+      }
+      if belowSpace >= InlineAreaLayout.propertiesHeight,
+         aboveSpace >= InlineAreaLayout.toolbarHeight {
+        return (.above, .below)
+      }
+    }
+
+    return nil
+  }
+
+  private func controlCenters(
+    for rect: CGRect,
+    side: InlineAreaVerticalSide,
+    containerSize: CGSize,
+    showsProperties: Bool
+  ) -> (toolbar: CGFloat, properties: CGFloat) {
+    let reservedHeight = InlineAreaLayout.reservedControlHeight(showsProperties: showsProperties)
+    let minGroupCenter = InlineAreaLayout.screenPadding + reservedHeight / 2
+    let maxGroupCenter = containerSize.height - InlineAreaLayout.screenPadding - reservedHeight / 2
+    let rawGroupCenter: CGFloat
+
+    switch side {
+    case .above:
+      rawGroupCenter = rect.minY - InlineAreaLayout.selectionGap - reservedHeight / 2
+    case .below:
+      rawGroupCenter = rect.maxY + InlineAreaLayout.selectionGap + reservedHeight / 2
+    }
+
+    let groupCenter = clamped(rawGroupCenter, min: minGroupCenter, max: maxGroupCenter)
+    let groupTop = groupCenter - reservedHeight / 2
+    let toolbarCenter = groupTop + InlineAreaLayout.toolbarHeight / 2
+    let propertiesCenter = showsProperties
+      ? groupTop + InlineAreaLayout.toolbarHeight + InlineAreaLayout.controlStackSpacing
+        + InlineAreaLayout.propertiesHeight / 2
+      : toolbarCenter
+
+    return (toolbarCenter, propertiesCenter)
+  }
+
+  private func singleControlCenter(
+    for rect: CGRect,
+    height: CGFloat,
+    side: InlineAreaVerticalSide,
+    containerSize: CGSize
+  ) -> CGFloat {
+    let rawCenter: CGFloat
+
+    switch side {
+    case .above:
+      rawCenter = rect.minY - InlineAreaLayout.selectionGap - height / 2
+    case .below:
+      rawCenter = rect.maxY + InlineAreaLayout.selectionGap + height / 2
+    }
+
+    return clamped(
+      rawCenter,
+      min: InlineAreaLayout.screenPadding + height / 2,
+      max: containerSize.height - InlineAreaLayout.screenPadding - height / 2
+    )
+  }
+
+  private func actionRailPosition(for rect: CGRect, containerSize: CGSize) -> CGPoint {
+    let rightX = rect.maxX + InlineAreaLayout.actionRailWidth / 2 + InlineAreaLayout.selectionGap
+    let leftX = rect.minX - InlineAreaLayout.actionRailWidth / 2 - InlineAreaLayout.selectionGap
+    let x = rightX <= containerSize.width - InlineAreaLayout.screenPadding
+      ? rightX
+      : max(leftX, InlineAreaLayout.actionRailWidth / 2 + InlineAreaLayout.screenPadding)
+    let y = clamped(
+      rect.midY,
+      min: InlineAreaLayout.actionRailHeight / 2 + InlineAreaLayout.screenPadding,
+      max: containerSize.height - InlineAreaLayout.actionRailHeight / 2 - InlineAreaLayout.screenPadding
+    )
+    return CGPoint(x: x, y: y)
+  }
+
+  private func clamped(_ value: CGFloat, min minValue: CGFloat, max maxValue: CGFloat) -> CGFloat {
+    guard minValue <= maxValue else { return value }
+    return min(max(value, minValue), maxValue)
+  }
+}
+
+private enum InlineAreaVerticalSide {
+  case above
+  case below
+}
+
+private enum InlineAreaResizeHandle: CaseIterable, Identifiable {
+  case topLeft
+  case top
+  case topRight
+  case right
+  case bottomRight
+  case bottom
+  case bottomLeft
+  case left
+
+  var id: Self { self }
+
+  var adjustsLeft: Bool {
+    switch self {
+    case .topLeft, .bottomLeft, .left:
+      return true
+    default:
+      return false
+    }
+  }
+
+  var adjustsRight: Bool {
+    switch self {
+    case .topRight, .right, .bottomRight:
+      return true
+    default:
+      return false
+    }
+  }
+
+  var adjustsTop: Bool {
+    switch self {
+    case .topLeft, .top, .topRight:
+      return true
+    default:
+      return false
+    }
+  }
+
+  var adjustsBottom: Bool {
+    switch self {
+    case .bottomLeft, .bottom, .bottomRight:
+      return true
+    default:
+      return false
+    }
+  }
+
+  var cursor: NSCursor {
+    switch self {
+    case .top, .bottom:
+      return .resizeUpDown
+    case .left, .right:
+      return .resizeLeftRight
+    case .topLeft, .bottomRight:
+      return InlineAreaResizeCursor.diagonal(nwse: true)
+    case .topRight, .bottomLeft:
+      return InlineAreaResizeCursor.diagonal(nwse: false)
+    }
+  }
+
+  func position(in rect: CGRect) -> CGPoint {
+    switch self {
+    case .topLeft:
+      return CGPoint(x: rect.minX, y: rect.minY)
+    case .top:
+      return CGPoint(x: rect.midX, y: rect.minY)
+    case .topRight:
+      return CGPoint(x: rect.maxX, y: rect.minY)
+    case .right:
+      return CGPoint(x: rect.maxX, y: rect.midY)
+    case .bottomRight:
+      return CGPoint(x: rect.maxX, y: rect.maxY)
+    case .bottom:
+      return CGPoint(x: rect.midX, y: rect.maxY)
+    case .bottomLeft:
+      return CGPoint(x: rect.minX, y: rect.maxY)
+    case .left:
+      return CGPoint(x: rect.minX, y: rect.midY)
+    }
+  }
+}
+
+private enum InlineAreaResizeHandleChrome {
+  static let borderWidth: CGFloat = 1.5
+  static let hitSize: CGFloat = 24
+  static let cornerLength: CGFloat = 20
+  static let edgeLength: CGFloat = 24
+  static let thickness: CGFloat = 3
+}
+
+private struct InlineAreaResizeHandlesOverlay: View {
+  var body: some View {
+    Canvas { context, size in
+      let rect = CGRect(origin: .zero, size: size)
+      let shortestSide = min(rect.width, rect.height)
+      let cornerLength = min(
+        InlineAreaResizeHandleChrome.cornerLength,
+        max(10, shortestSide * 0.38)
+      )
+
+      drawCornerHandles(in: rect, length: cornerLength, context: &context)
+      drawEdgeHandles(in: rect, cornerLength: cornerLength, context: &context)
+    }
+  }
+
+  private func drawCornerHandles(
+    in rect: CGRect,
+    length: CGFloat,
+    context: inout GraphicsContext
+  ) {
+    drawCorner(
+      at: CGPoint(x: rect.minX, y: rect.minY),
+      corner: .topLeft,
+      length: length,
+      context: &context
+    )
+    drawCorner(
+      at: CGPoint(x: rect.maxX, y: rect.minY),
+      corner: .topRight,
+      length: length,
+      context: &context
+    )
+    drawCorner(
+      at: CGPoint(x: rect.minX, y: rect.maxY),
+      corner: .bottomLeft,
+      length: length,
+      context: &context
+    )
+    drawCorner(
+      at: CGPoint(x: rect.maxX, y: rect.maxY),
+      corner: .bottomRight,
+      length: length,
+      context: &context
+    )
+  }
+
+  private func drawCorner(
+    at point: CGPoint,
+    corner: InlineAreaResizeHandle,
+    length: CGFloat,
+    context: inout GraphicsContext
+  ) {
+    let thickness = InlineAreaResizeHandleChrome.thickness
+
+    let horizontalRect: CGRect
+    let verticalRect: CGRect
+
+    switch corner {
+    case .topLeft:
+      horizontalRect = CGRect(x: point.x, y: point.y, width: length, height: thickness)
+      verticalRect = CGRect(x: point.x, y: point.y, width: thickness, height: length)
+    case .topRight:
+      horizontalRect = CGRect(x: point.x - length, y: point.y, width: length, height: thickness)
+      verticalRect = CGRect(x: point.x - thickness, y: point.y, width: thickness, height: length)
+    case .bottomLeft:
+      horizontalRect = CGRect(x: point.x, y: point.y - thickness, width: length, height: thickness)
+      verticalRect = CGRect(x: point.x, y: point.y - length, width: thickness, height: length)
+    case .bottomRight:
+      horizontalRect = CGRect(x: point.x - length, y: point.y - thickness, width: length, height: thickness)
+      verticalRect = CGRect(x: point.x - thickness, y: point.y - length, width: thickness, height: length)
+    default:
+      return
+    }
+
+    drawHandleBar(horizontalRect, context: &context)
+    drawHandleBar(verticalRect, context: &context)
+  }
+
+  private func drawEdgeHandles(
+    in rect: CGRect,
+    cornerLength: CGFloat,
+    context: inout GraphicsContext
+  ) {
+    let thickness = InlineAreaResizeHandleChrome.thickness
+    let minimumGap: CGFloat = 12
+
+    if rect.width >= cornerLength * 2 + minimumGap {
+      let length = min(
+        InlineAreaResizeHandleChrome.edgeLength,
+        max(10, rect.width - cornerLength * 2 - 8)
+      )
+      let halfLength = length / 2
+      drawHandleBar(
+        CGRect(x: rect.midX - halfLength, y: rect.minY, width: length, height: thickness),
+        context: &context
+      )
+      drawHandleBar(
+        CGRect(x: rect.midX - halfLength, y: rect.maxY - thickness, width: length, height: thickness),
+        context: &context
+      )
+    }
+
+    if rect.height >= cornerLength * 2 + minimumGap {
+      let length = min(
+        InlineAreaResizeHandleChrome.edgeLength,
+        max(10, rect.height - cornerLength * 2 - 8)
+      )
+      let halfLength = length / 2
+      drawHandleBar(
+        CGRect(x: rect.minX, y: rect.midY - halfLength, width: thickness, height: length),
+        context: &context
+      )
+      drawHandleBar(
+        CGRect(x: rect.maxX - thickness, y: rect.midY - halfLength, width: thickness, height: length),
+        context: &context
+      )
+    }
+  }
+
+  private func drawHandleBar(_ rect: CGRect, context: inout GraphicsContext) {
+    context.fill(
+      Path(rect.offsetBy(dx: 0, dy: 1)),
+      with: .color(.black.opacity(0.5))
+    )
+    context.fill(Path(rect), with: .color(.white))
+  }
+}
+
+private struct InlineAreaResizeHandleHitTarget: View {
+  let handle: InlineAreaResizeHandle
+
+  var body: some View {
+    Color.clear
+      .frame(width: InlineAreaResizeHandleChrome.hitSize, height: InlineAreaResizeHandleChrome.hitSize)
+      .contentShape(Rectangle())
+      .onHover { hovering in
+        if hovering {
+          handle.cursor.set()
+        } else {
+          NSCursor.arrow.set()
+        }
+      }
+  }
+}
+
+private struct InlineAreaControlPlacement {
+  let width: CGFloat
+  let toolbarCenter: CGPoint
+  let propertiesCenter: CGPoint
+  let propertiesPopoverEdge: Edge
+  let actionRailCenter: CGPoint
+}
+
+private enum InlineAreaLayout {
+  static let toolbarHeight: CGFloat = 42
+  static let propertiesHeight: CGFloat = 38
+  static let controlStackSpacing: CGFloat = 6
+  static let selectionGap: CGFloat = 12
+  static let screenPadding: CGFloat = 16
+  static let minimumSelectionSize: CGFloat = 24
+  static let actionRailWidth: CGFloat = 42
+  static let actionRailHeight: CGFloat = 202
+
+  static func reservedControlHeight(showsProperties: Bool) -> CGFloat {
+    if showsProperties {
+      return toolbarHeight + controlStackSpacing + propertiesHeight
+    }
+    return toolbarHeight
+  }
+}
+
+private enum InlineAreaChrome {
+  static let cornerRadius: CGFloat = 11
+  static let controlCornerRadius: CGFloat = 7
+  static let controlSize: CGFloat = 30
+  static let moveControlWidth: CGFloat = 64
+  static let propertyControlHeight: CGFloat = 24
+  static let panelBackground = Color(nsColor: .controlBackgroundColor).opacity(0.98)
+  static let itemBackground = Color.primary.opacity(0.06)
+  static let itemHoverBackground = Color.primary.opacity(0.10)
+  static let itemSelectedBackground = Color.accentColor.opacity(0.16)
+  static let itemSelectedForeground = Color.accentColor
+  static let itemSelectedBorder = Color.accentColor.opacity(0.45)
+  static let itemBorder = Color.primary.opacity(0.10)
+  static let border = Color.primary.opacity(0.14)
+  static let divider = Color.primary.opacity(0.16)
+  static let primaryText = Color.primary.opacity(0.92)
+  static let secondaryText = Color.secondary.opacity(0.88)
+  static let panelShadow = Color.black.opacity(0.24)
+}
+
+private enum InlineAreaResizeCursor {
+  static func diagonal(nwse: Bool) -> NSCursor {
+    let size = NSSize(width: 16, height: 16)
+    let image = NSImage(size: size)
+    image.lockFocus()
+
+    NSColor.clear.setFill()
+    NSRect(origin: .zero, size: size).fill()
+    NSColor.labelColor.setStroke()
+
+    let path = NSBezierPath()
+    path.lineWidth = 1.8
+    path.lineCapStyle = .round
+
+    if nwse {
+      path.move(to: NSPoint(x: 3, y: 13))
+      path.line(to: NSPoint(x: 13, y: 3))
+      path.move(to: NSPoint(x: 3, y: 9))
+      path.line(to: NSPoint(x: 3, y: 13))
+      path.line(to: NSPoint(x: 7, y: 13))
+      path.move(to: NSPoint(x: 9, y: 3))
+      path.line(to: NSPoint(x: 13, y: 3))
+      path.line(to: NSPoint(x: 13, y: 7))
+    } else {
+      path.move(to: NSPoint(x: 3, y: 3))
+      path.line(to: NSPoint(x: 13, y: 13))
+      path.move(to: NSPoint(x: 3, y: 7))
+      path.line(to: NSPoint(x: 3, y: 3))
+      path.line(to: NSPoint(x: 7, y: 3))
+      path.move(to: NSPoint(x: 9, y: 13))
+      path.line(to: NSPoint(x: 13, y: 13))
+      path.line(to: NSPoint(x: 13, y: 9))
+    }
+
+    path.stroke()
+    image.unlockFocus()
+    return NSCursor(image: image, hotSpot: NSPoint(x: 8, y: 8))
+  }
+}
+
+private struct InlineAreaControlDeck<MoveGesture: Gesture>: View {
+  @ObservedObject var session: InlineAreaAnnotateSession
+  let maxWidth: CGFloat
+  let moveGesture: MoveGesture
+
+  var body: some View {
+    ScrollView(.horizontal, showsIndicators: false) {
+      HStack(spacing: 6) {
+        InlineAreaMoveHandle()
+          .gesture(moveGesture)
+
+        ForEach(Array(AnnotationToolType.inlineToolGroups.enumerated()), id: \.offset) { index, tools in
+          if index > 0 {
+            InlineAreaDivider()
+          }
+          InlineAreaToolGroup(tools: tools, selectedTool: session.state.selectedTool) { tool in
+            session.state.activateTool(tool)
+          }
+        }
+
+        InlineAreaDivider()
+
+        InlineAreaIconButton(
+          icon: "arrow.uturn.backward",
+          tooltip: L10n.Common.undo,
+          isEnabled: session.state.canUndo
+        ) {
+          session.state.undo()
+        }
+
+        InlineAreaIconButton(
+          icon: "arrow.uturn.forward",
+          tooltip: L10n.Common.redo,
+          isEnabled: session.state.canRedo
+        ) {
+          session.state.redo()
+        }
+      }
+      .fixedSize(horizontal: true, vertical: false)
+    }
+    .frame(maxWidth: maxWidth - 12)
+    .padding(.horizontal, 6)
+    .padding(.vertical, 6)
+    .background(
+      RoundedRectangle(cornerRadius: InlineAreaChrome.cornerRadius, style: .continuous)
+        .fill(InlineAreaChrome.panelBackground)
+    )
+    .overlay(
+      RoundedRectangle(cornerRadius: InlineAreaChrome.cornerRadius, style: .continuous)
+        .stroke(InlineAreaChrome.border, lineWidth: 1)
+    )
+    .shadow(color: InlineAreaChrome.panelShadow, radius: 18, x: 0, y: 12)
+    .animation(.easeOut(duration: 0.16), value: session.state.selectedTool)
+  }
+}
+
+private struct InlineAreaToolGroup: View {
+  let tools: [AnnotationToolType]
+  let selectedTool: AnnotationToolType
+  let action: (AnnotationToolType) -> Void
+
+  var body: some View {
+    HStack(spacing: 4) {
+      ForEach(tools, id: \.self) { tool in
+        InlineAreaToolButton(tool: tool, selectedTool: selectedTool) {
+          action(tool)
+        }
+      }
+    }
+  }
+}
+
+private struct InlineAreaToolButton: View {
+  let tool: AnnotationToolType
+  let selectedTool: AnnotationToolType
+  let action: () -> Void
+
+  @State private var isHovering = false
+
+  var body: some View {
+    Button(action: action) {
+      Image(systemName: tool.icon)
+        .font(.system(size: 13, weight: .medium))
+        .foregroundColor(isSelected ? InlineAreaChrome.itemSelectedForeground : InlineAreaChrome.primaryText)
+        .frame(width: InlineAreaChrome.controlSize, height: InlineAreaChrome.controlSize)
+        .background(buttonBackground)
+        .overlay(
+          RoundedRectangle(cornerRadius: InlineAreaChrome.controlCornerRadius, style: .continuous)
+            .strokeBorder(isSelected ? InlineAreaChrome.itemSelectedBorder : InlineAreaChrome.itemBorder, lineWidth: 1)
+        )
+    }
+    .buttonStyle(.plain)
+    .help(tool.displayName)
+    .onHover { isHovering = $0 }
+  }
+
+  private var isSelected: Bool {
+    selectedTool == tool
+  }
+
+  private var buttonBackground: some View {
+    RoundedRectangle(cornerRadius: InlineAreaChrome.controlCornerRadius, style: .continuous)
+      .fill(
+        isSelected
+          ? InlineAreaChrome.itemSelectedBackground
+          : (isHovering ? InlineAreaChrome.itemHoverBackground : Color.clear)
+      )
+  }
+}
+
+private struct InlineAreaMoveHandle: View {
+  @State private var isHovering = false
+
+  var body: some View {
+    HStack(spacing: 5) {
+      Image(systemName: "arrow.up.and.down.and.arrow.left.and.right")
+        .font(.system(size: 12, weight: .medium))
+        .frame(width: 14, height: InlineAreaChrome.controlSize)
+
+      Text("Space")
+        .font(.system(size: 10, weight: .semibold))
+        .lineLimit(1)
+        .minimumScaleFactor(0.85)
+    }
+      .foregroundColor(InlineAreaChrome.secondaryText)
+      .frame(width: InlineAreaChrome.moveControlWidth, height: InlineAreaChrome.controlSize)
+      .background(
+        RoundedRectangle(cornerRadius: InlineAreaChrome.controlCornerRadius, style: .continuous)
+          .fill(isHovering ? InlineAreaChrome.itemHoverBackground : InlineAreaChrome.itemBackground)
+      )
+      .overlay(
+        RoundedRectangle(cornerRadius: InlineAreaChrome.controlCornerRadius, style: .continuous)
+          .strokeBorder(InlineAreaChrome.itemBorder, lineWidth: 1)
+      )
+      .help(L10n.AnnotateUI.moveSelection)
+      .onHover { isHovering = $0 }
+  }
+}
+
+private struct InlineAreaIconButton: View {
+  let icon: String
+  let tooltip: String
+  var isEnabled: Bool = true
+  var isProminent: Bool = false
+  let action: () -> Void
+
+  @State private var isHovering = false
+
+  var body: some View {
+    Button(action: action) {
+      Image(systemName: icon)
+        .font(.system(size: 13, weight: .medium))
+        .foregroundColor(foregroundColor)
+        .frame(width: InlineAreaChrome.controlSize, height: InlineAreaChrome.controlSize)
+        .background(background)
+        .overlay(
+          RoundedRectangle(cornerRadius: InlineAreaChrome.controlCornerRadius, style: .continuous)
+            .strokeBorder(isProminent ? Color.accentColor.opacity(0.65) : InlineAreaChrome.itemBorder, lineWidth: 1)
+        )
+    }
+    .buttonStyle(.plain)
+    .disabled(!isEnabled)
+    .opacity(isEnabled ? 1 : 0.42)
+    .help(tooltip)
+    .onHover { isHovering = $0 }
+  }
+
+  private var foregroundColor: Color {
+    isProminent ? .white : InlineAreaChrome.primaryText
+  }
+
+  private var background: some View {
+    RoundedRectangle(cornerRadius: InlineAreaChrome.controlCornerRadius, style: .continuous)
+      .fill(
+        isProminent
+          ? Color.accentColor
+          : (isHovering ? InlineAreaChrome.itemHoverBackground : Color.clear)
+      )
+  }
+}
+
+private struct InlineAreaDivider: View {
+  var body: some View {
+    Rectangle()
+      .fill(InlineAreaChrome.divider)
+      .frame(width: 1, height: 22)
+  }
+}
+
+private struct InlineAreaPropertiesBar: View {
+  @ObservedObject var state: AnnotateState
+  let maxWidth: CGFloat
+  let popoverEdge: Edge
+
+  private let strokeColors: [Color] = [.red, .orange, .yellow, .green, .blue, .purple, .white, .black]
+  private let fillColors: [Color] = [.clear, .red, .orange, .yellow, .green, .blue, .purple, .white, .black]
+  private let textBackgroundColors: [Color] = [.clear, .white, .black, .yellow, .blue]
+
+  var body: some View {
+    ZStack(alignment: .leading) {
+      ScrollView(.horizontal, showsIndicators: false) {
+        HStack(spacing: 8) {
+          contextPill
+
+          if state.quickPropertiesSupportsStrokeColor {
+            InlineAreaColorControl(
+              title: colorTitle,
+              selectedColor: state.quickStrokeColorBinding,
+              colors: strokeColors,
+              popoverEdge: popoverEdge
+            )
+          }
+
+          if state.quickPropertiesSupportsFill {
+            InlineAreaColorControl(
+              title: L10n.Common.fill,
+              selectedColor: state.quickFillColorBinding,
+              colors: fillColors,
+              popoverEdge: popoverEdge
+            )
+          }
+
+          if state.quickPropertiesSupportsTextBackground {
+            InlineAreaColorControl(
+              title: L10n.Common.background,
+              selectedColor: state.quickTextBackgroundBinding,
+              colors: textBackgroundColors,
+              popoverEdge: popoverEdge
+            )
+          }
+
+          if state.quickPropertiesSupportsBlurType {
+            InlineAreaSegmentedPicker(
+              title: L10n.AnnotateUI.blurType,
+              items: BlurType.allCases,
+              selection: state.quickBlurTypeBinding,
+              icon: \.icon,
+              label: \.displayName
+            )
+          }
+
+          if state.quickPropertiesSupportsArrowStyle {
+            InlineAreaSegmentedPicker(
+              title: L10n.Common.style,
+              items: ArrowStyle.allCases,
+              selection: state.quickArrowStyleBinding,
+              icon: \.icon,
+              label: \.displayName
+            )
+          }
+
+          if state.quickPropertiesSupportsWatermark {
+            InlineAreaTextFieldControl(title: L10n.Common.text, text: state.quickWatermarkTextBinding)
+
+            InlineAreaSegmentedPicker(
+              title: L10n.Common.style,
+              items: WatermarkStyle.allCases,
+              selection: state.quickWatermarkStyleBinding,
+              icon: \.icon,
+              label: \.displayName
+            )
+          }
+
+          if state.quickPropertiesSupportsStrokeWidth {
+            InlineAreaSliderControl(
+              title: state.quickStrokeWidthLabel,
+              icon: state.quickStrokeWidthIcon,
+              value: state.quickStrokeWidthBinding,
+              range: AnnotationProperties.controlValueRange,
+              step: 1,
+              displayText: state.quickStrokeWidthDisplayText
+            )
+          }
+
+          if state.quickPropertiesSupportsTextFontSize {
+            InlineAreaSliderControl(
+              title: L10n.Common.size,
+              icon: "textformat.size",
+              value: state.quickTextFontSizeBinding,
+              range: 12...72,
+              step: 1,
+              displayText: "\(Int(state.quickTextFontSizeBinding.wrappedValue.rounded()))"
+            )
+          }
+
+          if state.quickPropertiesSupportsCornerRadius {
+            InlineAreaSliderControl(
+              title: L10n.Common.corners,
+              icon: "roundedbottom.horizontal",
+              value: state.quickCornerRadiusBinding,
+              range: 0...60,
+              step: 1,
+              displayText: "\(Int(state.quickCornerRadiusBinding.wrappedValue.rounded()))"
+            )
+          }
+
+          if state.quickPropertiesSupportsWatermark {
+            InlineAreaSliderControl(
+              title: L10n.AnnotateUI.watermarkOpacity,
+              icon: "circle.lefthalf.filled",
+              value: state.quickWatermarkOpacityBinding,
+              range: 0.05...0.65,
+              step: 0.01,
+              displayText: "\(Int((state.quickWatermarkOpacityBinding.wrappedValue * 100).rounded()))%"
+            )
+
+            InlineAreaSliderControl(
+              title: L10n.Common.rotation,
+              icon: "rotate.right",
+              value: state.quickWatermarkRotationBinding,
+              range: -45...45,
+              step: 1,
+              displayText: "\(Int(state.quickWatermarkRotationBinding.wrappedValue.rounded()))deg"
+            )
+          }
+        }
+        .fixedSize(horizontal: true, vertical: false)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 5)
+      }
+      .frame(maxWidth: maxWidth - 12)
+    }
+    .frame(width: maxWidth, height: InlineAreaLayout.propertiesHeight, alignment: .leading)
+    .background(
+      RoundedRectangle(cornerRadius: InlineAreaChrome.cornerRadius, style: .continuous)
+        .fill(InlineAreaChrome.panelBackground)
+    )
+    .overlay(
+      RoundedRectangle(cornerRadius: InlineAreaChrome.cornerRadius, style: .continuous)
+        .stroke(InlineAreaChrome.border, lineWidth: 1)
+    )
+    .shadow(color: InlineAreaChrome.panelShadow.opacity(0.86), radius: 12, x: 0, y: 8)
+  }
+
+  private var colorTitle: String {
+    state.quickPropertiesTool == .text ? L10n.Common.text : L10n.Common.color
+  }
+
+  private var contextPill: some View {
+    HStack(spacing: 6) {
+      Image(systemName: state.quickPropertiesTool?.icon ?? "slider.horizontal.3")
+        .font(.system(size: 11, weight: .bold))
+
+      Text(state.quickPropertiesContextTitle)
+        .font(.system(size: 11, weight: .semibold))
+        .lineLimit(1)
+        .truncationMode(.tail)
+    }
+    .foregroundColor(InlineAreaChrome.primaryText)
+    .padding(.horizontal, 8)
+    .frame(height: InlineAreaChrome.propertyControlHeight)
+    .frame(maxWidth: 142)
+    .background(
+      Capsule()
+        .fill(InlineAreaChrome.itemBackground)
+    )
+  }
+}
+
+private struct InlineAreaColorControl: View {
+  let title: String
+  @Binding var selectedColor: Color
+  let colors: [Color]
+  let popoverEdge: Edge
+
+  @State private var showsPopover = false
+
+  var body: some View {
+    InlineAreaPropertyGroup(title: title) {
+      Button {
+        showsPopover.toggle()
+      } label: {
+        HStack(spacing: 5) {
+          InlineAreaColorSwatch(color: selectedColor, isSelected: false, size: 15)
+          Image(systemName: "chevron.down")
+            .font(.system(size: 8, weight: .bold))
+            .foregroundColor(InlineAreaChrome.secondaryText)
+        }
+        .frame(width: 40, height: InlineAreaChrome.propertyControlHeight)
+        .background(
+          RoundedRectangle(cornerRadius: InlineAreaChrome.controlCornerRadius, style: .continuous)
+            .fill(InlineAreaChrome.itemBackground)
+        )
+      }
+      .buttonStyle(.plain)
+      .help(title)
+      .popover(isPresented: $showsPopover, arrowEdge: popoverEdge) {
+        InlineAreaColorPopover(
+          title: title,
+          selectedColor: $selectedColor,
+          colors: colors
+        ) {
+          showsPopover = false
+        }
+      }
+    }
+  }
+}
+
+private struct InlineAreaColorPopover: View {
+  let title: String
+  @Binding var selectedColor: Color
+  let colors: [Color]
+  let dismiss: () -> Void
+
+  private let columns = Array(repeating: GridItem(.fixed(24), spacing: 8), count: 5)
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 10) {
+      Text(title)
+        .font(Typography.labelMedium)
+        .foregroundColor(.secondary)
+        .lineLimit(1)
+
+      LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
+        ForEach(colors, id: \.self) { color in
+          Button {
+            selectedColor = color
+            dismiss()
+          } label: {
+            InlineAreaColorSwatch(color: color, isSelected: selectedColor == color, size: 22)
+          }
+          .buttonStyle(.plain)
+          .help(color == .clear ? L10n.Common.none : title)
+        }
+      }
+    }
+    .padding(12)
+    .frame(width: 184, alignment: .leading)
+  }
+}
+
+private struct InlineAreaColorSwatch: View {
+  let color: Color
+  let isSelected: Bool
+  let size: CGFloat
+
+  var body: some View {
+    ZStack {
+      Circle()
+        .fill(color == .clear ? Color.clear : color)
+        .frame(width: size, height: size)
+        .overlay(
+          Circle()
+            .strokeBorder(
+              isSelected ? Color.accentColor : Color.primary.opacity(0.32),
+              lineWidth: isSelected ? 2 : 1
+            )
+        )
+
+      if color == .clear {
+        Image(systemName: "slash.circle")
+          .font(.system(size: max(9, size * 0.5), weight: .semibold))
+          .foregroundColor(InlineAreaChrome.secondaryText)
+      }
+    }
+  }
+}
+
+private struct InlineAreaSegmentedPicker<Item: Identifiable & Equatable>: View {
+  let title: String
+  let items: [Item]
+  @Binding var selection: Item
+  let icon: KeyPath<Item, String>
+  let label: KeyPath<Item, String>
+
+  var body: some View {
+    InlineAreaPropertyGroup(title: title) {
+      HStack(spacing: 4) {
+        ForEach(items) { item in
+          Button {
+            selection = item
+          } label: {
+            Image(systemName: item[keyPath: icon])
+              .font(.system(size: 12, weight: .medium))
+              .foregroundColor(selection == item ? InlineAreaChrome.itemSelectedForeground : InlineAreaChrome.secondaryText)
+              .frame(width: 25, height: InlineAreaChrome.propertyControlHeight)
+              .background(
+                RoundedRectangle(cornerRadius: InlineAreaChrome.controlCornerRadius, style: .continuous)
+                  .fill(selection == item ? InlineAreaChrome.itemSelectedBackground : InlineAreaChrome.itemBackground)
+              )
+              .overlay(
+                RoundedRectangle(cornerRadius: InlineAreaChrome.controlCornerRadius, style: .continuous)
+                  .stroke(selection == item ? InlineAreaChrome.itemSelectedBorder : InlineAreaChrome.itemBorder, lineWidth: 1)
+              )
+          }
+          .buttonStyle(.plain)
+          .help(item[keyPath: label])
+        }
+      }
+    }
+  }
+}
+
+private struct InlineAreaSliderControl: View {
+  let title: String
+  let icon: String
+  @Binding var value: CGFloat
+  let range: ClosedRange<CGFloat>
+  let step: CGFloat
+  let displayText: String
+
+  var body: some View {
+    InlineAreaPropertyGroup(title: title) {
+      HStack(spacing: 6) {
+        Image(systemName: icon)
+          .font(.system(size: 10, weight: .semibold))
+          .foregroundColor(InlineAreaChrome.secondaryText)
+
+        Slider(value: $value, in: range, step: step)
+          .frame(width: 58)
+          .controlSize(.small)
+
+        Text(displayText)
+          .font(.system(size: 10, weight: .medium))
+          .foregroundColor(InlineAreaChrome.secondaryText)
+          .lineLimit(1)
+          .monospacedDigit()
+          .frame(width: 34, alignment: .trailing)
+      }
+    }
+  }
+}
+
+private struct InlineAreaTextFieldControl: View {
+  let title: String
+  @Binding var text: String
+
+  var body: some View {
+    InlineAreaPropertyGroup(title: title) {
+      TextField("", text: $text)
+        .textFieldStyle(.plain)
+        .font(.system(size: 11, weight: .medium))
+        .foregroundColor(InlineAreaChrome.primaryText)
+        .lineLimit(1)
+        .padding(.horizontal, 8)
+        .frame(width: 112, height: InlineAreaChrome.propertyControlHeight)
+        .background(
+          RoundedRectangle(cornerRadius: InlineAreaChrome.controlCornerRadius, style: .continuous)
+            .fill(InlineAreaChrome.itemBackground)
+        )
+    }
+  }
+}
+
+private struct InlineAreaPropertyGroup<Content: View>: View {
+  let title: String
+  let content: Content
+
+  init(title: String, @ViewBuilder content: () -> Content) {
+    self.title = title
+    self.content = content()
+  }
+
+  var body: some View {
+    HStack(spacing: 6) {
+      Text(title)
+        .font(.system(size: 10, weight: .semibold))
+        .foregroundColor(InlineAreaChrome.secondaryText)
+        .lineLimit(1)
+        .minimumScaleFactor(0.82)
+        .fixedSize(horizontal: true, vertical: false)
+
+      content
+    }
+  }
+}
+
+private struct InlineAreaActionRail: View {
+  @ObservedObject var session: InlineAreaAnnotateSession
+
+  var body: some View {
+    VStack(spacing: 6) {
+      InlineAreaIconButton(icon: "xmark", tooltip: L10n.Common.cancel) {
+        session.cancel()
+      }
+
+      InlineAreaIconButton(icon: "checkmark", tooltip: L10n.Common.done, isProminent: true) {
+        Task { await session.finish() }
+      }
+
+      InlineAreaRailDivider()
+        .padding(.vertical, 2)
+
+      InlineAreaIconButton(icon: "doc.on.doc", tooltip: L10n.AnnotateUI.copyToClipboard) {
+        session.copyCurrentImage()
+      }
+
+      InlineAreaIconButton(icon: "square.and.arrow.up", tooltip: L10n.Common.share) {
+        if let view = NSApp.keyWindow?.contentView {
+          session.shareCurrentImage(from: view)
+        }
+      }
+
+      InlineAreaIconButton(
+        icon: "icloud.and.arrow.up",
+        tooltip: L10n.AnnotateUI.uploadToCloud,
+        isEnabled: !session.isUploading
+      ) {
+        session.uploadCurrentImage()
+      }
+    }
+    .padding(6)
+    .background(
+      RoundedRectangle(cornerRadius: InlineAreaChrome.cornerRadius, style: .continuous)
+        .fill(InlineAreaChrome.panelBackground)
+    )
+    .overlay(
+      RoundedRectangle(cornerRadius: InlineAreaChrome.cornerRadius, style: .continuous)
+        .stroke(InlineAreaChrome.border, lineWidth: 1)
+    )
+    .overlay(alignment: .bottom) {
+      ProgressView(value: session.uploadProgress)
+        .progressViewStyle(.linear)
+        .frame(width: 28, height: 3)
+        .opacity(session.isUploading ? 1 : 0)
+        .offset(y: 5)
+    }
+    .shadow(color: InlineAreaChrome.panelShadow, radius: 14, x: 0, y: 9)
+  }
+}
+
+private struct InlineAreaRailDivider: View {
+  var body: some View {
+    Rectangle()
+      .fill(InlineAreaChrome.divider)
+      .frame(width: 24, height: 1)
+  }
+}

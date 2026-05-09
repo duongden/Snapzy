@@ -299,6 +299,8 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
       captureFullscreen()
     case .captureArea:
       captureArea()
+    case .captureAreaAnnotate:
+      captureAreaAnnotate()
     case .captureApplication:
       captureApplication()
     case .captureScrolling:
@@ -394,6 +396,10 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
 
   func captureApplication() {
     startAreaCapture(initialInteractionMode: .applicationWindow)
+  }
+
+  func captureAreaAnnotate() {
+    startInlineAreaAnnotateCapture()
   }
 
   private func startAreaCapture(initialInteractionMode: AreaSelectionInteractionMode) {
@@ -509,6 +515,123 @@ final class ScreenCaptureViewModel: ObservableObject, KeyboardShortcutDelegate {
           initialInteractionMode: initialInteractionMode,
           hiddenWindowSession: hiddenWindowSession
         )
+      }
+    }
+  }
+
+  private func startInlineAreaAnnotateCapture() {
+    if isAreaSelectionActive {
+      DiagnosticLogger.shared.log(.debug, .capture, "captureAreaAnnotate blocked: already active")
+      return
+    }
+
+    guard
+      let resolvedSaveDirectory = fileAccessManager.ensureExportDirectoryForOperation(
+        promptMessage: L10n.Recording.chooseSaveLocationMessage)
+    else {
+      lastCaptureResult = .failure(.saveFailed(L10n.ScreenCapture.saveLocationPermissionRequired))
+      return
+    }
+    saveDirectory = resolvedSaveDirectory
+
+    isAreaSelectionActive = true
+    DiagnosticLogger.shared.log(.info, .capture, "Inline area annotate flow started", context: [
+      "format": resolvedFormat.fileExtension
+    ])
+
+    let targetDisplayID = ScreenUtility.activeDisplayID()
+    let showCursor = showsCursorInScreenshots
+    let excludeDesktopIcons = DesktopIconManager.shared.isIconHidingEnabled
+    let excludeDesktopWidgets = DesktopIconManager.shared.isWidgetHidingEnabled
+    let excludeOwnApplication = !includesOwnAppInScreenshots
+    let prefetchedContentTask = captureManager.prefetchShareableContent(
+      includeDesktopWindows: excludeDesktopIcons || excludeDesktopWidgets
+    )
+    let hiddenWindowSession = hideVisibleNormalWindowsIfNeeded(excludeOwnApplication)
+    let snapshotDelay = hiddenWindowSession.didHideWindows ? frozenSnapshotWindowHideSettleDelay : 0
+
+    DispatchQueue.main.asyncAfter(deadline: .now() + snapshotDelay) { [weak self] in
+      guard let self = self else {
+        hiddenWindowSession.restore()
+        return
+      }
+
+      Task { @MainActor in
+        let frozenSession: FrozenAreaCaptureSession
+        do {
+          self.isCapturing = true
+          if let fastSnapshot = self.captureManager.captureFastDisplaySnapshot(
+            displayID: targetDisplayID,
+            showCursor: showCursor,
+            excludeDesktopIcons: excludeDesktopIcons,
+            excludeDesktopWidgets: excludeDesktopWidgets,
+            excludeOwnApplication: excludeOwnApplication
+          ) {
+            frozenSession = FrozenAreaCaptureSession.fromSnapshot(fastSnapshot)
+          } else {
+            let shareableContentTask = prefetchedContentTask ?? self.captureManager.prefetchShareableContent(
+              includeDesktopWindows: excludeDesktopIcons || excludeDesktopWidgets
+            )
+            frozenSession = try await FrozenAreaCaptureSession.prepare(
+              displayIDs: [targetDisplayID],
+              showCursor: showCursor,
+              excludeDesktopIcons: excludeDesktopIcons,
+              excludeDesktopWidgets: excludeDesktopWidgets,
+              excludeOwnApplication: excludeOwnApplication,
+              prefetchedContentTask: shareableContentTask
+            )
+          }
+          self.isCapturing = false
+        } catch let error as CaptureError {
+          self.isCapturing = false
+          self.isAreaSelectionActive = false
+          self.lastCaptureResult = .failure(error)
+          hiddenWindowSession.restore()
+          DiagnosticLogger.shared.log(.error, .capture, "Inline area annotate setup failed: \(error.localizedDescription)")
+          return
+        } catch {
+          self.isCapturing = false
+          self.isAreaSelectionActive = false
+          self.lastCaptureResult = .failure(.captureFailed(error.localizedDescription))
+          hiddenWindowSession.restore()
+          DiagnosticLogger.shared.log(.error, .capture, "Inline area annotate setup failed: \(error.localizedDescription)")
+          return
+        }
+
+        guard let screen = NSScreen.screens.first(where: { $0.displayID == targetDisplayID }),
+              let backdrop = frozenSession.backdrops[targetDisplayID] else {
+          self.isAreaSelectionActive = false
+          self.lastCaptureResult = .failure(.noDisplayFound)
+          hiddenWindowSession.restore()
+          frozenSession.invalidate()
+          return
+        }
+
+        let actualSaveDirectory = self.tempCaptureManager.resolveSaveDirectory(
+          for: .screenshot,
+          exportDirectory: resolvedSaveDirectory
+        )
+        InlineAreaAnnotateCoordinator.shared.start(
+          screen: screen,
+          displayID: targetDisplayID,
+          backdrop: backdrop,
+          frozenSession: frozenSession,
+          saveDirectory: actualSaveDirectory,
+          outputFormat: self.resolvedFormat
+        ) { [weak self] result in
+          guard let self else {
+            hiddenWindowSession.restore()
+            return
+          }
+          self.isAreaSelectionActive = false
+          self.lastCaptureResult = result
+          hiddenWindowSession.restore()
+          if case .failure(let error) = result {
+            DiagnosticLogger.shared.log(.info, .capture, "Inline area annotate ended", context: [
+              "result": error.localizedDescription
+            ])
+          }
+        }
       }
     }
   }

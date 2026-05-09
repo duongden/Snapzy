@@ -110,6 +110,41 @@ final class AnnotateCoreTests: XCTestCase {
   }
 
   @MainActor
+  func testAnnotateState_replaceSourceImagePreservingAnnotationsAppliesOffset() throws {
+    let state = makeAnnotateState()
+    let rectangle = AnnotationItem(
+      type: .rectangle,
+      bounds: CGRect(x: 20, y: 30, width: 80, height: 44),
+      properties: AnnotationProperties()
+    )
+    let line = AnnotationItem(
+      type: .line(start: CGPoint(x: 12, y: 18), end: CGPoint(x: 48, y: 52)),
+      bounds: CGRect(x: 12, y: 18, width: 36, height: 34),
+      properties: AnnotationProperties()
+    )
+    state.annotations = [rectangle, line]
+
+    state.replaceSourceImagePreservingAnnotations(
+      NSImage(size: CGSize(width: 320, height: 220)),
+      annotationOffset: CGPoint(x: 14, y: -6)
+    )
+
+    XCTAssertEqual(state.sourceImage?.size.width ?? 0, 320, accuracy: 0.0001)
+    XCTAssertEqual(state.sourceImage?.size.height ?? 0, 220, accuracy: 0.0001)
+
+    let shiftedRectangle = try XCTUnwrap(state.annotations.first(where: { $0.id == rectangle.id }))
+    XCTAssertEqual(shiftedRectangle.bounds, rectangle.bounds.offsetBy(dx: 14, dy: -6))
+
+    let shiftedLine = try XCTUnwrap(state.annotations.first(where: { $0.id == line.id }))
+    guard case .line(let start, let end) = shiftedLine.type else {
+      return XCTFail("Expected shifted line annotation")
+    }
+    XCTAssertEqual(start, CGPoint(x: 26, y: 12))
+    XCTAssertEqual(end, CGPoint(x: 62, y: 46))
+    XCTAssertEqual(shiftedLine.bounds, line.bounds.offsetBy(dx: 14, dy: -6))
+  }
+
+  @MainActor
   func testAnnotateState_updateTextKeepsWidthAndTopLeftAnchor() throws {
     let state = makeAnnotateState()
     state.sourceImage = NSImage(size: CGSize(width: 300, height: 200))
@@ -302,6 +337,90 @@ final class AnnotateCoreTests: XCTestCase {
     XCTAssertEqual(copyURL.lastPathComponent, "capture_copy2.png")
   }
 
+  @MainActor
+  func testAnnotateExporter_renderFinalImagePreservesRetinaPixelDetail() throws {
+    let state = makeAnnotateState()
+    let sourceImage = try makeRetinaPixelPatternImage(pixelWidth: 96, pixelHeight: 48, scale: 2)
+    state.loadImage(sourceImage)
+
+    let renderedImage = try XCTUnwrap(AnnotateExporter.renderFinalImage(state: state))
+    let sourceCGImage = try XCTUnwrap(sourceImage.cgImage(forProposedRect: nil, context: nil, hints: nil))
+    let renderedCGImage = try XCTUnwrap(AnnotateExporter.bestCGImage(from: renderedImage))
+
+    XCTAssertEqual(renderedImage.size.width, sourceImage.size.width, accuracy: 0.0001)
+    XCTAssertEqual(renderedImage.size.height, sourceImage.size.height, accuracy: 0.0001)
+    XCTAssertEqual(renderedCGImage.width, sourceCGImage.width)
+    XCTAssertEqual(renderedCGImage.height, sourceCGImage.height)
+    guard renderedCGImage.width == sourceCGImage.width, renderedCGImage.height == sourceCGImage.height else {
+      return
+    }
+
+    let sourceBytes = try rgbaBytes(from: sourceCGImage)
+    let renderedBytes = try rgbaBytes(from: renderedCGImage)
+    XCTAssertEqual(renderedBytes.count, sourceBytes.count)
+    guard renderedBytes.count == sourceBytes.count else { return }
+    var mismatchedPixels = 0
+    for index in stride(from: 0, to: sourceBytes.count, by: 4) {
+      let pixelMatches = (0..<4).allSatisfy { channel in
+        abs(Int(sourceBytes[index + channel]) - Int(renderedBytes[index + channel])) <= 2
+      }
+      if !pixelMatches {
+        mismatchedPixels += 1
+      }
+    }
+    XCTAssertEqual(mismatchedPixels, 0)
+
+    var softenedStripePixels = 0
+    let centerY = renderedCGImage.height / 2
+    for x in 0..<renderedCGImage.width {
+      let red = renderedBytes[rgbaIndex(x: x, y: centerY, width: renderedCGImage.width)]
+      if red > 2 && red < 253 {
+        softenedStripePixels += 1
+      }
+    }
+    XCTAssertEqual(softenedStripePixels, 0)
+  }
+
+  @MainActor
+  func testAnnotateExporter_renderFinalImageCropsRetinaSourceInImageCoordinates() throws {
+    let scale: CGFloat = 2
+    let state = makeAnnotateState()
+    let sourceImage = try makeRetinaPixelPatternImage(pixelWidth: 96, pixelHeight: 48, scale: scale)
+    let cropRect = CGRect(x: 4, y: 3, width: 20, height: 8)
+    state.loadImage(sourceImage)
+    state.cropRect = cropRect
+
+    let renderedImage = try XCTUnwrap(AnnotateExporter.renderFinalImage(state: state))
+    let sourceCGImage = try XCTUnwrap(sourceImage.cgImage(forProposedRect: nil, context: nil, hints: nil))
+    let renderedCGImage = try XCTUnwrap(AnnotateExporter.bestCGImage(from: renderedImage))
+
+    XCTAssertEqual(renderedCGImage.width, Int(cropRect.width * scale))
+    XCTAssertEqual(renderedCGImage.height, Int(cropRect.height * scale))
+    guard renderedCGImage.width == Int(cropRect.width * scale),
+          renderedCGImage.height == Int(cropRect.height * scale) else {
+      return
+    }
+
+    let sourceBytes = try rgbaBytes(from: sourceCGImage)
+    let renderedBytes = try rgbaBytes(from: renderedCGImage)
+    let sourceStartX = Int(cropRect.minX * scale)
+    let sourceStartY = Int((sourceImage.size.height - cropRect.maxY) * scale)
+    var mismatchedPixels = 0
+    for y in 0..<renderedCGImage.height {
+      for x in 0..<renderedCGImage.width {
+        let sourceIndex = rgbaIndex(x: sourceStartX + x, y: sourceStartY + y, width: sourceCGImage.width)
+        let renderedIndex = rgbaIndex(x: x, y: y, width: renderedCGImage.width)
+        let pixelMatches = (0..<4).allSatisfy { channel in
+          abs(Int(sourceBytes[sourceIndex + channel]) - Int(renderedBytes[renderedIndex + channel])) <= 2
+        }
+        if !pixelMatches {
+          mismatchedPixels += 1
+        }
+      }
+    }
+    XCTAssertEqual(mismatchedPixels, 0)
+  }
+
   func testCodableBackgroundStyle_roundTripsSupportedStyles() throws {
     let wallpaperURL = URL(string: "file:///tmp/wallpaper.jpg")!
     let blurredURL = URL(string: "file:///tmp/blurred.jpg")!
@@ -398,5 +517,70 @@ final class AnnotateCoreTests: XCTestCase {
       watermarkText: watermarkText,
       activeAnnotationBounds: bounds
     )
+  }
+
+  private func makeRetinaPixelPatternImage(
+    pixelWidth: Int,
+    pixelHeight: Int,
+    scale: CGFloat
+  ) throws -> NSImage {
+    var pixels = [UInt8](repeating: 0, count: pixelWidth * pixelHeight * 4)
+    for y in 0..<pixelHeight {
+      for x in 0..<pixelWidth {
+        let index = rgbaIndex(x: x, y: y, width: pixelWidth)
+        let whiteStripe = x.isMultiple(of: 2)
+        let topBand = y < pixelHeight / 2
+        pixels[index] = whiteStripe ? 255 : 0
+        pixels[index + 1] = topBand ? 48 : 208
+        pixels[index + 2] = topBand ? 32 : 192
+        pixels[index + 3] = 255
+      }
+    }
+
+    let provider = try XCTUnwrap(CGDataProvider(data: Data(pixels) as CFData))
+    let cgImage = try XCTUnwrap(CGImage(
+      width: pixelWidth,
+      height: pixelHeight,
+      bitsPerComponent: 8,
+      bitsPerPixel: 32,
+      bytesPerRow: pixelWidth * 4,
+      space: CGColorSpaceCreateDeviceRGB(),
+      bitmapInfo: rgbaBitmapInfo,
+      provider: provider,
+      decode: nil,
+      shouldInterpolate: false,
+      intent: .defaultIntent
+    ))
+
+    return NSImage(
+      cgImage: cgImage,
+      size: CGSize(width: CGFloat(pixelWidth) / scale, height: CGFloat(pixelHeight) / scale)
+    )
+  }
+
+  private func rgbaBytes(from image: CGImage) throws -> [UInt8] {
+    var bytes = [UInt8](repeating: 0, count: image.width * image.height * 4)
+    try bytes.withUnsafeMutableBytes { buffer in
+      let context = try XCTUnwrap(CGContext(
+        data: buffer.baseAddress,
+        width: image.width,
+        height: image.height,
+        bitsPerComponent: 8,
+        bytesPerRow: image.width * 4,
+        space: CGColorSpaceCreateDeviceRGB(),
+        bitmapInfo: rgbaBitmapInfo.rawValue
+      ))
+      context.interpolationQuality = .none
+      context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+    }
+    return bytes
+  }
+
+  private var rgbaBitmapInfo: CGBitmapInfo {
+    CGBitmapInfo.byteOrder32Big.union(CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue))
+  }
+
+  private func rgbaIndex(x: Int, y: Int, width: Int) -> Int {
+    (y * width + x) * 4
   }
 }

@@ -189,6 +189,11 @@ enum L10n {
       defaultValue: "Capture Area",
       comment: "Action title for area screenshot capture"
     )
+    static let captureAreaAnnotate = string(
+      "action.capture-area-annotate",
+      defaultValue: "Capture Area & Annotate",
+      comment: "Action title for selecting a screenshot area and annotating it inline"
+    )
     static let captureFullscreen = string(
       "action.capture-fullscreen",
       defaultValue: "Capture Fullscreen",
@@ -2155,6 +2160,11 @@ enum L10n {
       defaultValue: "Select a region to capture",
       comment: "Description for area capture shortcut"
     )
+    static let captureAreaAnnotateDescription = string(
+      "preferences-shortcuts.capture-area-annotate-description",
+      defaultValue: "Select a region, annotate in place, then finish with ⌘S or Enter",
+      comment: "Description for inline area annotate capture shortcut"
+    )
     static let applicationCaptureTitle = string(
       "preferences-shortcuts.application-capture-title",
       defaultValue: "Application Capture",
@@ -3405,6 +3415,16 @@ enum L10n {
       "annotate.cloud-not-configured-message",
       defaultValue: "Please set up your cloud credentials in Preferences -> Cloud before uploading.",
       comment: "Alert message shown when annotate cloud upload is unavailable because cloud is not configured"
+    )
+    static let inlineUploadFailedTitle = string(
+      "annotate.inline-upload-failed-title",
+      defaultValue: "Upload Failed",
+      comment: "Alert title shown when inline area annotate upload fails"
+    )
+    static let moveSelection = string(
+      "annotate.move-selection",
+      defaultValue: "Move selected area (Space + mouse drag)",
+      comment: "Tooltip for dragging the inline area annotate selected region"
     )
     static let overwriteCloudFileTitle = string(
       "annotate.overwrite-cloud-file-title",

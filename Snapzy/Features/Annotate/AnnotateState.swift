@@ -951,6 +951,25 @@ final class AnnotateState: ObservableObject {
     resetCanvasForNewBaseImage(image: image, url: url)
   }
 
+  /// Replace the backing screenshot while keeping editable annotations.
+  /// Used by inline area annotate when the selected region moves or resizes.
+  func replaceSourceImagePreservingAnnotations(_ image: NSImage, annotationOffset: CGPoint = .zero) {
+    sourceImage = image
+    if annotationOffset != .zero {
+      translateAnnotations(dx: annotationOffset.x, dy: annotationOffset.y)
+    }
+    cutoutImage = nil
+    isCutoutApplied = false
+    isCutoutProcessing = false
+    cutoutErrorMessage = nil
+    activeCutoutOperationID = nil
+    cropRect = nil
+    originalCropRect = nil
+    cropInteractionContext = nil
+    isCropActive = false
+    selectedTool = selectedTool == .crop ? .selection : selectedTool
+  }
+
   /// Import an image from a file URL.
   /// - Returns: true if import succeeded.
   @discardableResult
@@ -2983,27 +3002,37 @@ final class AnnotateState: ObservableObject {
 
     saveState()
     for index in annotations.indices where selectedIds.contains(annotations[index].id) {
-      annotations[index].bounds.origin.x += dx
-      annotations[index].bounds.origin.y += dy
+      translateAnnotation(at: index, dx: dx, dy: dy)
+    }
+  }
 
-      // Also update embedded points for arrows/lines/paths
-      switch annotations[index].type {
-      case .arrow(let geometry):
-        let updated = geometry.translatedBy(dx: dx, dy: dy)
-        annotations[index].type = .arrow(updated)
-        annotations[index].bounds = updated.bounds()
-      case .line(let start, let end):
-        annotations[index].type = .line(
-          start: CGPoint(x: start.x + dx, y: start.y + dy),
-          end: CGPoint(x: end.x + dx, y: end.y + dy)
-        )
-      case .path(let points):
-        annotations[index].type = .path(points.map { CGPoint(x: $0.x + dx, y: $0.y + dy) })
-      case .highlight(let points):
-        annotations[index].type = .highlight(points.map { CGPoint(x: $0.x + dx, y: $0.y + dy) })
-      default:
-        break
-      }
+  private func translateAnnotations(dx: CGFloat, dy: CGFloat) {
+    guard dx != 0 || dy != 0 else { return }
+    for index in annotations.indices {
+      translateAnnotation(at: index, dx: dx, dy: dy)
+    }
+  }
+
+  private func translateAnnotation(at index: Int, dx: CGFloat, dy: CGFloat) {
+    annotations[index].bounds.origin.x += dx
+    annotations[index].bounds.origin.y += dy
+
+    switch annotations[index].type {
+    case .arrow(let geometry):
+      let updated = geometry.translatedBy(dx: dx, dy: dy)
+      annotations[index].type = .arrow(updated)
+      annotations[index].bounds = updated.bounds()
+    case .line(let start, let end):
+      annotations[index].type = .line(
+        start: CGPoint(x: start.x + dx, y: start.y + dy),
+        end: CGPoint(x: end.x + dx, y: end.y + dy)
+      )
+    case .path(let points):
+      annotations[index].type = .path(points.map { CGPoint(x: $0.x + dx, y: $0.y + dy) })
+    case .highlight(let points):
+      annotations[index].type = .highlight(points.map { CGPoint(x: $0.x + dx, y: $0.y + dy) })
+    default:
+      break
     }
   }
 

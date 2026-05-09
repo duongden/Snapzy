@@ -112,6 +112,7 @@ This will remove the app from `/Applications`, delete preferences and caches, an
 | Fullscreen screenshot                                   | `⇧⌘3`    |
 | Area screenshot                                         | `⇧⌘4`    |
 | ↳ Toggle manual/app window mode (`Application Capture`) | `A`      |
+| Area screenshot + inline annotate                       | Off by default |
 | Scrolling screenshot                                    | `⇧⌘6`    |
 | Screen recording                                        | `⇧⌘5`    |
 | OCR text capture                                        | `⇧⌘2`    |
@@ -129,6 +130,7 @@ Snapzy registers the `snapzy://` URL scheme so launchers and automation tools ca
 | --------------------- | --------------------------------- |
 | Fullscreen screenshot | `snapzy://capture/fullscreen`     |
 | Area screenshot       | `snapzy://capture/area`           |
+| Area annotate         | `snapzy://capture/area-annotate`  |
 | Scrolling screenshot  | `snapzy://capture/scrolling`      |
 | OCR text capture      | `snapzy://capture/ocr`            |
 | Object cutout capture | `snapzy://capture/object-cutout`  |

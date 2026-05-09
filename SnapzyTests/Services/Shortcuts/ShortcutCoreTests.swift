@@ -15,6 +15,7 @@ final class ShortcutCoreTests: XCTestCase {
   func testDefaultGlobalShortcuts_matchDocumentedKeys() {
     XCTAssertEqual(ShortcutConfig.defaultFullscreen.keyCode, UInt32(kVK_ANSI_3))
     XCTAssertEqual(ShortcutConfig.defaultArea.keyCode, UInt32(kVK_ANSI_4))
+    XCTAssertEqual(ShortcutConfig.defaultAreaAnnotate.keyCode, UInt32(kVK_ANSI_7))
     XCTAssertEqual(ShortcutConfig.defaultRecording.keyCode, UInt32(kVK_ANSI_5))
     XCTAssertEqual(ShortcutConfig.defaultScrollingCapture.keyCode, UInt32(kVK_ANSI_6))
     XCTAssertEqual(ShortcutConfig.defaultOCR.keyCode, UInt32(kVK_ANSI_2))
@@ -27,6 +28,7 @@ final class ShortcutCoreTests: XCTestCase {
 
     let expectedModifiers = UInt32(cmdKey | shiftKey)
     XCTAssertEqual(ShortcutConfig.defaultFullscreen.modifiers, expectedModifiers)
+    XCTAssertEqual(ShortcutConfig.defaultAreaAnnotate.modifiers, expectedModifiers)
     XCTAssertEqual(ShortcutConfig.defaultHistory.modifiers, expectedModifiers)
   }
 
@@ -64,5 +66,21 @@ final class ShortcutCoreTests: XCTestCase {
     let relevant = Set(GlobalShortcutKind.allCases.filter(\.isSystemConflictRelevant))
 
     XCTAssertEqual(relevant, [.fullscreen, .area, .recording])
+  }
+
+  func testAreaAnnotateDefaultDisabledMigration_appliesOnlyOnce() {
+    let initialMigration = KeyboardShortcutManager.disabledShortcutSet(
+      from: [],
+      applyingAreaAnnotateDefaultIfNeeded: true
+    )
+    XCTAssertTrue(initialMigration.disabled.contains(.areaAnnotate))
+    XCTAssertTrue(initialMigration.didApplyAreaAnnotateDefault)
+
+    let afterUserEnabled = KeyboardShortcutManager.disabledShortcutSet(
+      from: [],
+      applyingAreaAnnotateDefaultIfNeeded: false
+    )
+    XCTAssertFalse(afterUserEnabled.disabled.contains(.areaAnnotate))
+    XCTAssertFalse(afterUserEnabled.didApplyAreaAnnotateDefault)
   }
 }

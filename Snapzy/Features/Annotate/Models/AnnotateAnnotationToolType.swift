@@ -26,6 +26,26 @@ enum AnnotationToolType: String, CaseIterable, Identifiable {
 
   var id: String { rawValue }
 
+  /// Annotation tools that create or edit drawable items on the image canvas.
+  /// Shared by the full Annotate window and inline area-annotate overlay so the
+  /// two surfaces stay in sync when tools are added.
+  static let drawableTools: [AnnotationToolType] = [
+    .rectangle, .filledRectangle, .oval, .arrow, .line, .text, .highlighter,
+    .blur, .counter, .watermark, .pencil
+  ]
+
+  static let inlineAnnotateTools: [AnnotationToolType] = [.selection] + drawableTools
+
+  private static let inlineShapeToolSet: Set<AnnotationToolType> = [
+    .rectangle, .filledRectangle, .oval, .arrow, .line
+  ]
+
+  static let inlineToolGroups: [[AnnotationToolType]] = [
+    [.selection],
+    drawableTools.filter { inlineShapeToolSet.contains($0) },
+    drawableTools.filter { !inlineShapeToolSet.contains($0) }
+  ]
+
   var icon: String {
     switch self {
     case .selection: return "cursorarrow"

@@ -139,24 +139,48 @@ final class AnnotateExporter {
   /// Determine the pixel-to-point scale factor from the source image.
   /// Falls back to 1.0 when bitmap metadata is unavailable.
   private static func sourceImageScale(_ sourceImage: NSImage) -> CGFloat {
-    if let rep = sourceImage.representations.first as? NSBitmapImageRep {
+    let pointWidth = sourceImage.size.width
+    let pointHeight = sourceImage.size.height
+    guard pointWidth > 0, pointHeight > 0 else { return 1.0 }
+
+    if let rep = bestBitmapRepresentation(in: sourceImage) {
       let pixelWidth = CGFloat(rep.pixelsWide)
-      let pointWidth = sourceImage.size.width
       let pixelHeight = CGFloat(rep.pixelsHigh)
-      let pointHeight = sourceImage.size.height
-      if pointWidth > 0 && pointHeight > 0 && pixelWidth > 0 && pixelHeight > 0 {
+      if pixelWidth > 0 && pixelHeight > 0 {
         let widthScale = pixelWidth / pointWidth
         let heightScale = pixelHeight / pointHeight
         return max(widthScale, heightScale, 1.0)
       }
     }
+
+    if let cgImage = sourceImage.cgImage(forProposedRect: nil, context: nil, hints: nil) {
+      let widthScale = CGFloat(cgImage.width) / pointWidth
+      let heightScale = CGFloat(cgImage.height) / pointHeight
+      return max(widthScale, heightScale, 1.0)
+    }
+
     return 1.0
+  }
+
+  private static func bestBitmapRepresentation(in image: NSImage) -> NSBitmapImageRep? {
+    image.representations
+      .compactMap { $0 as? NSBitmapImageRep }
+      .max { lhs, rhs in
+        lhs.pixelsWide * lhs.pixelsHigh < rhs.pixelsWide * rhs.pixelsHigh
+      }
+  }
+
+  static func bestCGImage(from image: NSImage) -> CGImage? {
+    if let cgImage = bestBitmapRepresentation(in: image)?.cgImage {
+      return cgImage
+    }
+    return image.cgImage(forProposedRect: nil, context: nil, hints: nil)
   }
 
   /// Convert NSImage to Data for any supported format (PNG, JPEG, WebP)
   /// Uses CGImageDestination for WebP support (macOS 14+)
   static func imageData(from image: NSImage, for fileExtension: String) -> Data? {
-    guard let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
+    guard let cgImage = bestCGImage(from: image) else {
       return nil
     }
 
@@ -367,7 +391,8 @@ final class AnnotateExporter {
     drawSourceImage(
       sourceImage,
       effectiveBounds: effectiveBounds,
-      destinationOrigin: CGPoint(x: destX, y: destY)
+      destinationOrigin: CGPoint(x: destX, y: destY),
+      in: context
     )
 
     // Reset clip
@@ -410,7 +435,8 @@ final class AnnotateExporter {
   private static func drawSourceImage(
     _ sourceImage: NSImage,
     effectiveBounds: CGRect,
-    destinationOrigin: CGPoint
+    destinationOrigin: CGPoint,
+    in context: CGContext
   ) {
     let sourceImageBounds = CGRect(origin: .zero, size: sourceImage.size)
     let visibleSourceBounds = effectiveBounds.intersection(sourceImageBounds)
@@ -422,14 +448,66 @@ final class AnnotateExporter {
       width: visibleSourceBounds.width,
       height: visibleSourceBounds.height
     )
-    let sourceRect = NSRect(
-      x: visibleSourceBounds.minX,
-      y: visibleSourceBounds.minY,
-      width: visibleSourceBounds.width,
-      height: visibleSourceBounds.height
-    )
+    guard
+      let sourceCGImage = bestCGImage(from: sourceImage),
+      let sourcePixelRect = sourcePixelCropRect(
+        for: visibleSourceBounds,
+        imageSize: sourceImage.size,
+        pixelSize: CGSize(width: sourceCGImage.width, height: sourceCGImage.height)
+      ),
+      let croppedImage = sourceCGImage.cropping(to: sourcePixelRect)
+    else {
+      let sourceRect = NSRect(
+        x: visibleSourceBounds.minX,
+        y: visibleSourceBounds.minY,
+        width: visibleSourceBounds.width,
+        height: visibleSourceBounds.height
+      )
+      sourceImage.draw(in: destinationRect, from: sourceRect, operation: .sourceOver, fraction: 1.0)
+      return
+    }
 
-    sourceImage.draw(in: destinationRect, from: sourceRect, operation: .sourceOver, fraction: 1.0)
+    let sourceScale = sourceImageScale(sourceImage)
+    let destinationPixelSize = CGSize(
+      width: destinationRect.width * sourceScale,
+      height: destinationRect.height * sourceScale
+    )
+    let drawsOneToOne = abs(destinationPixelSize.width - CGFloat(croppedImage.width)) < 0.5
+      && abs(destinationPixelSize.height - CGFloat(croppedImage.height)) < 0.5
+
+    context.saveGState()
+    context.interpolationQuality = drawsOneToOne ? .none : .high
+    context.draw(croppedImage, in: destinationRect)
+    context.restoreGState()
+  }
+
+  private static func sourcePixelCropRect(
+    for bounds: CGRect,
+    imageSize: CGSize,
+    pixelSize: CGSize
+  ) -> CGRect? {
+    guard imageSize.width > 0, imageSize.height > 0, pixelSize.width > 0, pixelSize.height > 0 else {
+      return nil
+    }
+
+    let scaleX = pixelSize.width / imageSize.width
+    let scaleY = pixelSize.height / imageSize.height
+    let minX = floor(bounds.minX * scaleX)
+    let maxX = ceil(bounds.maxX * scaleX)
+    let minY = floor((imageSize.height - bounds.maxY) * scaleY)
+    let maxY = ceil((imageSize.height - bounds.minY) * scaleY)
+    let imagePixelBounds = CGRect(origin: .zero, size: pixelSize)
+    let cropRect = CGRect(
+      x: minX,
+      y: minY,
+      width: maxX - minX,
+      height: maxY - minY
+    )
+    .intersection(imagePixelBounds)
+    .integral
+
+    guard !cropRect.isNull, !cropRect.isEmpty else { return nil }
+    return cropRect
   }
 
   /// Offset annotation for export, accounting for crop origin and alignment-based image position
@@ -674,7 +752,7 @@ final class AnnotateExporter {
 
     let context = graphicsContext.cgContext
 
-    drawSourceImage(sourceImage, effectiveBounds: effectiveBounds, destinationOrigin: .zero)
+    drawSourceImage(sourceImage, effectiveBounds: effectiveBounds, destinationOrigin: .zero, in: context)
 
     // Draw annotations offset by crop origin
     let renderer = AnnotationRenderer(

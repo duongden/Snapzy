@@ -11,6 +11,7 @@ import SwiftUI
 struct ShortcutsSettingsView: View {
   @State private var fullscreenShortcut: ShortcutConfig
   @State private var areaShortcut: ShortcutConfig
+  @State private var areaAnnotateShortcut: ShortcutConfig
   @State private var areaApplicationCaptureShortcut: CaptureOverlayShortcut
   @State private var recordingApplicationCaptureShortcut: CaptureOverlayShortcut
   @State private var scrollingCaptureShortcut: ShortcutConfig
@@ -44,6 +45,7 @@ struct ShortcutsSettingsView: View {
   init() {
     _fullscreenShortcut = State(initialValue: KeyboardShortcutManager.shared.fullscreenShortcut)
     _areaShortcut = State(initialValue: KeyboardShortcutManager.shared.areaShortcut)
+    _areaAnnotateShortcut = State(initialValue: KeyboardShortcutManager.shared.areaAnnotateShortcut)
     _areaApplicationCaptureShortcut = State(
       initialValue: CaptureOverlayShortcutSettings.applicationCaptureShortcut
     )
@@ -292,6 +294,16 @@ struct ShortcutsSettingsView: View {
           .padding(.vertical, 2)
 
           ShortcutRecorderView(
+            label: L10n.Actions.captureAreaAnnotate,
+            icon: "pencil.and.scribble",
+            description: L10n.PreferencesShortcuts.captureAreaAnnotateDescription,
+            shortcut: $areaAnnotateShortcut,
+            isEnabled: globalEnabledBinding(for: .areaAnnotate),
+            validationIssue: globalValidationIssues[.areaAnnotate],
+            onShortcutChanged: { handleGlobalShortcutChange($0, for: .areaAnnotate) }
+          )
+
+          ShortcutRecorderView(
             label: GlobalShortcutKind.scrollingCapture.displayName,
             icon: "arrow.up.and.down",
             description: "Guided session for long screenshots",
@@ -499,6 +511,7 @@ struct ShortcutsSettingsView: View {
   private func resetToDefaults() {
     fullscreenShortcut = .defaultFullscreen
     areaShortcut = .defaultArea
+    areaAnnotateShortcut = .defaultAreaAnnotate
     areaApplicationCaptureShortcut = CaptureOverlayShortcutSettings.defaultApplicationCaptureShortcut
     recordingApplicationCaptureShortcut =
       CaptureOverlayShortcutSettings.defaultRecordingApplicationCaptureShortcut
@@ -515,7 +528,7 @@ struct ShortcutsSettingsView: View {
     togglePinShortcut = AnnotateShortcutManager.defaultTogglePin
     cloudUploadShortcut = AnnotateShortcutManager.defaultCloudUpload
     globalShortcutEnabled = Dictionary(
-      uniqueKeysWithValues: GlobalShortcutKind.allCases.map { ($0, true) }
+      uniqueKeysWithValues: GlobalShortcutKind.allCases.map { ($0, $0 != .areaAnnotate) }
     )
     annotateActionEnabled = Dictionary(
       uniqueKeysWithValues: AnnotateActionShortcutKind.allCases.map { ($0, true) }
@@ -527,6 +540,7 @@ struct ShortcutsSettingsView: View {
 
     manager.setFullscreenShortcut(.defaultFullscreen)
     manager.setAreaShortcut(.defaultArea)
+    manager.setAreaAnnotateShortcut(.defaultAreaAnnotate)
     manager.setScrollingCaptureShortcut(.defaultScrollingCapture)
     manager.setObjectCutoutShortcut(.defaultObjectCutout)
     manager.setOCRShortcut(.defaultOCR)
@@ -540,7 +554,7 @@ struct ShortcutsSettingsView: View {
     CaptureOverlayShortcutSettings.resetRecordingApplicationCaptureShortcut()
     manager.refreshShortcutRegistration()
     for kind in GlobalShortcutKind.allCases {
-      manager.setShortcutEnabled(true, for: kind)
+      manager.setShortcutEnabled(kind != .areaAnnotate, for: kind)
     }
 
     // Reset annotation tool + action shortcuts
@@ -656,6 +670,9 @@ struct ShortcutsSettingsView: View {
       case .area:
         areaShortcut = config
         manager.setAreaShortcut(config)
+      case .areaAnnotate:
+        areaAnnotateShortcut = config
+        manager.setAreaAnnotateShortcut(config)
       case .scrollingCapture:
         scrollingCaptureShortcut = config
         manager.setScrollingCaptureShortcut(config)

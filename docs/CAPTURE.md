@@ -48,12 +48,14 @@ flowchart TD
 
     D -->|Fullscreen| E["captureFullscreen()"]
     D -->|Area| F["FrozenAreaCaptureSession.prepare()"]
+    D -->|Area + inline annotate| F1["FrozenAreaCaptureSession.prepare() -> InlineAreaAnnotateCoordinator"]
     D -->|OCR / QR| G["AreaSelectionController.startSelection()"]
     D -->|Cutout| H["AreaSelectionController.startSelection()"]
 
     E --> I["ScreenCaptureManager.captureFullscreen()"]
     F --> J["AreaSelectionController.startSelection(backdrops:, applicationConfiguration:)"]
     J --> K{"Interaction mode"}
+    F1 --> K0["Select region, annotate directly, finish with Command-S/Enter"]
     K -->|Manual region| K1["FrozenAreaCaptureSession.cropImage()"]
     K -->|Application window| K2["ScreenCaptureManager.captureWindow()"]
     G --> L["ScreenCaptureManager.captureAreaAsImage()"]
@@ -61,6 +63,7 @@ flowchart TD
 
     I --> N["TempCaptureManager.resolveSaveDirectory(.screenshot)"]
     K1 --> N
+    K0 --> N
     K2 --> N
     N --> O["saveImage()/saveProcessedImage()"]
     O --> P["PostCaptureActionHandler"]
@@ -84,6 +87,7 @@ flowchart TD
 - Non-target displays still get blocking overlay windows during area screenshot, but only the frozen display accepts the drag selection in the current implementation.
 - For screenshot sessions, the target display overlay now owns direct keyboard handling for `Escape` and the application-mode toggle key, so cancel still works when Snapzy starts from a background custom shortcut without depending on Accessibility-backed global key monitoring.
 - `Cmd+Shift+4` area capture now has two interaction modes inside the same overlay session: manual region by default, and application window mode toggled with the configurable `Application Capture` key from Preferences → Shortcuts. The default key is `A`.
+- Area + inline annotate is a separate screenshot flow with no active default shortcut. Users can enable/configure it from Preferences → Shortcuts. It freezes the active display, lets the user select, move, and resize one region, supports both the move handle and Space-drag for moving the selected region, reuses Annotate tool models/rendering on that region, and saves the rendered image through the normal screenshot post-capture pipeline after Command-S, Enter, or Done.
 - In application window mode, `AreaSelectionController` builds a front-to-back candidate list from `CGWindowListCopyWindowInfo` plus `SCShareableContent`, highlights the hovered window above the dimming overlay, and captures the selected app window on click without requiring a drag rectangle.
 - Exact window capture is handled by `ScreenCaptureManager.captureWindow()`. macOS 14+ uses ScreenCaptureKit window metrics directly, then trims fully transparent capture fringe so shadow framing does not leave uneven empty canvas; macOS 13+ stays supported with the same ScreenCaptureKit path plus a safe area-capture fallback if exact capture fails.
 - The frozen/manual and application-window paths both preserve existing desktop icon/widget exclusion, cursor, own-app exclusion, temp-save, Quick Access, clipboard, and annotate routing behavior.

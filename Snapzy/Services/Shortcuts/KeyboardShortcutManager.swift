@@ -31,6 +31,12 @@ struct ShortcutConfig: Equatable, Codable {
     modifiers: UInt32(cmdKey | shiftKey)
   )
 
+  /// Suggested shortcut for area annotate. Disabled by default.
+  static let defaultAreaAnnotate = ShortcutConfig(
+    keyCode: UInt32(kVK_ANSI_7),
+    modifiers: UInt32(cmdKey | shiftKey)
+  )
+
   /// Cmd + Shift + 5
   static let defaultRecording = ShortcutConfig(
     keyCode: UInt32(kVK_ANSI_5),
@@ -389,6 +395,7 @@ extension ShortcutConfig {
 enum GlobalShortcutKind: String, CaseIterable, Codable {
   case fullscreen
   case area
+  case areaAnnotate
   case scrollingCapture
   case recording
   case annotate
@@ -416,6 +423,8 @@ extension GlobalShortcutKind {
       return L10n.Actions.captureFullscreen
     case .area:
       return L10n.Actions.captureArea
+    case .areaAnnotate:
+      return L10n.Actions.captureAreaAnnotate
     case .scrollingCapture:
       return L10n.Actions.scrollingCapture
     case .recording:
@@ -442,6 +451,7 @@ extension GlobalShortcutKind {
 enum ShortcutAction {
   case captureFullscreen
   case captureArea
+  case captureAreaAnnotate
   case captureApplication
   case captureScrolling
   case captureOCR
@@ -470,6 +480,7 @@ final class KeyboardShortcutManager {
 
   private(set) var fullscreenShortcut: ShortcutConfig
   private(set) var areaShortcut: ShortcutConfig
+  private(set) var areaAnnotateShortcut: ShortcutConfig
   private(set) var scrollingCaptureShortcut: ShortcutConfig
   private(set) var recordingShortcut: ShortcutConfig
   private(set) var annotateShortcut: ShortcutConfig
@@ -485,6 +496,7 @@ final class KeyboardShortcutManager {
 
   private var fullscreenHotkeyRef: EventHotKeyRef?
   private var areaHotkeyRef: EventHotKeyRef?
+  private var areaAnnotateHotkeyRef: EventHotKeyRef?
   private var scrollingCaptureHotkeyRef: EventHotKeyRef?
   private var recordingHotkeyRef: EventHotKeyRef?
   private var applicationCaptureHotkeyRef: EventHotKeyRef?
@@ -511,12 +523,14 @@ final class KeyboardShortcutManager {
   private let historyHotkeyID = EventHotKeyID(signature: OSType(0x5A53_4642), id: 11)  // "ZSFB"
   private let applicationCaptureHotkeyID = EventHotKeyID(signature: OSType(0x5A53_4643), id: 12)  // "ZSFC"
   private let applicationRecordingHotkeyID = EventHotKeyID(signature: OSType(0x5A53_4644), id: 13)  // "ZSFD"
+  private let areaAnnotateHotkeyID = EventHotKeyID(signature: OSType(0x5A53_4645), id: 14)  // "ZSFE"
 
   private var eventHandler: EventHandlerRef?
 
   // UserDefaults keys
   private let fullscreenShortcutKey = "fullscreenShortcut"
   private let areaShortcutKey = "areaShortcut"
+  private let areaAnnotateShortcutKey = "areaAnnotateShortcut"
   private let scrollingCaptureShortcutKey = "scrollingCaptureShortcut"
   private let recordingShortcutKey = "recordingShortcut"
   private let annotateShortcutKey = "annotateShortcut"
@@ -528,10 +542,12 @@ final class KeyboardShortcutManager {
   private let historyShortcutKey = "historyShortcut"
   private let shortcutsEnabledKey = "shortcutsEnabled"
   private let disabledShortcutsKey = PreferencesKeys.disabledGlobalShortcuts
+  private let areaAnnotateDefaultDisabledMigrationKey = "areaAnnotateDefaultDisabledMigrationComplete"
 
   private init() {
     fullscreenShortcut = .defaultFullscreen
     areaShortcut = .defaultArea
+    areaAnnotateShortcut = .defaultAreaAnnotate
     scrollingCaptureShortcut = .defaultScrollingCapture
     recordingShortcut = .defaultRecording
     annotateShortcut = .defaultAnnotate
@@ -602,6 +618,7 @@ final class KeyboardShortcutManager {
     switch kind {
     case .fullscreen: return fullscreenShortcut
     case .area: return areaShortcut
+    case .areaAnnotate: return areaAnnotateShortcut
     case .scrollingCapture: return scrollingCaptureShortcut
     case .recording: return recordingShortcut
     case .annotate: return annotateShortcut
@@ -642,6 +659,14 @@ final class KeyboardShortcutManager {
   func setAreaShortcut(_ config: ShortcutConfig) {
     mutateShortcutRegistration {
       areaShortcut = config
+      saveShortcuts()
+    }
+  }
+
+  /// Update inline area annotate shortcut
+  func setAreaAnnotateShortcut(_ config: ShortcutConfig) {
+    mutateShortcutRegistration {
+      areaAnnotateShortcut = config
       saveShortcuts()
     }
   }
@@ -728,6 +753,9 @@ final class KeyboardShortcutManager {
     if let areaData = try? encoder.encode(areaShortcut) {
       UserDefaults.standard.set(areaData, forKey: areaShortcutKey)
     }
+    if let areaAnnotateData = try? encoder.encode(areaAnnotateShortcut) {
+      UserDefaults.standard.set(areaAnnotateData, forKey: areaAnnotateShortcutKey)
+    }
     if let scrollingCaptureData = try? encoder.encode(scrollingCaptureShortcut) {
       UserDefaults.standard.set(scrollingCaptureData, forKey: scrollingCaptureShortcutKey)
     }
@@ -768,6 +796,11 @@ final class KeyboardShortcutManager {
       let config = try? decoder.decode(ShortcutConfig.self, from: areaData)
     {
       areaShortcut = config
+    }
+    if let areaAnnotateData = UserDefaults.standard.data(forKey: areaAnnotateShortcutKey),
+      let config = try? decoder.decode(ShortcutConfig.self, from: areaAnnotateData)
+    {
+      areaAnnotateShortcut = config
     }
     if let scrollingCaptureData = UserDefaults.standard.data(forKey: scrollingCaptureShortcutKey),
       let config = try? decoder.decode(ShortcutConfig.self, from: scrollingCaptureData)
@@ -822,11 +855,31 @@ final class KeyboardShortcutManager {
   }
 
   private func loadDisabledShortcuts() {
-    guard let rawValues = UserDefaults.standard.array(forKey: disabledShortcutsKey) as? [String] else {
-      disabledShortcuts = []
-      return
+    let rawValues = UserDefaults.standard.array(forKey: disabledShortcutsKey) as? [String]
+    let migrated = Self.disabledShortcutSet(
+      from: rawValues,
+      applyingAreaAnnotateDefaultIfNeeded: !UserDefaults.standard.bool(
+        forKey: areaAnnotateDefaultDisabledMigrationKey)
+    )
+    disabledShortcuts = migrated.disabled
+
+    if migrated.didApplyAreaAnnotateDefault {
+      UserDefaults.standard.set(true, forKey: areaAnnotateDefaultDisabledMigrationKey)
+      saveDisabledShortcuts()
     }
-    disabledShortcuts = Set(rawValues.compactMap(GlobalShortcutKind.init(rawValue:)))
+  }
+
+  static func disabledShortcutSet(
+    from rawValues: [String]?,
+    applyingAreaAnnotateDefaultIfNeeded shouldApplyAreaAnnotateDefault: Bool
+  ) -> (disabled: Set<GlobalShortcutKind>, didApplyAreaAnnotateDefault: Bool) {
+    var disabled = Set((rawValues ?? []).compactMap(GlobalShortcutKind.init(rawValue:)))
+    guard shouldApplyAreaAnnotateDefault else {
+      return (disabled, false)
+    }
+
+    disabled.insert(.areaAnnotate)
+    return (disabled, true)
   }
 
   // MARK: - Private Methods
@@ -884,6 +937,9 @@ final class KeyboardShortcutManager {
     case areaHotkeyID.id:
       actionName = "area"
       action = .captureArea
+    case areaAnnotateHotkeyID.id:
+      actionName = "area-annotate"
+      action = .captureAreaAnnotate
     case applicationCaptureHotkeyID.id:
       actionName = "application-capture"
       action = .captureApplication
@@ -945,6 +1001,12 @@ final class KeyboardShortcutManager {
       config: areaShortcut,
       hotkeyID: areaHotkeyID,
       ref: &areaHotkeyRef
+    )
+    registerShortcutIfNeeded(
+      kind: .areaAnnotate,
+      config: areaAnnotateShortcut,
+      hotkeyID: areaAnnotateHotkeyID,
+      ref: &areaAnnotateHotkeyRef
     )
     registerShortcutIfNeeded(
       kind: .scrollingCapture,
@@ -1083,6 +1145,10 @@ final class KeyboardShortcutManager {
     if let ref = areaHotkeyRef {
       UnregisterEventHotKey(ref)
       areaHotkeyRef = nil
+    }
+    if let ref = areaAnnotateHotkeyRef {
+      UnregisterEventHotKey(ref)
+      areaAnnotateHotkeyRef = nil
     }
     if let ref = scrollingCaptureHotkeyRef {
       UnregisterEventHotKey(ref)

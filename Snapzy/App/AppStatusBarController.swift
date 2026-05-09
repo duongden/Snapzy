@@ -292,6 +292,17 @@ final class AppStatusBarController: ObservableObject {
     captureAreaItem.isEnabled = viewModel.hasPermission
     menu?.addItem(captureAreaItem)
 
+    let captureAreaAnnotateItem = NSMenuItem(
+      title: L10n.Actions.captureAreaAnnotate,
+      action: #selector(captureAreaAnnotateAction),
+      keyEquivalent: ""
+    )
+    applyConfiguredShortcut(captureAreaAnnotateItem, for: .areaAnnotate, using: shortcutManager)
+    captureAreaAnnotateItem.target = self
+    captureAreaAnnotateItem.image = NSImage(systemSymbolName: "pencil.and.scribble", accessibilityDescription: nil)
+    captureAreaAnnotateItem.isEnabled = viewModel.hasPermission
+    menu?.addItem(captureAreaAnnotateItem)
+
     let applicationCaptureShortcut = CaptureOverlayShortcutSettings.applicationCaptureShortcut
     let applicationCaptureItem = NSMenuItem(
       title: overlayMenuTitle(
@@ -527,6 +538,11 @@ final class AppStatusBarController: ObservableObject {
   @objc private func captureAreaAction() {
     logMenuAction("captureArea")
     viewModel?.captureArea()
+  }
+
+  @objc private func captureAreaAnnotateAction() {
+    logMenuAction("captureAreaAnnotate")
+    viewModel?.captureAreaAnnotate()
   }
 
   @objc private func captureApplicationAction() {

@@ -43,6 +43,8 @@ struct SnapzyDeepLinkHandler {
       screenCaptureViewModel.captureFullscreen()
     case .captureArea:
       screenCaptureViewModel.captureArea()
+    case .captureAreaAnnotate:
+      screenCaptureViewModel.captureAreaAnnotate()
     case .captureScrolling:
       screenCaptureViewModel.captureScrolling()
     case .captureOCR:
@@ -74,6 +76,7 @@ struct SnapzyDeepLinkHandler {
 private enum SnapzyDeepLinkAction {
   case captureFullscreen
   case captureArea
+  case captureAreaAnnotate
   case captureScrolling
   case captureOCR
   case captureObjectCutout
@@ -99,6 +102,8 @@ private enum SnapzyDeepLinkAction {
       self = .captureFullscreen
     case "capture/area", "capture-area", "area", "screenshot/area":
       self = .captureArea
+    case "capture/area-annotate", "capture-area-annotate", "area-annotate", "screenshot/area-annotate":
+      self = .captureAreaAnnotate
     case "capture/scrolling", "scrolling-capture", "capture-scrolling", "scrolling", "screenshot/scrolling":
       self = .captureScrolling
     case "capture/ocr", "capture/text", "capture-text", "ocr", "text":
@@ -132,6 +137,7 @@ private enum SnapzyDeepLinkAction {
     switch self {
     case .captureFullscreen: return "captureFullscreen"
     case .captureArea: return "captureArea"
+    case .captureAreaAnnotate: return "captureAreaAnnotate"
     case .captureScrolling: return "captureScrolling"
     case .captureOCR: return "captureOCR"
     case .captureObjectCutout: return "captureObjectCutout"
