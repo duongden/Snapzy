@@ -111,6 +111,7 @@ private struct InlineAreaAnnotateRootView: View {
   @State private var resizingStartRect: CGRect?
   @State private var resizePreviewRect: CGRect?
   @State private var activeResizeHandle: InlineAreaResizeHandle?
+  @State private var propertiesContentWidth: CGFloat = 0
 
   var body: some View {
     GeometryReader { geometry in
@@ -234,15 +235,16 @@ private struct InlineAreaAnnotateRootView: View {
     let placement = controlPlacement(
       for: rect,
       containerSize: containerSize,
-      showsProperties: session.state.showsQuickPropertiesBar
+      showsProperties: session.state.showsQuickPropertiesBar,
+      propertiesContentWidth: propertiesContentWidth
     )
 
     InlineAreaControlDeck(
       session: session,
-      maxWidth: placement.width,
+      maxWidth: placement.toolbarWidth,
       moveGesture: moveGesture(for: rect)
     )
-    .frame(width: placement.width, height: InlineAreaLayout.toolbarHeight)
+    .frame(width: placement.toolbarWidth, height: InlineAreaLayout.toolbarHeight)
     .position(placement.toolbarCenter)
     .transaction { transaction in
       transaction.animation = nil
@@ -250,10 +252,15 @@ private struct InlineAreaAnnotateRootView: View {
 
     InlineAreaPropertiesBar(
       state: session.state,
-      maxWidth: placement.width,
-      popoverEdge: placement.propertiesPopoverEdge
+      maxWidth: placement.propertiesWidth,
+      popoverEdge: placement.propertiesPopoverEdge,
+      onContentWidthChange: { width in
+        let roundedWidth = ceil(width)
+        guard abs(propertiesContentWidth - roundedWidth) > 0.5 else { return }
+        propertiesContentWidth = roundedWidth
+      }
     )
-      .frame(width: placement.width, height: InlineAreaLayout.propertiesHeight)
+      .frame(width: placement.propertiesWidth, height: InlineAreaLayout.propertiesHeight)
       .opacity(session.state.showsQuickPropertiesBar ? 1 : 0)
       .allowsHitTesting(session.state.showsQuickPropertiesBar)
       .position(placement.propertiesCenter)
@@ -397,19 +404,64 @@ private struct InlineAreaAnnotateRootView: View {
   }
 
   private func controlDeckWidth(for containerSize: CGSize) -> CGFloat {
-    min(664, max(320, containerSize.width - InlineAreaLayout.screenPadding * 2))
+    min(664, availableControlWidth(for: containerSize))
+  }
+
+  private func propertiesBarWidth(
+    for containerSize: CGSize,
+    toolbarWidth: CGFloat,
+    showsProperties: Bool,
+    contentWidth: CGFloat
+  ) -> CGFloat {
+    let availableWidth = availableControlWidth(for: containerSize)
+    guard showsProperties else {
+      return min(toolbarWidth, availableWidth)
+    }
+
+    let measuredContentWidth = contentWidth + InlineAreaLayout.controlPanelOuterHorizontalInset
+    let measuredWidth = contentWidth > 0 ? measuredContentWidth : toolbarWidth
+    return min(availableWidth, max(toolbarWidth, measuredWidth))
+  }
+
+  private func availableControlWidth(for containerSize: CGSize) -> CGFloat {
+    max(0, containerSize.width - InlineAreaLayout.screenPadding * 2)
+  }
+
+  private func clampedControlCenterX(
+    _ preferredX: CGFloat,
+    width: CGFloat,
+    containerSize: CGSize
+  ) -> CGFloat {
+    let minX = width / 2 + InlineAreaLayout.screenPadding
+    let maxX = containerSize.width - width / 2 - InlineAreaLayout.screenPadding
+    guard minX <= maxX else {
+      return containerSize.width / 2
+    }
+    return clamped(preferredX, min: minX, max: maxX)
   }
 
   private func controlPlacement(
     for rect: CGRect,
     containerSize: CGSize,
-    showsProperties: Bool
+    showsProperties: Bool,
+    propertiesContentWidth: CGFloat
   ) -> InlineAreaControlPlacement {
-    let controlWidth = controlDeckWidth(for: containerSize)
-    let controlX = clamped(
+    let toolbarWidth = controlDeckWidth(for: containerSize)
+    let propertiesWidth = propertiesBarWidth(
+      for: containerSize,
+      toolbarWidth: toolbarWidth,
+      showsProperties: showsProperties,
+      contentWidth: propertiesContentWidth
+    )
+    let toolbarX = clampedControlCenterX(
       rect.midX,
-      min: controlWidth / 2 + InlineAreaLayout.screenPadding,
-      max: containerSize.width - controlWidth / 2 - InlineAreaLayout.screenPadding
+      width: toolbarWidth,
+      containerSize: containerSize
+    )
+    let propertiesX = clampedControlCenterX(
+      rect.midX,
+      width: propertiesWidth,
+      containerSize: containerSize
     )
     let verticalSide = preferredVerticalSide(
       for: rect,
@@ -447,9 +499,10 @@ private struct InlineAreaAnnotateRootView: View {
     let propertiesSide = splitSides?.properties ?? verticalSide
 
     return InlineAreaControlPlacement(
-      width: controlWidth,
-      toolbarCenter: CGPoint(x: controlX, y: toolbarCenterY),
-      propertiesCenter: CGPoint(x: controlX, y: propertiesCenterY),
+      toolbarWidth: toolbarWidth,
+      propertiesWidth: propertiesWidth,
+      toolbarCenter: CGPoint(x: toolbarX, y: toolbarCenterY),
+      propertiesCenter: CGPoint(x: propertiesX, y: propertiesCenterY),
       propertiesPopoverEdge: propertiesSide == .above ? .bottom : .top,
       actionRailCenter: actionRailPosition(for: rect, containerSize: containerSize)
     )
@@ -826,7 +879,8 @@ private struct InlineAreaResizeHandleHitTarget: View {
 }
 
 private struct InlineAreaControlPlacement {
-  let width: CGFloat
+  let toolbarWidth: CGFloat
+  let propertiesWidth: CGFloat
   let toolbarCenter: CGPoint
   let propertiesCenter: CGPoint
   let propertiesPopoverEdge: Edge
@@ -839,6 +893,7 @@ private enum InlineAreaLayout {
   static let controlStackSpacing: CGFloat = 6
   static let selectionGap: CGFloat = 12
   static let screenPadding: CGFloat = 16
+  static let controlPanelOuterHorizontalInset: CGFloat = 12
   static let minimumSelectionSize: CGFloat = 24
   static let actionRailWidth: CGFloat = 42
   static let actionRailHeight: CGFloat = 202
@@ -1104,6 +1159,7 @@ private struct InlineAreaPropertiesBar: View {
   @ObservedObject var state: AnnotateState
   let maxWidth: CGFloat
   let popoverEdge: Edge
+  let onContentWidthChange: (CGFloat) -> Void
 
   private let strokeColors: [Color] = [.red, .orange, .yellow, .green, .blue, .purple, .white, .black]
   private let fillColors: [Color] = [.clear, .red, .orange, .yellow, .green, .blue, .purple, .white, .black]
@@ -1230,8 +1286,16 @@ private struct InlineAreaPropertiesBar: View {
         .fixedSize(horizontal: true, vertical: false)
         .padding(.horizontal, 6)
         .padding(.vertical, 5)
+        .background(
+          GeometryReader { proxy in
+            Color.clear.preference(
+              key: InlineAreaPropertiesContentWidthKey.self,
+              value: proxy.size.width
+            )
+          }
+        )
       }
-      .frame(maxWidth: maxWidth - 12)
+      .frame(maxWidth: max(0, maxWidth - InlineAreaLayout.controlPanelOuterHorizontalInset))
     }
     .frame(width: maxWidth, height: InlineAreaLayout.propertiesHeight, alignment: .leading)
     .background(
@@ -1243,6 +1307,9 @@ private struct InlineAreaPropertiesBar: View {
         .stroke(InlineAreaChrome.border, lineWidth: 1)
     )
     .shadow(color: InlineAreaChrome.panelShadow.opacity(0.86), radius: 12, x: 0, y: 8)
+    .onPreferenceChange(InlineAreaPropertiesContentWidthKey.self) { width in
+      onContentWidthChange(max(0, width))
+    }
   }
 
   private var colorTitle: String {
@@ -1267,6 +1334,14 @@ private struct InlineAreaPropertiesBar: View {
       Capsule()
         .fill(InlineAreaChrome.itemBackground)
     )
+  }
+}
+
+private struct InlineAreaPropertiesContentWidthKey: PreferenceKey {
+  static var defaultValue: CGFloat = 0
+
+  static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+    value = max(value, nextValue())
   }
 }
 
