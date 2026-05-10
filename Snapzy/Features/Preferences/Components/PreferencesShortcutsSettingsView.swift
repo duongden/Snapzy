@@ -266,6 +266,7 @@ struct ShortcutsSettingsView: View {
             icon: "rectangle.dashed.and.paperclip",
             description: L10n.PreferencesShortcuts.captureFullscreenDescription,
             shortcut: $fullscreenShortcut,
+            defaultShortcut: .defaultFullscreen,
             isEnabled: globalEnabledBinding(for: .fullscreen),
             validationIssue: globalValidationIssues[.fullscreen],
             onShortcutChanged: { handleGlobalShortcutChange($0, for: .fullscreen) }
@@ -277,6 +278,7 @@ struct ShortcutsSettingsView: View {
               icon: "rectangle.dashed",
               description: L10n.PreferencesShortcuts.captureAreaDescription,
               shortcut: $areaShortcut,
+              defaultShortcut: .defaultArea,
               isEnabled: globalEnabledBinding(for: .area),
               validationIssue: globalValidationIssues[.area],
               onShortcutChanged: { handleGlobalShortcutChange($0, for: .area) }
@@ -286,6 +288,7 @@ struct ShortcutsSettingsView: View {
               label: L10n.PreferencesShortcuts.applicationCaptureTitle,
               description: L10n.PreferencesShortcuts.applicationCaptureDescription,
               shortcut: $areaApplicationCaptureShortcut,
+              defaultShortcut: CaptureOverlayShortcutSettings.defaultApplicationCaptureShortcut,
               isEnabled: globalEnabledBinding(for: .area),
               validationIssue: captureOverlayValidationIssues[.applicationCapture]
             ) { newShortcut in
@@ -299,6 +302,7 @@ struct ShortcutsSettingsView: View {
             icon: "pencil.and.scribble",
             description: L10n.PreferencesShortcuts.captureAreaAnnotateDescription,
             shortcut: $areaAnnotateShortcut,
+            defaultShortcut: .defaultAreaAnnotate,
             isEnabled: globalEnabledBinding(for: .areaAnnotate),
             validationIssue: globalValidationIssues[.areaAnnotate],
             onShortcutChanged: { handleGlobalShortcutChange($0, for: .areaAnnotate) }
@@ -309,6 +313,7 @@ struct ShortcutsSettingsView: View {
             icon: "arrow.up.and.down",
             description: "Guided session for long screenshots",
             shortcut: $scrollingCaptureShortcut,
+            defaultShortcut: .defaultScrollingCapture,
             isEnabled: globalEnabledBinding(for: .scrollingCapture),
             validationIssue: globalValidationIssues[.scrollingCapture],
             onShortcutChanged: { handleGlobalShortcutChange($0, for: .scrollingCapture) }
@@ -319,6 +324,7 @@ struct ShortcutsSettingsView: View {
             icon: "person.crop.rectangle",
             description: "Select an area, isolate the subject, and optionally auto-crop",
             shortcut: $objectCutoutShortcut,
+            defaultShortcut: .defaultObjectCutout,
             isEnabled: globalEnabledBinding(for: .objectCutout),
             validationIssue: globalValidationIssues[.objectCutout],
             onShortcutChanged: { handleGlobalShortcutChange($0, for: .objectCutout) }
@@ -329,6 +335,7 @@ struct ShortcutsSettingsView: View {
             icon: "text.viewfinder",
             description: L10n.PreferencesShortcuts.captureTextDescription,
             shortcut: $ocrShortcut,
+            defaultShortcut: .defaultOCR,
             isEnabled: globalEnabledBinding(for: .ocr),
             validationIssue: globalValidationIssues[.ocr],
             onShortcutChanged: { handleGlobalShortcutChange($0, for: .ocr) }
@@ -342,6 +349,7 @@ struct ShortcutsSettingsView: View {
               icon: "record.circle",
               description: L10n.PreferencesShortcuts.recordVideoDescription,
               shortcut: $recordingShortcut,
+              defaultShortcut: .defaultRecording,
               isEnabled: globalEnabledBinding(for: .recording),
               validationIssue: globalValidationIssues[.recording],
               onShortcutChanged: { handleGlobalShortcutChange($0, for: .recording) }
@@ -351,6 +359,7 @@ struct ShortcutsSettingsView: View {
               label: L10n.PreferencesShortcuts.applicationRecordingTitle,
               description: L10n.PreferencesShortcuts.applicationRecordingDescription,
               shortcut: $recordingApplicationCaptureShortcut,
+              defaultShortcut: CaptureOverlayShortcutSettings.defaultRecordingApplicationCaptureShortcut,
               isEnabled: globalEnabledBinding(for: .recording),
               validationIssue: captureOverlayValidationIssues[.applicationRecording]
             ) { newShortcut in
@@ -366,6 +375,7 @@ struct ShortcutsSettingsView: View {
             icon: "pencil.and.scribble",
             description: L10n.PreferencesShortcuts.openAnnotateDescription,
             shortcut: $annotateShortcut,
+            defaultShortcut: .defaultAnnotate,
             isEnabled: globalEnabledBinding(for: .annotate),
             validationIssue: globalValidationIssues[.annotate],
             onShortcutChanged: { handleGlobalShortcutChange($0, for: .annotate) }
@@ -376,6 +386,7 @@ struct ShortcutsSettingsView: View {
             icon: "film",
             description: L10n.PreferencesShortcuts.openVideoEditorDescription,
             shortcut: $videoEditorShortcut,
+            defaultShortcut: .defaultVideoEditor,
             isEnabled: globalEnabledBinding(for: .videoEditor),
             validationIssue: globalValidationIssues[.videoEditor],
             onShortcutChanged: { handleGlobalShortcutChange($0, for: .videoEditor) }
@@ -386,6 +397,7 @@ struct ShortcutsSettingsView: View {
             icon: "icloud.and.arrow.up",
             description: L10n.PreferencesShortcuts.cloudUploadsDescription,
             shortcut: $cloudUploadsShortcut,
+            defaultShortcut: .defaultCloudUploads,
             isEnabled: globalEnabledBinding(for: .cloudUploads),
             validationIssue: globalValidationIssues[.cloudUploads],
             onShortcutChanged: { handleGlobalShortcutChange($0, for: .cloudUploads) }
@@ -396,6 +408,7 @@ struct ShortcutsSettingsView: View {
             icon: "list.bullet.rectangle",
             description: L10n.PreferencesShortcuts.shortcutListDescription,
             shortcut: $shortcutListShortcut,
+            defaultShortcut: .defaultShortcutList,
             isEnabled: globalEnabledBinding(for: .shortcutList),
             validationIssue: globalValidationIssues[.shortcutList],
             onShortcutChanged: { handleGlobalShortcutChange($0, for: .shortcutList) }
@@ -406,6 +419,7 @@ struct ShortcutsSettingsView: View {
             icon: "clock.arrow.circlepath",
             description: "Open the capture history browser",
             shortcut: $historyShortcut,
+            defaultShortcut: .defaultHistory,
             isEnabled: globalEnabledBinding(for: .history),
             validationIssue: globalValidationIssues[.history],
             onShortcutChanged: { handleGlobalShortcutChange($0, for: .history) }
@@ -427,6 +441,7 @@ struct ShortcutsSettingsView: View {
             icon: "doc.on.doc",
             description: L10n.PreferencesShortcuts.copyAndCloseDescription,
             shortcut: $copyAndCloseShortcut,
+            defaultShortcut: AnnotateShortcutManager.defaultCopyAndClose,
             isEnabled: annotateActionEnabledBinding(for: .copyAndClose),
             validationIssue: annotateActionValidationIssues[.copyAndClose],
             onShortcutChanged: { handleAnnotateActionShortcutChange($0, for: .copyAndClose) }
@@ -437,6 +452,7 @@ struct ShortcutsSettingsView: View {
             icon: "pin",
             description: L10n.PreferencesShortcuts.togglePinDescription,
             shortcut: $togglePinShortcut,
+            defaultShortcut: AnnotateShortcutManager.defaultTogglePin,
             isEnabled: annotateActionEnabledBinding(for: .togglePin),
             validationIssue: annotateActionValidationIssues[.togglePin],
             onShortcutChanged: { handleAnnotateActionShortcutChange($0, for: .togglePin) }
@@ -447,6 +463,7 @@ struct ShortcutsSettingsView: View {
             icon: "icloud.and.arrow.up",
             description: L10n.PreferencesShortcuts.cloudUploadDescription,
             shortcut: $cloudUploadShortcut,
+            defaultShortcut: AnnotateShortcutManager.defaultCloudUpload,
             isEnabled: annotateActionEnabledBinding(for: .cloudUpload),
             validationIssue: annotateActionValidationIssues[.cloudUpload],
             onShortcutChanged: { handleAnnotateActionShortcutChange($0, for: .cloudUpload) }
@@ -466,7 +483,8 @@ struct ShortcutsSettingsView: View {
               validationIssue: annotateToolValidationIssues[tool],
               onChanged: { handleAnnotateToolShortcutChange($0, for: tool) },
               conflictingTool: conflictForTool(tool),
-              context: toolContext(for: tool)
+              context: toolContext(for: tool),
+              defaultShortcut: tool.defaultShortcut
             )
           }
 
@@ -807,6 +825,7 @@ private struct CaptureOverlayShortcutRecorderRow: View {
   let label: String
   let description: String
   @Binding var shortcut: CaptureOverlayShortcut?
+  let defaultShortcut: CaptureOverlayShortcut?
   let isEnabled: Binding<Bool>
   let validationIssue: ShortcutValidationIssue?
   let onShortcutChanged: (CaptureOverlayShortcut?) -> Bool
@@ -833,6 +852,13 @@ private struct CaptureOverlayShortcutRecorderRow: View {
       Spacer()
 
       shortcutRecorderButton
+
+      if let defaultShortcut {
+        ShortcutResetButton(
+          isDisabled: !isEnabled.wrappedValue || isRecording || shortcut == defaultShortcut,
+          action: resetToDefault
+        )
+      }
 
       toggleStatus
     }
@@ -882,6 +908,13 @@ private struct CaptureOverlayShortcutRecorderRow: View {
 
   private var rowOpacity: Double {
     isEnabled.wrappedValue ? 1 : 0.62
+  }
+
+  private func resetToDefault() {
+    guard let defaultShortcut else { return }
+    if onShortcutChanged(defaultShortcut) {
+      shortcut = defaultShortcut
+    }
   }
 
   private func startRecording() {

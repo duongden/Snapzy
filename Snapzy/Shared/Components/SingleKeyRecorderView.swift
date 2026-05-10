@@ -48,6 +48,7 @@ struct SingleKeyRecorderView: View {
   let onChanged: (Character?) -> Bool
   let conflictingTool: AnnotationToolType?
   var context: AnnotationToolContext = .both
+  var defaultShortcut: Character? = nil
 
   @State private var isRecording = false
   @State private var eventMonitor: Any?
@@ -105,6 +106,13 @@ struct SingleKeyRecorderView: View {
       .disabled(!isEnabled)
       .help(isEnabled ? L10n.ShortcutRecorder.clickToRecord : L10n.ShortcutRecorder.turnOnToEdit)
 
+      if let defaultShortcut {
+        ShortcutResetButton(
+          isDisabled: !isEnabled || isRecording || shortcut == defaultShortcut,
+          action: resetToDefault
+        )
+      }
+
       HStack(spacing: 6) {
         Text(isEnabled ? L10n.Common.on : L10n.Common.off)
           .font(.caption)
@@ -122,6 +130,13 @@ struct SingleKeyRecorderView: View {
       }
     }
     .onDisappear { stopRecording() }
+  }
+
+  private func resetToDefault() {
+    guard let defaultShortcut else { return }
+    if onChanged(defaultShortcut) {
+      shortcut = defaultShortcut
+    }
   }
 
   private func startRecording() {

@@ -15,6 +15,7 @@ struct ShortcutRecorderView: View {
   let icon: String
   let description: String
   @Binding var shortcut: ShortcutConfig?
+  let defaultShortcut: ShortcutConfig?
   let isEnabled: Binding<Bool>?
   let validationIssue: ShortcutValidationIssue?
   let onShortcutChanged: (ShortcutConfig?) -> Bool
@@ -28,6 +29,7 @@ struct ShortcutRecorderView: View {
     icon: String = "command",
     description: String = "",
     shortcut: Binding<ShortcutConfig?>,
+    defaultShortcut: ShortcutConfig? = nil,
     isEnabled: Binding<Bool>? = nil,
     validationIssue: ShortcutValidationIssue? = nil,
     onShortcutChanged: @escaping (ShortcutConfig?) -> Bool
@@ -36,6 +38,7 @@ struct ShortcutRecorderView: View {
     self.icon = icon
     self.description = description
     self._shortcut = shortcut
+    self.defaultShortcut = defaultShortcut
     self.isEnabled = isEnabled
     self.validationIssue = validationIssue
     self.onShortcutChanged = onShortcutChanged
@@ -79,6 +82,13 @@ struct ShortcutRecorderView: View {
       .disabled(!isInteractionEnabled)
       .help(isInteractionEnabled ? L10n.ShortcutRecorder.clickToRecord : L10n.ShortcutRecorder.turnOnToEdit)
 
+      if let defaultShortcut {
+        ShortcutResetButton(
+          isDisabled: !isInteractionEnabled || isRecording || shortcut == defaultShortcut,
+          action: resetToDefault
+        )
+      }
+
       if let toggleBinding {
         HStack(spacing: 6) {
           Text(toggleBinding.wrappedValue ? L10n.Common.on : L10n.Common.off)
@@ -117,6 +127,13 @@ struct ShortcutRecorderView: View {
 
   private var isInteractionEnabled: Bool {
     isEnabled?.wrappedValue ?? true
+  }
+
+  private func resetToDefault() {
+    guard let defaultShortcut else { return }
+    if onShortcutChanged(defaultShortcut) {
+      shortcut = defaultShortcut
+    }
   }
 
   private func startRecording() {
@@ -189,6 +206,24 @@ struct EmptyShortcutCTAView: View {
     }
     .foregroundColor(.accentColor)
     .frame(minWidth: minWidth)
+  }
+}
+
+struct ShortcutResetButton: View {
+  let isDisabled: Bool
+  let action: () -> Void
+
+  var body: some View {
+    Button(action: action) {
+      Image(systemName: "arrow.counterclockwise")
+        .font(.system(size: 12, weight: .semibold))
+        .frame(width: 18, height: 18)
+        .foregroundColor(.secondary)
+    }
+    .buttonStyle(.borderless)
+    .disabled(isDisabled)
+    .help(L10n.Common.resetToDefault)
+    .accessibilityLabel(L10n.Common.resetToDefault)
   }
 }
 
