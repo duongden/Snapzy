@@ -71,10 +71,7 @@ struct ShortcutRecorderView: View {
         } else if let shortcut {
           KeyCapGroupView(parts: shortcut.displayParts)
         } else {
-          Text("-")
-            .font(.system(size: 12, weight: .medium))
-            .foregroundColor(.secondary)
-            .frame(minWidth: 40)
+          EmptyShortcutCTAView(title: L10n.PreferencesShortcuts.setShortcut)
         }
       }
       .buttonStyle(ShortcutKeycapButtonStyle(isRecording: isRecording))
@@ -176,6 +173,22 @@ struct ShortcutRecorderView: View {
       KeyboardShortcutManager.shared.endTemporaryShortcutSuppression()
       didSuspendGlobalShortcuts = false
     }
+  }
+}
+
+struct EmptyShortcutCTAView: View {
+  let title: String
+  var minWidth: CGFloat = 104
+
+  var body: some View {
+    HStack(spacing: 5) {
+      Image(systemName: "return")
+        .font(.system(size: 11, weight: .semibold))
+      Text(title)
+        .font(.system(size: 12, weight: .medium))
+    }
+    .foregroundColor(.accentColor)
+    .frame(minWidth: minWidth)
   }
 }
 

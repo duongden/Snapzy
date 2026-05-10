@@ -2230,6 +2230,16 @@ enum L10n {
       defaultValue: "Click a shortcut button to record new keys. Use Backspace/Delete while recording to clear keys. Use the row toggle to turn a shortcut off. Press Esc to cancel.",
       comment: "Hint text below editable shortcut recorder rows"
     )
+    static let setShortcut = string(
+      "preferences-shortcuts.set-shortcut",
+      defaultValue: "Set shortcut",
+      comment: "CTA shown on an empty shortcut recorder button"
+    )
+    static let setKey = string(
+      "preferences-shortcuts.set-key",
+      defaultValue: "Set key",
+      comment: "CTA shown on an empty single-key shortcut recorder button"
+    )
     static let annotateActionsDescription = string(
       "preferences-shortcuts.annotate-actions-description",
       defaultValue: "Shortcuts for common actions inside the annotation editor.",

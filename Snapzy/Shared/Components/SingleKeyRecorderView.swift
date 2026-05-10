@@ -97,10 +97,7 @@ struct SingleKeyRecorderView: View {
         } else if let key = shortcut {
           KeyCapView(symbol: String(key).uppercased())
         } else {
-          Text("–")
-            .font(.system(size: 12, weight: .medium))
-            .foregroundColor(.secondary)
-            .frame(minWidth: 40)
+          EmptyShortcutCTAView(title: L10n.PreferencesShortcuts.setKey, minWidth: 72)
         }
       }
       .buttonStyle(ShortcutButtonStyle(isRecording: isRecording))
