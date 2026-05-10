@@ -164,7 +164,6 @@ struct AnnotateQuickPropertiesBar: View {
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
     .clipped()
-    .background(Color(nsColor: .windowBackgroundColor))
   }
 
   @ViewBuilder
