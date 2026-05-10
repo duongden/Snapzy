@@ -72,7 +72,7 @@ final class InlineAreaAnnotatePanel: NSPanel {
     animationBehavior = .none
     becomesKeyOnlyIfNeeded = true
 
-    contentView = NSHostingView(rootView: InlineAreaAnnotateRootView(session: session))
+    contentView = InlineAreaHostingView(rootView: InlineAreaAnnotateRootView(session: session))
   }
 
   override var canBecomeKey: Bool { true }
@@ -94,6 +94,12 @@ final class InlineAreaAnnotatePanel: NSPanel {
     didNotifyClose = true
     session.windowDidClose()
     onClose?()
+  }
+}
+
+private final class InlineAreaHostingView<Content: View>: NSHostingView<Content> {
+  override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+    true
   }
 }
 
@@ -132,7 +138,7 @@ private struct InlineAreaAnnotateRootView: View {
         }
       }
       .contentShape(Rectangle())
-      .gesture(selectionGesture)
+      .gesture(selectionGesture, including: session.phase == .selecting ? .all : .none)
     }
     .ignoresSafeArea()
   }
