@@ -44,6 +44,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 
 
+
+## [1.14.0] - 2026-05-10
+
+### Features
+-  Add inline area annotate capture functionality (#160, #40) (2b7b9aa)
+
+### Chore
+- refactor: Add default shortcut support to shortcut recorder views (6d28e11)
+- refactor: Replace placeholder text with localized call-to-action views in shortcut recorders (34b6b80)
+- refactor: Refactor shortcut handling to support optional configurations (c834446)
+- refactor: Remove background color from AnnotateQuickPropertiesBar (23d3d27)
+- refactor: Enhance InlineAreaAnnotateRootView with dynamic properties bar width and content width tracking (8ce3c27)
+- refactor: Update content view to use InlineAreaHostingView and improve gesture handling (cc457e6)
+- refactor: Remove cloud upload functionality and related UI elements (327d895)
+- chore: Update localization strings for capture and annotation actions (c91e60b)
+- chore: update appcast, cask, and readme for v1.13.2 (40bfdf8)
+
+### Contributors
+- @duongductrong
+- @github-actions[bot]
+
 ## [1.13.2] - 2026-05-09
 
 ### Features
