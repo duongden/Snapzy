@@ -6,26 +6,27 @@
 //
 
 import AppKit
+import Carbon.HIToolbox
 import SwiftUI
 
 struct ShortcutsSettingsView: View {
-  @State private var fullscreenShortcut: ShortcutConfig
-  @State private var areaShortcut: ShortcutConfig
-  @State private var areaAnnotateShortcut: ShortcutConfig
-  @State private var areaApplicationCaptureShortcut: CaptureOverlayShortcut
-  @State private var recordingApplicationCaptureShortcut: CaptureOverlayShortcut
-  @State private var scrollingCaptureShortcut: ShortcutConfig
-  @State private var objectCutoutShortcut: ShortcutConfig
-  @State private var ocrShortcut: ShortcutConfig
-  @State private var recordingShortcut: ShortcutConfig
-  @State private var annotateShortcut: ShortcutConfig
-  @State private var videoEditorShortcut: ShortcutConfig
-  @State private var cloudUploadsShortcut: ShortcutConfig
-  @State private var shortcutListShortcut: ShortcutConfig
-  @State private var historyShortcut: ShortcutConfig
-  @State private var copyAndCloseShortcut: ShortcutConfig
-  @State private var togglePinShortcut: ShortcutConfig
-  @State private var cloudUploadShortcut: ShortcutConfig
+  @State private var fullscreenShortcut: ShortcutConfig?
+  @State private var areaShortcut: ShortcutConfig?
+  @State private var areaAnnotateShortcut: ShortcutConfig?
+  @State private var areaApplicationCaptureShortcut: CaptureOverlayShortcut?
+  @State private var recordingApplicationCaptureShortcut: CaptureOverlayShortcut?
+  @State private var scrollingCaptureShortcut: ShortcutConfig?
+  @State private var objectCutoutShortcut: ShortcutConfig?
+  @State private var ocrShortcut: ShortcutConfig?
+  @State private var recordingShortcut: ShortcutConfig?
+  @State private var annotateShortcut: ShortcutConfig?
+  @State private var videoEditorShortcut: ShortcutConfig?
+  @State private var cloudUploadsShortcut: ShortcutConfig?
+  @State private var shortcutListShortcut: ShortcutConfig?
+  @State private var historyShortcut: ShortcutConfig?
+  @State private var copyAndCloseShortcut: ShortcutConfig?
+  @State private var togglePinShortcut: ShortcutConfig?
+  @State private var cloudUploadShortcut: ShortcutConfig?
   @State private var globalShortcutEnabled: [GlobalShortcutKind: Bool]
   @State private var annotateActionEnabled: [AnnotateActionShortcutKind: Bool]
   @State private var globalValidationIssues: [GlobalShortcutKind: ShortcutValidationIssue] = [:]
@@ -43,24 +44,24 @@ struct ShortcutsSettingsView: View {
   @ObservedObject private var annotateManager = AnnotateShortcutManager.shared
 
   init() {
-    _fullscreenShortcut = State(initialValue: KeyboardShortcutManager.shared.fullscreenShortcut)
-    _areaShortcut = State(initialValue: KeyboardShortcutManager.shared.areaShortcut)
-    _areaAnnotateShortcut = State(initialValue: KeyboardShortcutManager.shared.areaAnnotateShortcut)
+    _fullscreenShortcut = State(initialValue: KeyboardShortcutManager.shared.shortcut(for: .fullscreen))
+    _areaShortcut = State(initialValue: KeyboardShortcutManager.shared.shortcut(for: .area))
+    _areaAnnotateShortcut = State(initialValue: KeyboardShortcutManager.shared.shortcut(for: .areaAnnotate))
     _areaApplicationCaptureShortcut = State(
       initialValue: CaptureOverlayShortcutSettings.applicationCaptureShortcut
     )
     _recordingApplicationCaptureShortcut = State(
       initialValue: CaptureOverlayShortcutSettings.recordingApplicationCaptureShortcut
     )
-    _scrollingCaptureShortcut = State(initialValue: KeyboardShortcutManager.shared.scrollingCaptureShortcut)
-    _objectCutoutShortcut = State(initialValue: KeyboardShortcutManager.shared.objectCutoutShortcut)
-    _ocrShortcut = State(initialValue: KeyboardShortcutManager.shared.ocrShortcut)
-    _recordingShortcut = State(initialValue: KeyboardShortcutManager.shared.recordingShortcut)
-    _annotateShortcut = State(initialValue: KeyboardShortcutManager.shared.annotateShortcut)
-    _videoEditorShortcut = State(initialValue: KeyboardShortcutManager.shared.videoEditorShortcut)
-    _cloudUploadsShortcut = State(initialValue: KeyboardShortcutManager.shared.cloudUploadsShortcut)
-    _shortcutListShortcut = State(initialValue: KeyboardShortcutManager.shared.shortcutListShortcut)
-    _historyShortcut = State(initialValue: KeyboardShortcutManager.shared.historyShortcut)
+    _scrollingCaptureShortcut = State(initialValue: KeyboardShortcutManager.shared.shortcut(for: .scrollingCapture))
+    _objectCutoutShortcut = State(initialValue: KeyboardShortcutManager.shared.shortcut(for: .objectCutout))
+    _ocrShortcut = State(initialValue: KeyboardShortcutManager.shared.shortcut(for: .ocr))
+    _recordingShortcut = State(initialValue: KeyboardShortcutManager.shared.shortcut(for: .recording))
+    _annotateShortcut = State(initialValue: KeyboardShortcutManager.shared.shortcut(for: .annotate))
+    _videoEditorShortcut = State(initialValue: KeyboardShortcutManager.shared.shortcut(for: .videoEditor))
+    _cloudUploadsShortcut = State(initialValue: KeyboardShortcutManager.shared.shortcut(for: .cloudUploads))
+    _shortcutListShortcut = State(initialValue: KeyboardShortcutManager.shared.shortcut(for: .shortcutList))
+    _historyShortcut = State(initialValue: KeyboardShortcutManager.shared.shortcut(for: .history))
     _copyAndCloseShortcut = State(initialValue: AnnotateShortcutManager.shared.copyAndCloseShortcut)
     _togglePinShortcut = State(initialValue: AnnotateShortcutManager.shared.togglePinShortcut)
     _cloudUploadShortcut = State(initialValue: AnnotateShortcutManager.shared.cloudUploadShortcut)
@@ -659,7 +660,7 @@ struct ShortcutsSettingsView: View {
     return annotateManager.conflictingTool(for: key, excluding: tool)
   }
 
-  private func handleGlobalShortcutChange(_ config: ShortcutConfig, for kind: GlobalShortcutKind) -> Bool {
+  private func handleGlobalShortcutChange(_ config: ShortcutConfig?, for kind: GlobalShortcutKind) -> Bool {
     switch validator.validateGlobalShortcut(config, for: kind) {
     case .accept(let issue):
       globalValidationIssues[kind] = issue
@@ -713,7 +714,7 @@ struct ShortcutsSettingsView: View {
   }
 
   private func handleAnnotateActionShortcutChange(
-    _ config: ShortcutConfig,
+    _ config: ShortcutConfig?,
     for kind: AnnotateActionShortcutKind
   ) -> Bool {
     switch validator.validateAnnotateActionShortcut(config, for: kind) {
@@ -738,7 +739,7 @@ struct ShortcutsSettingsView: View {
   }
 
   private func handleCaptureOverlayShortcutChange(
-    _ shortcut: CaptureOverlayShortcut,
+    _ shortcut: CaptureOverlayShortcut?,
     for kind: CaptureOverlayShortcutKind
   ) -> Bool {
     switch validator.validateCaptureOverlayShortcut(shortcut, for: kind) {
@@ -805,10 +806,10 @@ struct ShortcutsSettingsView: View {
 private struct CaptureOverlayShortcutRecorderRow: View {
   let label: String
   let description: String
-  @Binding var shortcut: CaptureOverlayShortcut
+  @Binding var shortcut: CaptureOverlayShortcut?
   let isEnabled: Binding<Bool>
   let validationIssue: ShortcutValidationIssue?
-  let onShortcutChanged: (CaptureOverlayShortcut) -> Bool
+  let onShortcutChanged: (CaptureOverlayShortcut?) -> Bool
 
   @State private var isRecording = false
   @State private var eventMonitor: Any?
@@ -856,8 +857,13 @@ private struct CaptureOverlayShortcutRecorderRow: View {
           .font(.system(size: 12, weight: .medium))
           .foregroundColor(.accentColor)
           .frame(minWidth: 100)
-      } else {
+      } else if let shortcut {
         KeyCapGroupView(parts: shortcut.displayParts)
+      } else {
+        Text("-")
+          .font(.system(size: 12, weight: .medium))
+          .foregroundColor(.secondary)
+          .frame(minWidth: 40)
       }
     }
     .buttonStyle(ShortcutKeycapButtonStyle(isRecording: isRecording))
@@ -888,7 +894,13 @@ private struct CaptureOverlayShortcutRecorderRow: View {
     didSuspendGlobalShortcuts = true
 
     eventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-      if event.keyCode == 53 {
+      if event.keyCode == UInt16(kVK_Escape) {
+        stopRecording()
+        return nil
+      }
+
+      if isClearShortcutEvent(event) {
+        _ = onShortcutChanged(nil)
         stopRecording()
         return nil
       }
@@ -902,6 +914,17 @@ private struct CaptureOverlayShortcutRecorderRow: View {
         stopRecording()
       }
       return nil
+    }
+  }
+
+  private func isClearShortcutEvent(_ event: NSEvent) -> Bool {
+    switch Int(event.keyCode) {
+    case kVK_Delete, kVK_ForwardDelete:
+      return event.modifierFlags
+        .intersection([.command, .control, .option, .shift])
+        .isEmpty
+    default:
+      return false
     }
   }
 

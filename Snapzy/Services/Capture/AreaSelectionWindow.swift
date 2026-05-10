@@ -1188,7 +1188,7 @@ final class AreaSelectionOverlayView: NSView {
       return
     }
 
-    let shortcut: CaptureOverlayShortcut
+    let shortcut: CaptureOverlayShortcut?
     switch selectionMode {
     case .screenshot, .scrollingCapture:
       shortcut = CaptureOverlayShortcutSettings.applicationCaptureShortcut
@@ -1196,7 +1196,7 @@ final class AreaSelectionOverlayView: NSView {
       shortcut = CaptureOverlayShortcutSettings.recordingApplicationCaptureShortcut
     }
 
-    guard !shortcut.isIndependent else {
+    guard let shortcut, !shortcut.isIndependent else {
       modeHintBackgroundLayer.isHidden = true
       modeHintTextLayer.isHidden = true
       return

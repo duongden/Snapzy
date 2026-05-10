@@ -28,9 +28,11 @@ final class ShortcutValidationService {
   static let shared = ShortcutValidationService()
 
   func validateGlobalShortcut(
-    _ config: ShortcutConfig,
+    _ config: ShortcutConfig?,
     for kind: GlobalShortcutKind
   ) -> ShortcutValidationDecision {
+    guard let config else { return .accept(issue: nil) }
+
     if let conflictKind = conflictingGlobalShortcut(for: config, excluding: kind) {
       return .reject(issue: ShortcutValidationIssue(
         severity: .error,
@@ -61,9 +63,11 @@ final class ShortcutValidationService {
   }
 
   func validateAnnotateActionShortcut(
-    _ config: ShortcutConfig,
+    _ config: ShortcutConfig?,
     for kind: AnnotateActionShortcutKind
   ) -> ShortcutValidationDecision {
+    guard let config else { return .accept(issue: nil) }
+
     if let conflictKind = conflictingAnnotateActionShortcut(for: config, excluding: kind) {
       return .reject(issue: ShortcutValidationIssue(
         severity: .error,
@@ -96,9 +100,10 @@ final class ShortcutValidationService {
   }
 
   func validateCaptureOverlayShortcut(
-    _ shortcut: CaptureOverlayShortcut,
+    _ shortcut: CaptureOverlayShortcut?,
     for kind: CaptureOverlayShortcutKind
   ) -> ShortcutValidationDecision {
+    guard let shortcut else { return .accept(issue: nil) }
     guard let config = shortcut.independentShortcutConfig else {
       return .accept(issue: nil)
     }
@@ -167,7 +172,7 @@ final class ShortcutValidationService {
   ) -> CaptureOverlayShortcutKind? {
     [CaptureOverlayShortcutKind.applicationCapture, .applicationRecording].first(where: {
       $0 != excludedKind
-        && CaptureOverlayShortcutSettings.shortcut(for: $0).independentShortcutConfig == config
+        && CaptureOverlayShortcutSettings.shortcut(for: $0)?.independentShortcutConfig == config
     })
   }
 

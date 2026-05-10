@@ -103,6 +103,7 @@ enum CaptureOverlayShortcutKind: Hashable {
 enum CaptureOverlayShortcutSettings {
   /// Test hook: override to inject isolated UserDefaults in unit tests.
   static var defaults: UserDefaults = .standard
+  private static let explicitEmptyShortcutData = Data("null".utf8)
 
   static let defaultApplicationCaptureShortcut = CaptureOverlayShortcut(
     keyCode: UInt32(kVK_ANSI_A),
@@ -113,7 +114,7 @@ enum CaptureOverlayShortcutSettings {
     modifiers: 0
   )
 
-  static var applicationCaptureShortcut: CaptureOverlayShortcut {
+  static var applicationCaptureShortcut: CaptureOverlayShortcut? {
     shortcut(
       forKey: PreferencesKeys.areaApplicationCaptureShortcut,
       defaultValue: defaultApplicationCaptureShortcut
@@ -121,14 +122,14 @@ enum CaptureOverlayShortcutSettings {
   }
 
   static var applicationCaptureShortcutDisplay: String {
-    applicationCaptureShortcut.displayString
+    applicationCaptureShortcut?.displayString ?? L10n.Common.none
   }
 
   static var applicationCaptureIndependentShortcut: ShortcutConfig? {
-    applicationCaptureShortcut.independentShortcutConfig
+    applicationCaptureShortcut?.independentShortcutConfig
   }
 
-  static var recordingApplicationCaptureShortcut: CaptureOverlayShortcut {
+  static var recordingApplicationCaptureShortcut: CaptureOverlayShortcut? {
     shortcut(
       forKey: PreferencesKeys.recordingApplicationCaptureShortcut,
       defaultValue: defaultRecordingApplicationCaptureShortcut
@@ -136,22 +137,22 @@ enum CaptureOverlayShortcutSettings {
   }
 
   static var recordingApplicationCaptureShortcutDisplay: String {
-    recordingApplicationCaptureShortcut.displayString
+    recordingApplicationCaptureShortcut?.displayString ?? L10n.Common.none
   }
 
   static var recordingApplicationCaptureIndependentShortcut: ShortcutConfig? {
-    recordingApplicationCaptureShortcut.independentShortcutConfig
+    recordingApplicationCaptureShortcut?.independentShortcutConfig
   }
 
-  static func effectiveApplicationCaptureDisplay(parentShortcut: ShortcutConfig) -> String {
+  static func effectiveApplicationCaptureDisplay(parentShortcut: ShortcutConfig?) -> String {
     effectiveDisplay(shortcut: applicationCaptureShortcut, parentShortcut: parentShortcut)
   }
 
-  static func effectiveRecordingApplicationCaptureDisplay(parentShortcut: ShortcutConfig) -> String {
+  static func effectiveRecordingApplicationCaptureDisplay(parentShortcut: ShortcutConfig?) -> String {
     effectiveDisplay(shortcut: recordingApplicationCaptureShortcut, parentShortcut: parentShortcut)
   }
 
-  static func setApplicationCaptureShortcut(_ shortcut: CaptureOverlayShortcut) {
+  static func setApplicationCaptureShortcut(_ shortcut: CaptureOverlayShortcut?) {
     setShortcut(shortcut, forKey: PreferencesKeys.areaApplicationCaptureShortcut)
   }
 
@@ -159,7 +160,7 @@ enum CaptureOverlayShortcutSettings {
     Self.defaults.removeObject(forKey: PreferencesKeys.areaApplicationCaptureShortcut)
   }
 
-  static func setRecordingApplicationCaptureShortcut(_ shortcut: CaptureOverlayShortcut) {
+  static func setRecordingApplicationCaptureShortcut(_ shortcut: CaptureOverlayShortcut?) {
     setShortcut(shortcut, forKey: PreferencesKeys.recordingApplicationCaptureShortcut)
   }
 
@@ -168,14 +169,14 @@ enum CaptureOverlayShortcutSettings {
   }
 
   static func matchesApplicationCaptureShortcut(_ event: NSEvent) -> Bool {
-    applicationCaptureShortcut.matches(event)
+    applicationCaptureShortcut?.matches(event) ?? false
   }
 
   static func matchesRecordingApplicationCaptureShortcut(_ event: NSEvent) -> Bool {
-    recordingApplicationCaptureShortcut.matches(event)
+    recordingApplicationCaptureShortcut?.matches(event) ?? false
   }
 
-  static func shortcut(for kind: CaptureOverlayShortcutKind) -> CaptureOverlayShortcut {
+  static func shortcut(for kind: CaptureOverlayShortcutKind) -> CaptureOverlayShortcut? {
     switch kind {
     case .applicationCapture:
       return applicationCaptureShortcut
@@ -187,30 +188,40 @@ enum CaptureOverlayShortcutSettings {
   private static func shortcut(
     forKey key: String,
     defaultValue: CaptureOverlayShortcut
-  ) -> CaptureOverlayShortcut {
+  ) -> CaptureOverlayShortcut? {
     let decoder = JSONDecoder()
-    if let data = Self.defaults.data(forKey: key),
-       let shortcut = try? decoder.decode(CaptureOverlayShortcut.self, from: data) {
-      return shortcut
+    if let data = Self.defaults.data(forKey: key) {
+      if data == explicitEmptyShortcutData {
+        return nil
+      }
+      if let shortcut = try? decoder.decode(CaptureOverlayShortcut.self, from: data) {
+        return shortcut
+      }
     }
 
     return legacyShortcut(forKey: key) ?? defaultValue
   }
 
-  private static func setShortcut(_ shortcut: CaptureOverlayShortcut, forKey key: String) {
+  private static func setShortcut(_ shortcut: CaptureOverlayShortcut?, forKey key: String) {
+    guard let shortcut else {
+      Self.defaults.set(explicitEmptyShortcutData, forKey: key)
+      return
+    }
     guard let data = try? JSONEncoder().encode(shortcut) else { return }
     Self.defaults.set(data, forKey: key)
   }
 
   private static func effectiveDisplay(
-    shortcut: CaptureOverlayShortcut,
-    parentShortcut: ShortcutConfig
+    shortcut: CaptureOverlayShortcut?,
+    parentShortcut: ShortcutConfig?
   ) -> String {
+    guard let shortcut else { return L10n.Common.none }
     if shortcut.isIndependent {
       return CaptureOverlayShortcut.inlineDisplay(parts: shortcut.displayParts)
     }
-    let parentDisplay = CaptureOverlayShortcut.inlineDisplay(parts: parentShortcut.displayParts)
     let childDisplay = CaptureOverlayShortcut.inlineDisplay(parts: shortcut.displayParts)
+    guard let parentShortcut else { return childDisplay }
+    let parentDisplay = CaptureOverlayShortcut.inlineDisplay(parts: parentShortcut.displayParts)
     return "\(parentDisplay) \(childDisplay)"
   }
 

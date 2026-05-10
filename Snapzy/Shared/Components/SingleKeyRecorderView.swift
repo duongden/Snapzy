@@ -6,6 +6,7 @@
 //
 
 import AppKit
+import Carbon.HIToolbox
 import SwiftUI
 
 /// A single context badge for annotation tool availability
@@ -134,14 +135,14 @@ struct SingleKeyRecorderView: View {
 
     eventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
       // Escape cancels
-      if event.keyCode == 53 {
+      if event.keyCode == UInt16(kVK_Escape) {
         stopRecording()
         return nil
       }
 
-      // Delete/Backspace turns the shortcut off without discarding the key
-      if event.keyCode == 51 || event.keyCode == 117 {
-        isEnabled = false
+      // Backspace/Delete clears only the shortcut value. The row toggle is independent.
+      if isClearShortcutEvent(event) {
+        _ = onChanged(nil)
         stopRecording()
         return nil
       }
@@ -155,6 +156,17 @@ struct SingleKeyRecorderView: View {
       }
 
       return nil
+    }
+  }
+
+  private func isClearShortcutEvent(_ event: NSEvent) -> Bool {
+    switch Int(event.keyCode) {
+    case kVK_Delete, kVK_ForwardDelete:
+      return event.modifierFlags
+        .intersection([.command, .control, .option, .shift])
+        .isEmpty
+    default:
+      return false
     }
   }
 

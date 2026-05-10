@@ -751,7 +751,7 @@ final class AppStatusBarController: ObservableObject {
     }
 
     let config = manager.shortcut(for: kind)
-    guard let keyEquivalent = config.menuKeyEquivalent else {
+    guard let config, let keyEquivalent = config.menuKeyEquivalent else {
       item.keyEquivalent = ""
       item.keyEquivalentModifierMask = []
       return
@@ -763,12 +763,12 @@ final class AppStatusBarController: ObservableObject {
 
   private func applyConfiguredOverlayShortcut(
     _ item: NSMenuItem,
-    shortcut: CaptureOverlayShortcut,
+    shortcut: CaptureOverlayShortcut?,
     parentKind: GlobalShortcutKind,
     using manager: KeyboardShortcutManager
   ) {
     guard manager.isShortcutEnabled(for: parentKind),
-          let config = shortcut.independentShortcutConfig,
+          let config = shortcut?.independentShortcutConfig,
           let keyEquivalent = config.menuKeyEquivalent else {
       item.keyEquivalent = ""
       item.keyEquivalentModifierMask = []
@@ -781,11 +781,13 @@ final class AppStatusBarController: ObservableObject {
 
   private func overlayMenuTitle(
     base: String,
-    shortcut: CaptureOverlayShortcut,
-    parentShortcut: ShortcutConfig,
+    shortcut: CaptureOverlayShortcut?,
+    parentShortcut: ShortcutConfig?,
     isParentShortcutEnabled: Bool
   ) -> String {
-    guard isParentShortcutEnabled, !shortcut.isIndependent else { return base }
+    guard let shortcut, isParentShortcutEnabled, !shortcut.isIndependent, let parentShortcut else {
+      return base
+    }
     let parentDisplay = CaptureOverlayShortcut.inlineDisplay(parts: parentShortcut.displayParts)
     let childDisplay = CaptureOverlayShortcut.inlineDisplay(parts: shortcut.displayParts)
     return "\(base) \(parentDisplay) \(childDisplay)"

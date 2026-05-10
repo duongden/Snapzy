@@ -106,99 +106,113 @@ final class CaptureOverlayShortcutSettingsTests: XCTestCase {
 
   // MARK: - JSON Roundtrip Persistence
 
-  func testSetAndReadShortcut_applicationCapture_roundtrips() {
+  func testSetAndReadShortcut_applicationCapture_roundtrips() throws {
     let shortcut = CaptureOverlayShortcut(keyCode: UInt32(kVK_ANSI_B), modifiers: 0)
     CaptureOverlayShortcutSettings.setApplicationCaptureShortcut(shortcut)
 
-    let loaded = CaptureOverlayShortcutSettings.applicationCaptureShortcut
+    let loaded = try XCTUnwrap(CaptureOverlayShortcutSettings.applicationCaptureShortcut)
     XCTAssertEqual(loaded.keyCode, UInt32(kVK_ANSI_B))
     XCTAssertEqual(loaded.modifiers, 0)
   }
 
-  func testSetAndReadShortcut_recordingApplicationCapture_roundtrips() {
+  func testSetAndReadShortcut_recordingApplicationCapture_roundtrips() throws {
     let shortcut = CaptureOverlayShortcut(
       keyCode: UInt32(kVK_ANSI_C),
       modifiers: UInt32(shiftKey)
     )
     CaptureOverlayShortcutSettings.setRecordingApplicationCaptureShortcut(shortcut)
 
-    let loaded = CaptureOverlayShortcutSettings.recordingApplicationCaptureShortcut
+    let loaded = try XCTUnwrap(CaptureOverlayShortcutSettings.recordingApplicationCaptureShortcut)
     XCTAssertEqual(loaded.keyCode, UInt32(kVK_ANSI_C))
     XCTAssertEqual(loaded.modifiers, UInt32(shiftKey))
   }
 
   // MARK: - Reset
 
-  func testResetApplicationCaptureShortcut_fallsBackToDefault() {
+  func testSetApplicationCaptureShortcut_nilPersistsExplicitEmpty() {
+    CaptureOverlayShortcutSettings.setApplicationCaptureShortcut(nil)
+
+    XCTAssertNil(CaptureOverlayShortcutSettings.applicationCaptureShortcut)
+    XCTAssertEqual(CaptureOverlayShortcutSettings.applicationCaptureShortcutDisplay, L10n.Common.none)
+  }
+
+  func testSetRecordingApplicationCaptureShortcut_nilPersistsExplicitEmpty() {
+    CaptureOverlayShortcutSettings.setRecordingApplicationCaptureShortcut(nil)
+
+    XCTAssertNil(CaptureOverlayShortcutSettings.recordingApplicationCaptureShortcut)
+    XCTAssertEqual(CaptureOverlayShortcutSettings.recordingApplicationCaptureShortcutDisplay, L10n.Common.none)
+  }
+
+  func testResetApplicationCaptureShortcut_fallsBackToDefault() throws {
     let custom = CaptureOverlayShortcut(keyCode: UInt32(kVK_ANSI_Z), modifiers: 0)
     CaptureOverlayShortcutSettings.setApplicationCaptureShortcut(custom)
 
     // Verify custom is set
-    XCTAssertEqual(CaptureOverlayShortcutSettings.applicationCaptureShortcut.keyCode, UInt32(kVK_ANSI_Z))
+    XCTAssertEqual(try XCTUnwrap(CaptureOverlayShortcutSettings.applicationCaptureShortcut).keyCode, UInt32(kVK_ANSI_Z))
 
     // Reset
     CaptureOverlayShortcutSettings.resetApplicationCaptureShortcut()
 
     // Should be back to default
-    let loaded = CaptureOverlayShortcutSettings.applicationCaptureShortcut
+    let loaded = try XCTUnwrap(CaptureOverlayShortcutSettings.applicationCaptureShortcut)
     XCTAssertEqual(loaded.keyCode, UInt32(kVK_ANSI_A))
     XCTAssertEqual(loaded.modifiers, 0)
   }
 
-  func testResetRecordingApplicationCaptureShortcut_fallsBackToDefault() {
+  func testResetRecordingApplicationCaptureShortcut_fallsBackToDefault() throws {
     let custom = CaptureOverlayShortcut(keyCode: UInt32(kVK_ANSI_Z), modifiers: 0)
     CaptureOverlayShortcutSettings.setRecordingApplicationCaptureShortcut(custom)
     CaptureOverlayShortcutSettings.resetRecordingApplicationCaptureShortcut()
 
-    let loaded = CaptureOverlayShortcutSettings.recordingApplicationCaptureShortcut
+    let loaded = try XCTUnwrap(CaptureOverlayShortcutSettings.recordingApplicationCaptureShortcut)
     XCTAssertEqual(loaded.keyCode, UInt32(kVK_ANSI_A))
     XCTAssertEqual(loaded.modifiers, 0)
   }
 
   // MARK: - shortcut(for:) dispatch
 
-  func testShortcutForKind_applicationCapture() {
-    let shortcut = CaptureOverlayShortcutSettings.shortcut(for: .applicationCapture)
-    XCTAssertEqual(shortcut.keyCode, CaptureOverlayShortcutSettings.applicationCaptureShortcut.keyCode)
+  func testShortcutForKind_applicationCapture() throws {
+    let shortcut = try XCTUnwrap(CaptureOverlayShortcutSettings.shortcut(for: .applicationCapture))
+    XCTAssertEqual(shortcut.keyCode, try XCTUnwrap(CaptureOverlayShortcutSettings.applicationCaptureShortcut).keyCode)
   }
 
-  func testShortcutForKind_applicationRecording() {
-    let shortcut = CaptureOverlayShortcutSettings.shortcut(for: .applicationRecording)
-    XCTAssertEqual(shortcut.keyCode, CaptureOverlayShortcutSettings.recordingApplicationCaptureShortcut.keyCode)
+  func testShortcutForKind_applicationRecording() throws {
+    let shortcut = try XCTUnwrap(CaptureOverlayShortcutSettings.shortcut(for: .applicationRecording))
+    XCTAssertEqual(shortcut.keyCode, try XCTUnwrap(CaptureOverlayShortcutSettings.recordingApplicationCaptureShortcut).keyCode)
   }
 
   // MARK: - Legacy String Migration
 
-  func testLegacyStringMigration_singleLetter_migratesCorrectly() {
+  func testLegacyStringMigration_singleLetter_migratesCorrectly() throws {
     // Simulate legacy data: plain string stored in UserDefaults
     defaults.set("b", forKey: PreferencesKeys.areaApplicationCaptureShortcut)
 
-    let shortcut = CaptureOverlayShortcutSettings.applicationCaptureShortcut
+    let shortcut = try XCTUnwrap(CaptureOverlayShortcutSettings.applicationCaptureShortcut)
     XCTAssertEqual(shortcut.keyCode, UInt32(kVK_ANSI_B))
     XCTAssertEqual(shortcut.modifiers, 0)
   }
 
-  func testLegacyStringMigration_uppercaseLetter_migratesCorrectly() {
+  func testLegacyStringMigration_uppercaseLetter_migratesCorrectly() throws {
     defaults.set("C", forKey: PreferencesKeys.areaApplicationCaptureShortcut)
 
-    let shortcut = CaptureOverlayShortcutSettings.applicationCaptureShortcut
+    let shortcut = try XCTUnwrap(CaptureOverlayShortcutSettings.applicationCaptureShortcut)
     XCTAssertEqual(shortcut.keyCode, UInt32(kVK_ANSI_C))
     XCTAssertEqual(shortcut.modifiers, 0)
   }
 
-  func testLegacyStringMigration_invalidValue_returnsDefault() {
+  func testLegacyStringMigration_invalidValue_returnsDefault() throws {
     // Non-letter string should fall back to default
     defaults.set("123", forKey: PreferencesKeys.areaApplicationCaptureShortcut)
 
-    let shortcut = CaptureOverlayShortcutSettings.applicationCaptureShortcut
+    let shortcut = try XCTUnwrap(CaptureOverlayShortcutSettings.applicationCaptureShortcut)
     XCTAssertEqual(shortcut.keyCode, UInt32(kVK_ANSI_A)) // default
     XCTAssertEqual(shortcut.modifiers, 0)
   }
 
-  func testLegacyStringMigration_whitespace_returnsDefault() {
+  func testLegacyStringMigration_whitespace_returnsDefault() throws {
     defaults.set("  ", forKey: PreferencesKeys.areaApplicationCaptureShortcut)
 
-    let shortcut = CaptureOverlayShortcutSettings.applicationCaptureShortcut
+    let shortcut = try XCTUnwrap(CaptureOverlayShortcutSettings.applicationCaptureShortcut)
     XCTAssertEqual(shortcut.keyCode, UInt32(kVK_ANSI_A))
   }
 
@@ -262,28 +276,28 @@ final class CaptureOverlayShortcutSettingsTests: XCTestCase {
     XCTAssertEqual(shortcut.displayString, "Space")
   }
 
-  func testSetAndReadShortcut_spaceKey_roundtrips() {
+  func testSetAndReadShortcut_spaceKey_roundtrips() throws {
     let shortcut = CaptureOverlayShortcut(keyCode: UInt32(kVK_Space), modifiers: 0)
     CaptureOverlayShortcutSettings.setApplicationCaptureShortcut(shortcut)
 
-    let loaded = CaptureOverlayShortcutSettings.applicationCaptureShortcut
+    let loaded = try XCTUnwrap(CaptureOverlayShortcutSettings.applicationCaptureShortcut)
     XCTAssertEqual(loaded.keyCode, UInt32(kVK_Space))
     XCTAssertEqual(loaded.modifiers, 0)
   }
 
-  func testLegacyStringMigration_space_migratesCorrectly() {
+  func testLegacyStringMigration_space_migratesCorrectly() throws {
     defaults.set(" ", forKey: PreferencesKeys.areaApplicationCaptureShortcut)
 
-    let shortcut = CaptureOverlayShortcutSettings.applicationCaptureShortcut
+    let shortcut = try XCTUnwrap(CaptureOverlayShortcutSettings.applicationCaptureShortcut)
     XCTAssertEqual(shortcut.keyCode, UInt32(kVK_Space))
     XCTAssertEqual(shortcut.modifiers, 0)
   }
 
-  func testSetAndReadShortcut_spaceKey_recording_roundtrips() {
+  func testSetAndReadShortcut_spaceKey_recording_roundtrips() throws {
     let shortcut = CaptureOverlayShortcut(keyCode: UInt32(kVK_Space), modifiers: 0)
     CaptureOverlayShortcutSettings.setRecordingApplicationCaptureShortcut(shortcut)
 
-    let loaded = CaptureOverlayShortcutSettings.recordingApplicationCaptureShortcut
+    let loaded = try XCTUnwrap(CaptureOverlayShortcutSettings.recordingApplicationCaptureShortcut)
     XCTAssertEqual(loaded.keyCode, UInt32(kVK_Space))
     XCTAssertEqual(loaded.modifiers, 0)
   }

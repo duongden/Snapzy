@@ -37,6 +37,7 @@ enum PreferencesKeys {
   static let recordingApplicationCaptureShortcut = "shortcuts.recording.applicationCapture"
   static let shortcutListShortcut = "shortcutListShortcut"
   static let disabledGlobalShortcuts = "shortcuts.disabledGlobalActions"
+  static let clearedGlobalShortcuts = "shortcuts.clearedGlobalActions"
   static let disabledAnnotateActionShortcuts = "shortcuts.disabledAnnotateActionShortcuts"
   static let disabledAnnotateToolShortcuts = "shortcuts.disabledAnnotateToolShortcuts"
 

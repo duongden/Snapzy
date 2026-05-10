@@ -64,8 +64,8 @@ enum ShortcutOverlayContentBuilder {
             icon: icon,
             title: title,
             subtitle: L10n.ShortcutOverlay.insideAnnotateEditor,
-            isEnabled: annotate.isActionShortcutEnabled(for: kind),
-            display: .keycaps(shortcut.displayParts)
+            isEnabled: annotate.isActionShortcutEnabled(for: kind) && shortcut != nil,
+            display: shortcut.map { .keycaps($0.displayParts) } ?? .text("-")
           )
         }
       ),
@@ -113,8 +113,8 @@ enum ShortcutOverlayContentBuilder {
       icon: icon,
       title: kind.displayName,
       subtitle: nil,
-      isEnabled: manager.isShortcutEnabled(for: kind),
-      display: .keycaps(config.displayParts)
+      isEnabled: manager.isShortcutEnabled(for: kind) && config != nil,
+      display: config.map { .keycaps($0.displayParts) } ?? .text("-")
     )
   }
 
@@ -129,8 +129,8 @@ enum ShortcutOverlayContentBuilder {
         subtitle: L10n.ShortcutOverlay.applicationCapture(
           CaptureOverlayShortcutSettings.effectiveApplicationCaptureDisplay(parentShortcut: areaConfig)
         ),
-        isEnabled: manager.isShortcutEnabled(for: .area),
-        display: .keycaps(areaConfig.displayParts)
+        isEnabled: manager.isShortcutEnabled(for: .area) && areaConfig != nil,
+        display: areaConfig.map { .keycaps($0.displayParts) } ?? .text("-")
       ),
       globalItem(kind: .areaAnnotate, icon: "pencil.and.scribble", manager: manager),
       globalItem(kind: .scrollingCapture, icon: "arrow.up.and.down", manager: manager),
@@ -151,8 +151,8 @@ enum ShortcutOverlayContentBuilder {
         subtitle: L10n.ShortcutOverlay.applicationRecording(
           CaptureOverlayShortcutSettings.effectiveRecordingApplicationCaptureDisplay(parentShortcut: recordingConfig)
         ),
-        isEnabled: manager.isShortcutEnabled(for: .recording),
-        display: .keycaps(recordingConfig.displayParts)
+        isEnabled: manager.isShortcutEnabled(for: .recording) && recordingConfig != nil,
+        display: recordingConfig.map { .keycaps($0.displayParts) } ?? .text("-")
       ),
     ]
   }

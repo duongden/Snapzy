@@ -6,6 +6,7 @@
 //
 
 import AppKit
+import Carbon.HIToolbox
 import SwiftUI
 
 /// A view that allows users to record custom keyboard shortcuts
@@ -13,10 +14,10 @@ struct ShortcutRecorderView: View {
   let label: String
   let icon: String
   let description: String
-  @Binding var shortcut: ShortcutConfig
+  @Binding var shortcut: ShortcutConfig?
   let isEnabled: Binding<Bool>?
   let validationIssue: ShortcutValidationIssue?
-  let onShortcutChanged: (ShortcutConfig) -> Bool
+  let onShortcutChanged: (ShortcutConfig?) -> Bool
 
   @State private var isRecording = false
   @State private var eventMonitor: Any?
@@ -26,10 +27,10 @@ struct ShortcutRecorderView: View {
     label: String,
     icon: String = "command",
     description: String = "",
-    shortcut: Binding<ShortcutConfig>,
+    shortcut: Binding<ShortcutConfig?>,
     isEnabled: Binding<Bool>? = nil,
     validationIssue: ShortcutValidationIssue? = nil,
-    onShortcutChanged: @escaping (ShortcutConfig) -> Bool
+    onShortcutChanged: @escaping (ShortcutConfig?) -> Bool
   ) {
     self.label = label
     self.icon = icon
@@ -67,8 +68,13 @@ struct ShortcutRecorderView: View {
             .font(.system(size: 12, weight: .medium))
             .foregroundColor(.accentColor)
             .frame(minWidth: 100)
-        } else {
+        } else if let shortcut {
           KeyCapGroupView(parts: shortcut.displayParts)
+        } else {
+          Text("-")
+            .font(.system(size: 12, weight: .medium))
+            .foregroundColor(.secondary)
+            .frame(minWidth: 40)
         }
       }
       .buttonStyle(ShortcutKeycapButtonStyle(isRecording: isRecording))
@@ -125,7 +131,14 @@ struct ShortcutRecorderView: View {
     // Add local event monitor for key events
     eventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
       // Escape cancels recording
-      if event.keyCode == 53 {
+      if event.keyCode == UInt16(kVK_Escape) {
+        stopRecording()
+        return nil
+      }
+
+      // Backspace/Delete clears only the shortcut value. The row toggle is independent.
+      if isClearShortcutEvent(event) {
+        _ = onShortcutChanged(nil)
         stopRecording()
         return nil
       }
@@ -139,6 +152,17 @@ struct ShortcutRecorderView: View {
 
       // Invalid shortcut (no modifier), keep recording
       return nil
+    }
+  }
+
+  private func isClearShortcutEvent(_ event: NSEvent) -> Bool {
+    switch Int(event.keyCode) {
+    case kVK_Delete, kVK_ForwardDelete:
+      return event.modifierFlags
+        .intersection([.command, .control, .option, .shift])
+        .isEmpty
+    default:
+      return false
     }
   }
 

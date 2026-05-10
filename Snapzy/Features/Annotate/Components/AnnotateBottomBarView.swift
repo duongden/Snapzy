@@ -340,11 +340,11 @@ struct AnnotateBottomBarView: View {
   private var annotateActionButtons: some View {
     let showCloudButton = preferencesManager.isActionEnabled(.uploadToCloud, for: .screenshot)
     let cloudUploadShortcut = annotateShortcutManager.isActionShortcutEnabled(for: .cloudUpload)
-      ? annotateShortcutManager.cloudUploadShortcut.displayString : nil
+      ? annotateShortcutManager.cloudUploadShortcut?.displayString : nil
     let togglePinShortcut = annotateShortcutManager.isActionShortcutEnabled(for: .togglePin)
-      ? annotateShortcutManager.togglePinShortcut.displayString : nil
+      ? annotateShortcutManager.togglePinShortcut?.displayString : nil
     let copyAndCloseShortcut = annotateShortcutManager.isActionShortcutEnabled(for: .copyAndClose)
-      ? annotateShortcutManager.copyAndCloseShortcut.displayString : nil
+      ? annotateShortcutManager.copyAndCloseShortcut?.displayString : nil
 
     return HStack(spacing: 12) {
       BottomBarButton(

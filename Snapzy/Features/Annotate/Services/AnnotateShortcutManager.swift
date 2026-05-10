@@ -28,9 +28,9 @@ final class AnnotateShortcutManager: ObservableObject {
   @Published private(set) var disabledToolShortcuts: Set<AnnotationToolType> = []
 
   /// Configurable action shortcuts (modifier+key combos)
-  @Published private(set) var copyAndCloseShortcut: ShortcutConfig
-  @Published private(set) var togglePinShortcut: ShortcutConfig
-  @Published private(set) var cloudUploadShortcut: ShortcutConfig
+  @Published private(set) var copyAndCloseShortcut: ShortcutConfig?
+  @Published private(set) var togglePinShortcut: ShortcutConfig?
+  @Published private(set) var cloudUploadShortcut: ShortcutConfig?
   @Published private(set) var disabledActionShortcuts: Set<AnnotateActionShortcutKind> = []
 
   /// UserDefaults key prefix
@@ -40,6 +40,7 @@ final class AnnotateShortcutManager: ObservableObject {
   private let cloudUploadKey = "annotate.action.cloudUpload"
   private let disabledToolShortcutsKey = PreferencesKeys.disabledAnnotateToolShortcuts
   private let disabledActionShortcutsKey = PreferencesKeys.disabledAnnotateActionShortcuts
+  private let explicitEmptyActionShortcutData = Data("null".utf8)
 
   /// Tools that support shortcuts (excludes mockup - internal only)
   static let configurableTools: [AnnotationToolType] = [
@@ -134,17 +135,17 @@ final class AnnotateShortcutManager: ObservableObject {
 
   // MARK: - Action Shortcut Mutation
 
-  func setCopyAndCloseShortcut(_ config: ShortcutConfig) {
+  func setCopyAndCloseShortcut(_ config: ShortcutConfig?) {
     copyAndCloseShortcut = config
     saveActionShortcut(config, forKey: copyAndCloseKey)
   }
 
-  func setTogglePinShortcut(_ config: ShortcutConfig) {
+  func setTogglePinShortcut(_ config: ShortcutConfig?) {
     togglePinShortcut = config
     saveActionShortcut(config, forKey: togglePinKey)
   }
 
-  func setCloudUploadShortcut(_ config: ShortcutConfig) {
+  func setCloudUploadShortcut(_ config: ShortcutConfig?) {
     cloudUploadShortcut = config
     saveActionShortcut(config, forKey: cloudUploadKey)
   }
@@ -153,7 +154,7 @@ final class AnnotateShortcutManager: ObservableObject {
     !disabledActionShortcuts.contains(kind)
   }
 
-  func shortcut(for kind: AnnotateActionShortcutKind) -> ShortcutConfig {
+  func shortcut(for kind: AnnotateActionShortcutKind) -> ShortcutConfig? {
     switch kind {
     case .copyAndClose:
       return copyAndCloseShortcut
@@ -179,18 +180,21 @@ final class AnnotateShortcutManager: ObservableObject {
   /// Check if an NSEvent matches the Copy & Close shortcut
   func matchesCopyAndClose(_ event: NSEvent) -> Bool {
     guard isActionShortcutEnabled(for: .copyAndClose) else { return false }
+    guard let copyAndCloseShortcut else { return false }
     return matchesShortcut(copyAndCloseShortcut, event: event)
   }
 
   /// Check if an NSEvent matches the Toggle Pin shortcut
   func matchesTogglePin(_ event: NSEvent) -> Bool {
     guard isActionShortcutEnabled(for: .togglePin) else { return false }
+    guard let togglePinShortcut else { return false }
     return matchesShortcut(togglePinShortcut, event: event)
   }
 
   /// Check if an NSEvent matches the Cloud Upload shortcut
   func matchesCloudUpload(_ event: NSEvent) -> Bool {
     guard isActionShortcutEnabled(for: .cloudUpload) else { return false }
+    guard let cloudUploadShortcut else { return false }
     return matchesShortcut(cloudUploadShortcut, event: event)
   }
 
@@ -208,9 +212,12 @@ final class AnnotateShortcutManager: ObservableObject {
   private func loadShortcuts() {
     for tool in Self.configurableTools {
       let key = keyPrefix + tool.rawValue
-      if let stored = UserDefaults.standard.string(forKey: key),
-         let char = stored.first {
-        shortcuts[tool] = char
+      if let stored = UserDefaults.standard.string(forKey: key) {
+        if let char = stored.first {
+          shortcuts[tool] = char
+        } else {
+          shortcuts.removeValue(forKey: tool)
+        }
       } else {
         // Use default if not customized
         shortcuts[tool] = tool.defaultShortcut
@@ -231,7 +238,7 @@ final class AnnotateShortcutManager: ObservableObject {
     if let shortcut = shortcuts[tool] {
       UserDefaults.standard.set(String(shortcut), forKey: key)
     } else {
-      UserDefaults.standard.removeObject(forKey: key)
+      UserDefaults.standard.set("", forKey: key)
     }
   }
 
@@ -243,19 +250,9 @@ final class AnnotateShortcutManager: ObservableObject {
   // MARK: - Action Shortcut Persistence
 
   private func loadActionShortcuts() {
-    let decoder = JSONDecoder()
-    if let data = UserDefaults.standard.data(forKey: copyAndCloseKey),
-       let config = try? decoder.decode(ShortcutConfig.self, from: data) {
-      copyAndCloseShortcut = config
-    }
-    if let data = UserDefaults.standard.data(forKey: togglePinKey),
-       let config = try? decoder.decode(ShortcutConfig.self, from: data) {
-      togglePinShortcut = config
-    }
-    if let data = UserDefaults.standard.data(forKey: cloudUploadKey),
-       let config = try? decoder.decode(ShortcutConfig.self, from: data) {
-      cloudUploadShortcut = config
-    }
+    copyAndCloseShortcut = loadActionShortcut(forKey: copyAndCloseKey, defaultValue: Self.defaultCopyAndClose)
+    togglePinShortcut = loadActionShortcut(forKey: togglePinKey, defaultValue: Self.defaultTogglePin)
+    cloudUploadShortcut = loadActionShortcut(forKey: cloudUploadKey, defaultValue: Self.defaultCloudUpload)
   }
 
   private func loadDisabledActionShortcuts() {
@@ -266,10 +263,22 @@ final class AnnotateShortcutManager: ObservableObject {
     disabledActionShortcuts = Set(rawValues.compactMap(AnnotateActionShortcutKind.init(rawValue:)))
   }
 
-  private func saveActionShortcut(_ config: ShortcutConfig, forKey key: String) {
+  private func saveActionShortcut(_ config: ShortcutConfig?, forKey key: String) {
+    guard let config else {
+      UserDefaults.standard.set(explicitEmptyActionShortcutData, forKey: key)
+      return
+    }
     if let data = try? JSONEncoder().encode(config) {
       UserDefaults.standard.set(data, forKey: key)
     }
+  }
+
+  private func loadActionShortcut(forKey key: String, defaultValue: ShortcutConfig) -> ShortcutConfig? {
+    guard let data = UserDefaults.standard.data(forKey: key) else { return defaultValue }
+    if data == explicitEmptyActionShortcutData {
+      return nil
+    }
+    return (try? JSONDecoder().decode(ShortcutConfig.self, from: data)) ?? defaultValue
   }
 
   private func saveDisabledActionShortcuts() {

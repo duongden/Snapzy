@@ -1833,7 +1833,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Click a shortcut button to record new keys. Use the row toggle to turn a shortcut off. Press Esc to cancel."
+            "value" : "Click a shortcut button to record new keys. Use Backspace/Delete while recording to clear keys. Use the row toggle to turn a shortcut off. Press Esc to cancel."
           }
         },
         "es" : {
@@ -1869,7 +1869,7 @@
         "vi" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Nhấn nút phím tắt để ghi tổ hợp mới. Dùng công tắc của hàng để tắt phím tắt. Nhấn Esc để hủy."
+            "value" : "Nhấn nút phím tắt để ghi tổ hợp mới. Dùng Backspace/Delete khi đang ghi để xóa phím. Dùng công tắc của hàng để tắt phím tắt. Nhấn Esc để hủy."
           }
         },
         "zh-Hans" : {
@@ -2158,7 +2158,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Click to record. Use Backspace while recording or the row toggle to turn a shortcut off. Esc to cancel."
+            "value" : "Click to record. Use Backspace/Delete while recording to clear keys. Use the row toggle to turn a shortcut off. Esc to cancel."
           }
         },
         "es" : {
@@ -2194,7 +2194,7 @@
         "vi" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Bấm để ghi. Dùng Backspace khi đang ghi hoặc công tắc của hàng để tắt phím tắt. Esc để hủy."
+            "value" : "Bấm để ghi. Dùng Backspace/Delete khi đang ghi để xóa phím. Dùng công tắc của hàng để tắt phím tắt. Esc để hủy."
           }
         },
         "zh-Hans" : {
