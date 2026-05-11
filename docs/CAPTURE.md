@@ -99,6 +99,72 @@ flowchart TD
 - Object cutout is macOS 14+ only. JPEG is overridden to PNG because transparency must be preserved.
 - Capture toasts, alerts, open-panel prompts, and error surfaces are localized through `L10n`.
 
+## Capture Markup (Inline Area Annotate)
+
+Capture Markup lets the user select a screen region and annotate it *before* saving — all inside a single fullscreen overlay. It bridges capture and editing into one continuous flow without opening the separate Annotate editor window.
+
+```mermaid
+flowchart TD
+    A["Trigger (menu bar, global shortcut, or snapzy://capture/area-annotate)"] --> B["ScreenCaptureViewModel.captureAreaAnnotate()"]
+    B --> C["Hide own windows (if excluded)"]
+    C --> D["FrozenAreaCaptureSession.prepare()"]
+    D --> E["InlineAreaAnnotateCoordinator.start()"]
+    E --> F["InlineAreaAnnotatePanel (fullscreen NSPanel, .screenSaver level)"]
+    F --> G["Phase 1: selecting — user drags a rect"]
+    G --> H["Phase 2: annotating — canvas + toolbar + properties + action rail"]
+    H --> I["User draws annotations"]
+    H --> J["Move/resize selection (annotations offset automatically)"]
+    I --> K["Finish: Cmd+S, Enter, or Done button"]
+    J --> K
+    K --> L["AnnotateExporter.renderFinalImage()"]
+    L --> M["ScreenCaptureManager.saveProcessedImage()"]
+    M --> N["PostCaptureActionHandler"]
+    N --> O["Quick Access / clipboard / auto-open"]
+```
+
+### Inline Overlay Shortcuts
+
+| Key | Action |
+| --- | --- |
+| `Enter` / `Return` | Finish and save |
+| `⌘S` | Finish and save |
+| `Esc` | Cancel and close |
+| `Space` (hold) | Move selection (shows open-hand cursor) |
+| `V` | Selection tool |
+| `R` | Rectangle |
+| `F` | Filled Rectangle |
+| `O` | Oval |
+| `A` | Arrow |
+| `L` | Line |
+| `T` | Text |
+| `H` | Highlighter |
+| `B` | Blur |
+| `N` | Counter |
+| `W` | Watermark |
+| `P` | Pencil |
+
+### Supported Tools
+
+The inline overlay reuses the same drawing engine as the full Annotate editor and supports: Selection, Rectangle, Filled Rectangle, Oval, Arrow, Line, Text, Highlighter, Blur, Counter, Watermark, and Pencil.
+
+Crop and Mockup are **not** available in the inline overlay (full editor only).
+
+### Interaction Details
+
+- **Move selection**: Hold `Space` and drag, or use the move handle in the toolbar.
+- **Resize selection**: Drag any of the 8 handles (corners + edges) around the selection; cursor feedback changes per edge.
+- **Quick Properties Bar**: Appears below the toolbar when a drawable tool is active. Shows context-aware controls: stroke color, fill color, text background, blur type, arrow style, watermark text/style/opacity/rotation, stroke width, font size, corner radius.
+- **Action Rail**: Side rail with Done (prominent), Cancel, and Copy-to-Clipboard.
+- **Cross-Spaces**: The overlay is an `NSPanel` at `.screenSaver` level with `canJoinAllSpaces` and `fullScreenAuxiliary`, so it works across Spaces.
+
+### Notes
+
+- The global shortcut for Capture Markup is **disabled by default**. Users must enable it in Preferences → Shortcuts. The default key when enabled is `⇧⌘7`.
+- The overlay reuses `AnnotateState`, `CanvasDrawingView`, and `AnnotateExporter` — no duplicated annotation logic.
+- Moving or resizing the selected region refreshes the underlying cropped image while **preserving existing annotations** via `replaceSourceImagePreservingAnnotations(_:annotationOffset:)`.
+- Finishing routes through the normal screenshot post-capture pipeline, so Quick Access, clipboard copy, auto-open, and history all behave identically to a standard area screenshot.
+- Keyboard handling uses both local and global `NSEvent` monitors to catch `Space`, `Enter`, `Esc`, and `Cmd+S` reliably even when the app is not frontmost.
+
 ## Scrolling Capture
 
 ```mermaid
@@ -344,6 +410,8 @@ flowchart TD
 | `Snapzy/Features/QuickAccess/Components/QuickAccessCardView.swift` | Card-level actions including screenshot, video, and GIF cloud upload |
 | `Snapzy/Features/History/HistoryWindowController.swift` | History restore routing through Quick Access |
 | `Snapzy/Features/Annotate/AnnotateManager.swift` | Annotate window lifecycle and session caching |
+| `Snapzy/Features/Annotate/InlineAreaAnnotateSession.swift` | Session state machine (selecting → annotating), key handling, finish/cancel |
+| `Snapzy/Features/Annotate/InlineAreaAnnotateWindow.swift` | Full overlay UI: selection gesture, canvas, toolbar, properties bar, action rail, resize handles |
 | `Snapzy/Features/Annotate/Services/AnnotateExporter.swift` | Final image render/export |
 | `Snapzy/Features/VideoEditor/VideoEditorManager.swift` | Video editor window lifecycle |
 | `Snapzy/Features/VideoEditor/Services/VideoEditorAutoFocusEngine.swift` | Follow Mouse / Smart Camera path reconstruction |

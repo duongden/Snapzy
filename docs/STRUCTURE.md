@@ -26,6 +26,7 @@ flowchart LR
         N["ScreenRecordingManager"]
         O["PostCaptureActionHandler"]
         P["TempCaptureManager"]
+        IA["InlineAreaAnnotateCoordinator"]
     end
 
     subgraph EditingUX["Editing + post-capture UX"]
@@ -65,8 +66,10 @@ flowchart LR
     J --> K
     G --> L
     G --> M
+    G --> IA
     G --> DI
     G --> UD
+    IA --> O
 
     M --> N
     I --> O
@@ -187,7 +190,7 @@ SnapzyUITests/
 | `Features/Capture/` | High-level screenshot, OCR, cutout, scrolling-capture, and recording entry actions |
 | `Features/Recording/` | Recording toolbar, overlays, live annotation, stop/GIF handoff |
 | `Features/QuickAccess/` | Floating post-capture stack, temp-file persistence UX, drag-to-app |
-| `Features/Annotate/` | Image editor, export, crop, blur, mockup, cutout-aware editing |
+| `Features/Annotate/` | Image editor, export, crop, blur, mockup, cutout-aware editing, inline area annotate |
 | `Features/VideoEditor/` | Trim, zoom, background, Smart Camera, GIF/video export |
 | `Features/Preferences/` | General, Capture, Quick Access, Shortcuts, Permissions, History storage/retention, Cloud, About tabs |
 | `Features/Shortcuts/` | Keyboard shortcut cheat-sheet overlay |
@@ -237,7 +240,7 @@ SnapzyUITests/
 - `ScreenCaptureViewModel` is the main entrypoint for capture actions fired from shortcuts or the status bar menu.
 - `AppStatusBarController` is the AppKit bridge for the menu bar item. It now keeps the menu accessible during active recording, renders the live recording timer from `ScreenRecordingManager`, and coordinates temporary Preferences-window exclusion for record-own-app sessions.
 - Area screenshot now freezes the active display first through `FrozenAreaCaptureSession`, then keeps one overlay session that can toggle between manual region selection and application window selection with the configurable `Application Capture` overlay key. The default key is `A`.
-- Area + inline annotate uses a separate `InlineAreaAnnotateCoordinator` overlay after the same frozen active-display snapshot. It reuses Annotate state/canvas/export services and then routes the saved image through `PostCaptureActionHandler`.
+- Area + inline annotate uses `InlineAreaAnnotateCoordinator` with `InlineAreaAnnotateSession` and `InlineAreaAnnotateWindow`. It starts after the same frozen active-display snapshot, reuses Annotate state/canvas/export services, and routes the saved image through `PostCaptureActionHandler`.
 - `AreaSelectionController` and `AreaSelectionWindow` own the cross-display overlay session, target-display keyboard ownership for screenshot sessions, and highlight rendering for both manual and application screenshot interaction modes.
 - `WindowSelectionQueryService` resolves the hovered topmost app window from CoreGraphics window lists plus `SCShareableContent`, so app-mode hover stays accurate without doing expensive live queries on every draw pass.
 - `PostCaptureActionHandler` executes Quick Access, clipboard copy, and screenshot auto-open in Annotate after files already exist.
@@ -309,7 +312,7 @@ Directory structure mirrors the app: `SnapzyTests/Services/Cloud/AWSV4SignerTest
 | Scrolling capture UX or stitching | `Services/Capture/ScrollingCapture/` |
 | Recording toolbar, overlays, GIF flow | `Features/Recording/`, `Services/Capture/ScreenRecordingManager.swift` |
 | Post-capture actions or temp-file logic | `Features/Preferences/PreferencesManager.swift`, `Services/Capture/PostCaptureActionHandler.swift`, `Services/Capture/TempCaptureManager.swift`, `Features/QuickAccess/` |
-| Annotate editor | `Features/Annotate/` |
+| Annotate editor (full + inline) | `Features/Annotate/` |
 | Video editor or Smart Camera | `Features/VideoEditor/`, `Services/Capture/RecordingMetadata.swift` |
 | Cloud upload/config transfer | `Services/Cloud/`, `Features/Preferences/Components/PreferencesCloudSettingsView.swift`, `Features/QuickAccess/Components/QuickAccessCardView.swift`, `Features/Annotate/Components/AnnotateBottomBarView.swift` |
 | Onboarding or app startup | `App/`, `Features/Splash/`, `Features/Onboarding/` |

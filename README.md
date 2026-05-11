@@ -39,7 +39,7 @@
 
 ## Features
 
-- **Screenshot**: fullscreen or selected-area capture with manual/application window mode toggle (`Application Capture`, default `A`), scrolling capture with live stitched preview, OCR text extraction, transparent object cutout capture with optional safe auto-crop, window shadow capture (macOS 14+), multi-format export (PNG/JPG/WebP), hide desktop icons/widgets, quick screenshot during recording
+- **Screenshot**: fullscreen or selected-area capture with manual/application window mode toggle (`Application Capture`, default `A`), area capture with inline annotate (annotate before saving), scrolling capture with live stitched preview, OCR text extraction, transparent object cutout capture with optional safe auto-crop, window shadow capture (macOS 14+), multi-format export (PNG/JPG/WebP), hide desktop icons/widgets, quick screenshot during recording
 - **Screen Recording**: video or GIF output, system audio + microphone, mouse click highlights, keystroke overlays, live on-screen annotations, remember last area, GIF resizing, Smart Camera metadata for Follow Mouse edits
 - **Annotation Editor**: shapes, arrows, text, watermarks, filled rectangles, blur/pixelate, counters, crop, remove background with crop-aware auto-crop support, mockup backgrounds with 3D renderer, zoom/pan (pinch + keyboard), drag-to-app, configurable tool shortcuts
 - **After Capture Settings**: per-mode action matrix for save, Quick Access, clipboard copy, and annotate plus a separate global remove-background auto-crop toggle (enabled by default)
@@ -112,7 +112,7 @@ This will remove the app from `/Applications`, delete preferences and caches, an
 | Fullscreen screenshot                                   | `⇧⌘3`    |
 | Area screenshot                                         | `⇧⌘4`    |
 | ↳ Toggle manual/app window mode (`Application Capture`) | `A`      |
-| Area screenshot + inline annotate                       | Off by default |
+| Area screenshot + inline annotate                       | `⇧⌘7` (Off by default) |
 | Scrolling screenshot                                    | `⇧⌘6`    |
 | Screen recording                                        | `⇧⌘5`    |
 | OCR text capture                                        | `⇧⌘2`    |
