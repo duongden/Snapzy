@@ -31,7 +31,7 @@ struct ShortcutConfig: Equatable, Codable {
     modifiers: UInt32(cmdKey | shiftKey)
   )
 
-  /// Suggested shortcut for area annotate. Disabled by default.
+  /// Cmd + Shift + 7
   static let defaultAreaAnnotate = ShortcutConfig(
     keyCode: UInt32(kVK_ANSI_7),
     modifiers: UInt32(cmdKey | shiftKey)
@@ -544,7 +544,6 @@ final class KeyboardShortcutManager {
   private let shortcutsEnabledKey = "shortcutsEnabled"
   private let disabledShortcutsKey = PreferencesKeys.disabledGlobalShortcuts
   private let clearedShortcutsKey = PreferencesKeys.clearedGlobalShortcuts
-  private let areaAnnotateDefaultDisabledMigrationKey = "areaAnnotateDefaultDisabledMigrationComplete"
 
   private init() {
     fullscreenShortcut = .defaultFullscreen
@@ -915,30 +914,11 @@ final class KeyboardShortcutManager {
 
   private func loadDisabledShortcuts() {
     let rawValues = UserDefaults.standard.array(forKey: disabledShortcutsKey) as? [String]
-    let migrated = Self.disabledShortcutSet(
-      from: rawValues,
-      applyingAreaAnnotateDefaultIfNeeded: !UserDefaults.standard.bool(
-        forKey: areaAnnotateDefaultDisabledMigrationKey)
-    )
-    disabledShortcuts = migrated.disabled
-
-    if migrated.didApplyAreaAnnotateDefault {
-      UserDefaults.standard.set(true, forKey: areaAnnotateDefaultDisabledMigrationKey)
-      saveDisabledShortcuts()
-    }
+    disabledShortcuts = Self.disabledShortcutSet(from: rawValues)
   }
 
-  static func disabledShortcutSet(
-    from rawValues: [String]?,
-    applyingAreaAnnotateDefaultIfNeeded shouldApplyAreaAnnotateDefault: Bool
-  ) -> (disabled: Set<GlobalShortcutKind>, didApplyAreaAnnotateDefault: Bool) {
-    var disabled = Set((rawValues ?? []).compactMap(GlobalShortcutKind.init(rawValue:)))
-    guard shouldApplyAreaAnnotateDefault else {
-      return (disabled, false)
-    }
-
-    disabled.insert(.areaAnnotate)
-    return (disabled, true)
+  static func disabledShortcutSet(from rawValues: [String]?) -> Set<GlobalShortcutKind> {
+    Set((rawValues ?? []).compactMap(GlobalShortcutKind.init(rawValue:)))
   }
 
   private func loadClearedShortcuts() {

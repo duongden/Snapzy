@@ -119,7 +119,7 @@ Lệnh này sẽ xóa ứng dụng khỏi `/Applications`, xóa preferences và 
 | Chụp toàn màn hình                                                | `⇧⌘3`    |
 | Chụp vùng                                                         | `⇧⌘4`    |
 | ↳ Chuyển chế độ chọn vùng/cửa sổ ứng dụng (`Application Capture`) | `A`      |
-| Chụp vùng + chú thích nhanh                                       | `⇧⌘7` (Tắt mặc định) |
+| Chụp vùng + chú thích nhanh                                       | `⇧⌘7`    |
 | Chụp cuộn                                                         | `⇧⌘6`    |
 | Quay màn hình                                                     | `⇧⌘5`    |
 | OCR văn bản                                                       | `⇧⌘2`    |

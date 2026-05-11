@@ -68,19 +68,14 @@ final class ShortcutCoreTests: XCTestCase {
     XCTAssertEqual(relevant, [.fullscreen, .area, .recording])
   }
 
-  func testAreaAnnotateDefaultDisabledMigration_appliesOnlyOnce() {
-    let initialMigration = KeyboardShortcutManager.disabledShortcutSet(
-      from: [],
-      applyingAreaAnnotateDefaultIfNeeded: true
-    )
-    XCTAssertTrue(initialMigration.disabled.contains(.areaAnnotate))
-    XCTAssertTrue(initialMigration.didApplyAreaAnnotateDefault)
+  func testAreaAnnotateDefaultEnabledUnlessPersistedDisabled() {
+    let freshDefaults = KeyboardShortcutManager.disabledShortcutSet(from: nil)
+    XCTAssertFalse(freshDefaults.contains(.areaAnnotate))
 
-    let afterUserEnabled = KeyboardShortcutManager.disabledShortcutSet(
-      from: [],
-      applyingAreaAnnotateDefaultIfNeeded: false
-    )
-    XCTAssertFalse(afterUserEnabled.disabled.contains(.areaAnnotate))
-    XCTAssertFalse(afterUserEnabled.didApplyAreaAnnotateDefault)
+    let persistedDefaults = KeyboardShortcutManager.disabledShortcutSet(from: [])
+    XCTAssertFalse(persistedDefaults.contains(.areaAnnotate))
+
+    let existingDisabledPreference = KeyboardShortcutManager.disabledShortcutSet(from: ["areaAnnotate"])
+    XCTAssertTrue(existingDisabledPreference.contains(.areaAnnotate))
   }
 }

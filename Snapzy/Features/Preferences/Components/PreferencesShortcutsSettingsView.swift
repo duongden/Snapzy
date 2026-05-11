@@ -547,7 +547,7 @@ struct ShortcutsSettingsView: View {
     togglePinShortcut = AnnotateShortcutManager.defaultTogglePin
     cloudUploadShortcut = AnnotateShortcutManager.defaultCloudUpload
     globalShortcutEnabled = Dictionary(
-      uniqueKeysWithValues: GlobalShortcutKind.allCases.map { ($0, $0 != .areaAnnotate) }
+      uniqueKeysWithValues: GlobalShortcutKind.allCases.map { ($0, true) }
     )
     annotateActionEnabled = Dictionary(
       uniqueKeysWithValues: AnnotateActionShortcutKind.allCases.map { ($0, true) }
@@ -573,7 +573,7 @@ struct ShortcutsSettingsView: View {
     CaptureOverlayShortcutSettings.resetRecordingApplicationCaptureShortcut()
     manager.refreshShortcutRegistration()
     for kind in GlobalShortcutKind.allCases {
-      manager.setShortcutEnabled(kind != .areaAnnotate, for: kind)
+      manager.setShortcutEnabled(true, for: kind)
     }
 
     // Reset annotation tool + action shortcuts

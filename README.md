@@ -112,7 +112,7 @@ This will remove the app from `/Applications`, delete preferences and caches, an
 | Fullscreen screenshot                                   | `⇧⌘3`    |
 | Area screenshot                                         | `⇧⌘4`    |
 | ↳ Toggle manual/app window mode (`Application Capture`) | `A`      |
-| Area screenshot + inline annotate                       | `⇧⌘7` (Off by default) |
+| Area screenshot + inline annotate                       | `⇧⌘7`    |
 | Scrolling screenshot                                    | `⇧⌘6`    |
 | Screen recording                                        | `⇧⌘5`    |
 | OCR text capture                                        | `⇧⌘2`    |
