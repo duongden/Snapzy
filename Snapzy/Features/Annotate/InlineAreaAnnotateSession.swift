@@ -23,6 +23,7 @@ final class InlineAreaAnnotateSession: ObservableObject {
 
   let state = AnnotateState()
   let screenFrame: CGRect
+  let controlInsets: InlineAreaControlInsets
   let backdropImage: NSImage
 
   private let displayID: CGDirectDisplayID
@@ -39,6 +40,7 @@ final class InlineAreaAnnotateSession: ObservableObject {
   init(
     displayID: CGDirectDisplayID,
     screenFrame: CGRect,
+    controlInsets: InlineAreaControlInsets,
     backdrop: AreaSelectionBackdrop,
     frozenSession: FrozenAreaCaptureSession,
     saveDirectory: URL,
@@ -47,6 +49,7 @@ final class InlineAreaAnnotateSession: ObservableObject {
   ) {
     self.displayID = displayID
     self.screenFrame = screenFrame
+    self.controlInsets = controlInsets
     self.backdropImage = NSImage(cgImage: backdrop.image, size: screenFrame.size)
     self.frozenSession = frozenSession
     self.saveDirectory = saveDirectory

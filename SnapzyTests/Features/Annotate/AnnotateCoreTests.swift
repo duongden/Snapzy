@@ -28,6 +28,130 @@ final class AnnotateCoreTests: XCTestCase {
     XCTAssertEqual(AnnotationCanvasEffects().cornerRadius, 0)
   }
 
+  func testInlineAreaControls_nearFullscreenSelectionUsesBottomInnerPlacement() {
+    let containerSize = CGSize(width: 1512, height: 982)
+    let rect = CGRect(origin: .zero, size: containerSize)
+
+    let placement = InlineAreaControlGeometry.placement(
+      for: rect,
+      containerSize: containerSize,
+      showsProperties: true,
+      propertiesContentWidth: 0,
+      controlInsets: .zero
+    )
+
+    let reservedHeight = InlineAreaLayout.reservedControlHeight(showsProperties: true)
+    let expectedGroupTop = containerSize.height - InlineAreaLayout.screenPadding - reservedHeight
+    XCTAssertEqual(
+      placement.toolbarCenter.y,
+      expectedGroupTop + InlineAreaLayout.toolbarHeight / 2,
+      accuracy: 0.0001
+    )
+    XCTAssertEqual(
+      placement.propertiesCenter.y + InlineAreaLayout.propertiesHeight / 2,
+      containerSize.height - InlineAreaLayout.screenPadding,
+      accuracy: 0.0001
+    )
+    XCTAssertGreaterThan(placement.toolbarCenter.y, containerSize.height / 2)
+  }
+
+  func testInlineAreaControls_respectsTopInsetWhenClampedAboveSelection() {
+    let containerSize = CGSize(width: 1512, height: 982)
+    let rect = CGRect(x: 80, y: 120, width: 1200, height: 862)
+    let controlInsets = InlineAreaControlInsets(top: 60)
+
+    let placement = InlineAreaControlGeometry.placement(
+      for: rect,
+      containerSize: containerSize,
+      showsProperties: false,
+      propertiesContentWidth: 0,
+      controlInsets: controlInsets
+    )
+
+    XCTAssertEqual(
+      placement.toolbarCenter.y - InlineAreaLayout.toolbarHeight / 2,
+      controlInsets.controlTopPadding,
+      accuracy: 0.0001
+    )
+    XCTAssertLessThanOrEqual(
+      placement.toolbarCenter.y + InlineAreaLayout.toolbarHeight / 2,
+      rect.minY + 0.0001
+    )
+  }
+
+  func testInlineAreaControls_keepsAbovePlacementWhenThereIsEnoughRoom() {
+    let containerSize = CGSize(width: 1512, height: 982)
+    let rect = CGRect(x: 120, y: 200, width: 900, height: 300)
+
+    let placement = InlineAreaControlGeometry.placement(
+      for: rect,
+      containerSize: containerSize,
+      showsProperties: false,
+      propertiesContentWidth: 0,
+      controlInsets: .zero
+    )
+
+    XCTAssertEqual(
+      placement.toolbarCenter.y,
+      rect.minY - InlineAreaLayout.selectionGap - InlineAreaLayout.toolbarHeight / 2,
+      accuracy: 0.0001
+    )
+  }
+
+  func testInlineAreaActionRail_usesLeftOutsideWhenRightOutsideUnavailable() {
+    let containerSize = CGSize(width: 400, height: 300)
+    let rect = CGRect(x: 320, y: 60, width: 64, height: 180)
+
+    let placement = InlineAreaControlGeometry.placement(
+      for: rect,
+      containerSize: containerSize,
+      showsProperties: false,
+      propertiesContentWidth: 0,
+      controlInsets: .zero
+    )
+
+    XCTAssertLessThan(
+      placement.actionRailCenter.x + InlineAreaLayout.actionRailWidth / 2,
+      rect.minX
+    )
+  }
+
+  func testInlineAreaActionRail_usesRightInnerWhenNoOutsideHorizontalRoom() {
+    let containerSize = CGSize(width: 400, height: 300)
+    let rect = CGRect(x: 0, y: 20, width: 400, height: 260)
+
+    let placement = InlineAreaControlGeometry.placement(
+      for: rect,
+      containerSize: containerSize,
+      showsProperties: false,
+      propertiesContentWidth: 0,
+      controlInsets: .zero
+    )
+
+    let maximumX = containerSize.width
+      - InlineAreaLayout.actionRailWidth / 2
+      - InlineAreaLayout.screenPadding
+    XCTAssertEqual(placement.actionRailCenter.x, maximumX, accuracy: 0.0001)
+    XCTAssertGreaterThan(placement.actionRailCenter.x, rect.midX)
+    XCTAssertLessThanOrEqual(
+      placement.actionRailCenter.x + InlineAreaLayout.actionRailWidth / 2,
+      rect.maxX + 0.0001
+    )
+  }
+
+  func testInlineAreaControlInsetsPreferVisibleFrameAndSafeArea() {
+    let insets = InlineAreaControlInsets(
+      screenFrame: CGRect(x: 0, y: 0, width: 1512, height: 982),
+      visibleFrame: CGRect(x: 40, y: 50, width: 1432, height: 900),
+      safeAreaInsets: NSEdgeInsets(top: 70, left: 12, bottom: 10, right: 24)
+    )
+
+    XCTAssertEqual(insets.top, 70)
+    XCTAssertEqual(insets.leading, 40)
+    XCTAssertEqual(insets.bottom, 50)
+    XCTAssertEqual(insets.trailing, 40)
+  }
+
   @MainActor
   func testAnnotateState_undoAfterNewTextCreationRemovesTextAnnotation() {
     let state = makeAnnotateState()

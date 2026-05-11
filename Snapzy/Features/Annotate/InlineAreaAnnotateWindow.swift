@@ -26,6 +26,7 @@ final class InlineAreaAnnotateCoordinator {
     let session = InlineAreaAnnotateSession(
       displayID: displayID,
       screenFrame: screen.frame,
+      controlInsets: InlineAreaControlInsets(screen: screen),
       backdrop: backdrop,
       frozenSession: frozenSession,
       saveDirectory: saveDirectory,
@@ -138,8 +139,7 @@ private struct InlineAreaAnnotateRootView: View {
           }
         }
       }
-      .contentShape(Rectangle())
-      .gesture(selectionGesture, including: session.phase == .selecting ? .all : .none)
+      .inlineAreaSelectionGesture(selectionGesture, isEnabled: session.phase == .selecting)
     }
     .ignoresSafeArea()
   }
@@ -236,7 +236,8 @@ private struct InlineAreaAnnotateRootView: View {
       for: rect,
       containerSize: containerSize,
       showsProperties: session.state.showsQuickPropertiesBar,
-      propertiesContentWidth: propertiesContentWidth
+      propertiesContentWidth: propertiesContentWidth,
+      controlInsets: session.controlInsets
     )
 
     InlineAreaControlDeck(
@@ -403,232 +404,20 @@ private struct InlineAreaAnnotateRootView: View {
       .position(x: rect.midX, y: rect.midY)
   }
 
-  private func controlDeckWidth(for containerSize: CGSize) -> CGFloat {
-    min(664, availableControlWidth(for: containerSize))
-  }
-
-  private func propertiesBarWidth(
-    for containerSize: CGSize,
-    toolbarWidth: CGFloat,
-    showsProperties: Bool,
-    contentWidth: CGFloat
-  ) -> CGFloat {
-    let availableWidth = availableControlWidth(for: containerSize)
-    guard showsProperties else {
-      return min(toolbarWidth, availableWidth)
-    }
-
-    let measuredContentWidth = contentWidth + InlineAreaLayout.controlPanelOuterHorizontalInset
-    let measuredWidth = contentWidth > 0 ? measuredContentWidth : toolbarWidth
-    return min(availableWidth, max(toolbarWidth, measuredWidth))
-  }
-
-  private func availableControlWidth(for containerSize: CGSize) -> CGFloat {
-    max(0, containerSize.width - InlineAreaLayout.screenPadding * 2)
-  }
-
-  private func clampedControlCenterX(
-    _ preferredX: CGFloat,
-    width: CGFloat,
-    containerSize: CGSize
-  ) -> CGFloat {
-    let minX = width / 2 + InlineAreaLayout.screenPadding
-    let maxX = containerSize.width - width / 2 - InlineAreaLayout.screenPadding
-    guard minX <= maxX else {
-      return containerSize.width / 2
-    }
-    return clamped(preferredX, min: minX, max: maxX)
-  }
-
   private func controlPlacement(
     for rect: CGRect,
     containerSize: CGSize,
     showsProperties: Bool,
-    propertiesContentWidth: CGFloat
+    propertiesContentWidth: CGFloat,
+    controlInsets: InlineAreaControlInsets
   ) -> InlineAreaControlPlacement {
-    let toolbarWidth = controlDeckWidth(for: containerSize)
-    let propertiesWidth = propertiesBarWidth(
-      for: containerSize,
-      toolbarWidth: toolbarWidth,
+    InlineAreaControlGeometry.placement(
+      for: rect,
+      containerSize: containerSize,
       showsProperties: showsProperties,
-      contentWidth: propertiesContentWidth
+      propertiesContentWidth: propertiesContentWidth,
+      controlInsets: controlInsets
     )
-    let toolbarX = clampedControlCenterX(
-      rect.midX,
-      width: toolbarWidth,
-      containerSize: containerSize
-    )
-    let propertiesX = clampedControlCenterX(
-      rect.midX,
-      width: propertiesWidth,
-      containerSize: containerSize
-    )
-    let verticalSide = preferredVerticalSide(
-      for: rect,
-      containerSize: containerSize,
-      showsProperties: showsProperties
-    )
-    let centers = controlCenters(
-      for: rect,
-      side: verticalSide,
-      containerSize: containerSize,
-      showsProperties: showsProperties
-    )
-    let splitSides = splitControlSides(
-      for: rect,
-      preferredSide: verticalSide,
-      containerSize: containerSize,
-      showsProperties: showsProperties
-    )
-    let toolbarCenterY = splitSides == nil
-      ? centers.toolbar
-      : singleControlCenter(
-        for: rect,
-        height: InlineAreaLayout.toolbarHeight,
-        side: splitSides?.toolbar ?? verticalSide,
-        containerSize: containerSize
-      )
-    let propertiesCenterY = splitSides == nil
-      ? centers.properties
-      : singleControlCenter(
-        for: rect,
-        height: InlineAreaLayout.propertiesHeight,
-        side: splitSides?.properties ?? verticalSide,
-        containerSize: containerSize
-      )
-    let propertiesSide = splitSides?.properties ?? verticalSide
-
-    return InlineAreaControlPlacement(
-      toolbarWidth: toolbarWidth,
-      propertiesWidth: propertiesWidth,
-      toolbarCenter: CGPoint(x: toolbarX, y: toolbarCenterY),
-      propertiesCenter: CGPoint(x: propertiesX, y: propertiesCenterY),
-      propertiesPopoverEdge: propertiesSide == .above ? .bottom : .top,
-      actionRailCenter: actionRailPosition(for: rect, containerSize: containerSize)
-    )
-  }
-
-  private func preferredVerticalSide(
-    for rect: CGRect,
-    containerSize: CGSize,
-    showsProperties: Bool
-  ) -> InlineAreaVerticalSide {
-    let reservedHeight = InlineAreaLayout.reservedControlHeight(showsProperties: showsProperties)
-    let aboveSpace = rect.minY - InlineAreaLayout.screenPadding - InlineAreaLayout.selectionGap
-    let belowSpace = containerSize.height - rect.maxY - InlineAreaLayout.screenPadding - InlineAreaLayout.selectionGap
-
-    if aboveSpace >= reservedHeight {
-      return .above
-    }
-    if belowSpace >= reservedHeight {
-      return .below
-    }
-    return aboveSpace >= belowSpace ? .above : .below
-  }
-
-  private func splitControlSides(
-    for rect: CGRect,
-    preferredSide: InlineAreaVerticalSide,
-    containerSize: CGSize,
-    showsProperties: Bool
-  ) -> (toolbar: InlineAreaVerticalSide, properties: InlineAreaVerticalSide)? {
-    guard showsProperties else { return nil }
-
-    let aboveSpace = rect.minY - InlineAreaLayout.screenPadding - InlineAreaLayout.selectionGap
-    let belowSpace = containerSize.height - rect.maxY - InlineAreaLayout.screenPadding - InlineAreaLayout.selectionGap
-
-    if aboveSpace >= InlineAreaLayout.reservedControlHeight(showsProperties: true)
-        || belowSpace >= InlineAreaLayout.reservedControlHeight(showsProperties: true) {
-      return nil
-    }
-
-    switch preferredSide {
-    case .above:
-      if aboveSpace >= InlineAreaLayout.toolbarHeight,
-         belowSpace >= InlineAreaLayout.propertiesHeight {
-        return (.above, .below)
-      }
-      if aboveSpace >= InlineAreaLayout.propertiesHeight,
-         belowSpace >= InlineAreaLayout.toolbarHeight {
-        return (.below, .above)
-      }
-    case .below:
-      if belowSpace >= InlineAreaLayout.toolbarHeight,
-         aboveSpace >= InlineAreaLayout.propertiesHeight {
-        return (.below, .above)
-      }
-      if belowSpace >= InlineAreaLayout.propertiesHeight,
-         aboveSpace >= InlineAreaLayout.toolbarHeight {
-        return (.above, .below)
-      }
-    }
-
-    return nil
-  }
-
-  private func controlCenters(
-    for rect: CGRect,
-    side: InlineAreaVerticalSide,
-    containerSize: CGSize,
-    showsProperties: Bool
-  ) -> (toolbar: CGFloat, properties: CGFloat) {
-    let reservedHeight = InlineAreaLayout.reservedControlHeight(showsProperties: showsProperties)
-    let minGroupCenter = InlineAreaLayout.screenPadding + reservedHeight / 2
-    let maxGroupCenter = containerSize.height - InlineAreaLayout.screenPadding - reservedHeight / 2
-    let rawGroupCenter: CGFloat
-
-    switch side {
-    case .above:
-      rawGroupCenter = rect.minY - InlineAreaLayout.selectionGap - reservedHeight / 2
-    case .below:
-      rawGroupCenter = rect.maxY + InlineAreaLayout.selectionGap + reservedHeight / 2
-    }
-
-    let groupCenter = clamped(rawGroupCenter, min: minGroupCenter, max: maxGroupCenter)
-    let groupTop = groupCenter - reservedHeight / 2
-    let toolbarCenter = groupTop + InlineAreaLayout.toolbarHeight / 2
-    let propertiesCenter = showsProperties
-      ? groupTop + InlineAreaLayout.toolbarHeight + InlineAreaLayout.controlStackSpacing
-        + InlineAreaLayout.propertiesHeight / 2
-      : toolbarCenter
-
-    return (toolbarCenter, propertiesCenter)
-  }
-
-  private func singleControlCenter(
-    for rect: CGRect,
-    height: CGFloat,
-    side: InlineAreaVerticalSide,
-    containerSize: CGSize
-  ) -> CGFloat {
-    let rawCenter: CGFloat
-
-    switch side {
-    case .above:
-      rawCenter = rect.minY - InlineAreaLayout.selectionGap - height / 2
-    case .below:
-      rawCenter = rect.maxY + InlineAreaLayout.selectionGap + height / 2
-    }
-
-    return clamped(
-      rawCenter,
-      min: InlineAreaLayout.screenPadding + height / 2,
-      max: containerSize.height - InlineAreaLayout.screenPadding - height / 2
-    )
-  }
-
-  private func actionRailPosition(for rect: CGRect, containerSize: CGSize) -> CGPoint {
-    let rightX = rect.maxX + InlineAreaLayout.actionRailWidth / 2 + InlineAreaLayout.selectionGap
-    let leftX = rect.minX - InlineAreaLayout.actionRailWidth / 2 - InlineAreaLayout.selectionGap
-    let x = rightX <= containerSize.width - InlineAreaLayout.screenPadding
-      ? rightX
-      : max(leftX, InlineAreaLayout.actionRailWidth / 2 + InlineAreaLayout.screenPadding)
-    let y = clamped(
-      rect.midY,
-      min: InlineAreaLayout.actionRailHeight / 2 + InlineAreaLayout.screenPadding,
-      max: containerSize.height - InlineAreaLayout.actionRailHeight / 2 - InlineAreaLayout.screenPadding
-    )
-    return CGPoint(x: x, y: y)
   }
 
   private func clamped(_ value: CGFloat, min minValue: CGFloat, max maxValue: CGFloat) -> CGFloat {
@@ -637,7 +426,87 @@ private struct InlineAreaAnnotateRootView: View {
   }
 }
 
-private enum InlineAreaVerticalSide {
+private struct InlineAreaSelectionGestureModifier<SelectionGesture: Gesture>: ViewModifier {
+  let selectionGesture: SelectionGesture
+  let isEnabled: Bool
+
+  @ViewBuilder
+  func body(content: Content) -> some View {
+    if isEnabled {
+      content
+        .contentShape(Rectangle())
+        .gesture(selectionGesture)
+    } else {
+      content
+    }
+  }
+}
+
+private extension View {
+  func inlineAreaSelectionGesture<SelectionGesture: Gesture>(
+    _ selectionGesture: SelectionGesture,
+    isEnabled: Bool
+  ) -> some View {
+    modifier(InlineAreaSelectionGestureModifier(
+      selectionGesture: selectionGesture,
+      isEnabled: isEnabled
+    ))
+  }
+}
+
+struct InlineAreaControlInsets: Equatable {
+  var top: CGFloat
+  var leading: CGFloat
+  var bottom: CGFloat
+  var trailing: CGFloat
+
+  static let zero = InlineAreaControlInsets()
+
+  init(
+    top: CGFloat = 0,
+    leading: CGFloat = 0,
+    bottom: CGFloat = 0,
+    trailing: CGFloat = 0
+  ) {
+    self.top = max(0, top)
+    self.leading = max(0, leading)
+    self.bottom = max(0, bottom)
+    self.trailing = max(0, trailing)
+  }
+
+  init(screen: NSScreen) {
+    self.init(
+      screenFrame: screen.frame,
+      visibleFrame: screen.visibleFrame,
+      safeAreaInsets: screen.safeAreaInsets
+    )
+  }
+
+  init(
+    screenFrame: CGRect,
+    visibleFrame: CGRect,
+    safeAreaInsets: NSEdgeInsets = NSEdgeInsets(top: 0, left: 0, bottom: 0, right: 0)
+  ) {
+    let visibleTop = max(0, screenFrame.maxY - visibleFrame.maxY)
+    let visibleLeading = max(0, visibleFrame.minX - screenFrame.minX)
+    let visibleBottom = max(0, visibleFrame.minY - screenFrame.minY)
+    let visibleTrailing = max(0, screenFrame.maxX - visibleFrame.maxX)
+
+    self.init(
+      top: max(visibleTop, safeAreaInsets.top),
+      leading: max(visibleLeading, safeAreaInsets.left),
+      bottom: max(visibleBottom, safeAreaInsets.bottom),
+      trailing: max(visibleTrailing, safeAreaInsets.right)
+    )
+  }
+
+  var controlTopPadding: CGFloat { top + InlineAreaLayout.screenPadding }
+  var controlLeadingPadding: CGFloat { leading + InlineAreaLayout.screenPadding }
+  var controlBottomPadding: CGFloat { bottom + InlineAreaLayout.screenPadding }
+  var controlTrailingPadding: CGFloat { trailing + InlineAreaLayout.screenPadding }
+}
+
+enum InlineAreaVerticalSide {
   case above
   case below
 }
@@ -878,7 +747,7 @@ private struct InlineAreaResizeHandleHitTarget: View {
   }
 }
 
-private struct InlineAreaControlPlacement {
+struct InlineAreaControlPlacement {
   let toolbarWidth: CGFloat
   let propertiesWidth: CGFloat
   let toolbarCenter: CGPoint
@@ -887,7 +756,7 @@ private struct InlineAreaControlPlacement {
   let actionRailCenter: CGPoint
 }
 
-private enum InlineAreaLayout {
+enum InlineAreaLayout {
   static let toolbarHeight: CGFloat = 42
   static let propertiesHeight: CGFloat = 38
   static let controlStackSpacing: CGFloat = 6
@@ -903,6 +772,305 @@ private enum InlineAreaLayout {
       return toolbarHeight + controlStackSpacing + propertiesHeight
     }
     return toolbarHeight
+  }
+}
+
+enum InlineAreaControlGeometry {
+  static func placement(
+    for rect: CGRect,
+    containerSize: CGSize,
+    showsProperties: Bool,
+    propertiesContentWidth: CGFloat,
+    controlInsets: InlineAreaControlInsets
+  ) -> InlineAreaControlPlacement {
+    let toolbarWidth = controlDeckWidth(
+      for: containerSize,
+      controlInsets: controlInsets
+    )
+    let propertiesWidth = propertiesBarWidth(
+      for: containerSize,
+      toolbarWidth: toolbarWidth,
+      showsProperties: showsProperties,
+      contentWidth: propertiesContentWidth,
+      controlInsets: controlInsets
+    )
+    let toolbarX = clampedControlCenterX(
+      rect.midX,
+      width: toolbarWidth,
+      containerSize: containerSize,
+      controlInsets: controlInsets
+    )
+    let propertiesX = clampedControlCenterX(
+      rect.midX,
+      width: propertiesWidth,
+      containerSize: containerSize,
+      controlInsets: controlInsets
+    )
+    let verticalSide = preferredVerticalSide(
+      for: rect,
+      containerSize: containerSize,
+      showsProperties: showsProperties,
+      controlInsets: controlInsets
+    )
+    let centers = controlCenters(
+      for: rect,
+      side: verticalSide,
+      containerSize: containerSize,
+      showsProperties: showsProperties,
+      controlInsets: controlInsets
+    )
+    let splitSides = splitControlSides(
+      for: rect,
+      preferredSide: verticalSide,
+      containerSize: containerSize,
+      showsProperties: showsProperties,
+      controlInsets: controlInsets
+    )
+    let toolbarCenterY = splitSides == nil
+      ? centers.toolbar
+      : singleControlCenter(
+        for: rect,
+        height: InlineAreaLayout.toolbarHeight,
+        side: splitSides?.toolbar ?? verticalSide,
+        containerSize: containerSize,
+        controlInsets: controlInsets
+      )
+    let propertiesCenterY = splitSides == nil
+      ? centers.properties
+      : singleControlCenter(
+        for: rect,
+        height: InlineAreaLayout.propertiesHeight,
+        side: splitSides?.properties ?? verticalSide,
+        containerSize: containerSize,
+        controlInsets: controlInsets
+      )
+    let propertiesSide = splitSides?.properties ?? verticalSide
+
+    return InlineAreaControlPlacement(
+      toolbarWidth: toolbarWidth,
+      propertiesWidth: propertiesWidth,
+      toolbarCenter: CGPoint(x: toolbarX, y: toolbarCenterY),
+      propertiesCenter: CGPoint(x: propertiesX, y: propertiesCenterY),
+      propertiesPopoverEdge: propertiesSide == .above ? .bottom : .top,
+      actionRailCenter: actionRailPosition(
+        for: rect,
+        containerSize: containerSize,
+        controlInsets: controlInsets
+      )
+    )
+  }
+
+  private static func controlDeckWidth(
+    for containerSize: CGSize,
+    controlInsets: InlineAreaControlInsets
+  ) -> CGFloat {
+    min(664, availableControlWidth(for: containerSize, controlInsets: controlInsets))
+  }
+
+  private static func propertiesBarWidth(
+    for containerSize: CGSize,
+    toolbarWidth: CGFloat,
+    showsProperties: Bool,
+    contentWidth: CGFloat,
+    controlInsets: InlineAreaControlInsets
+  ) -> CGFloat {
+    let availableWidth = availableControlWidth(for: containerSize, controlInsets: controlInsets)
+    guard showsProperties else {
+      return min(toolbarWidth, availableWidth)
+    }
+
+    let measuredContentWidth = contentWidth + InlineAreaLayout.controlPanelOuterHorizontalInset
+    let measuredWidth = contentWidth > 0 ? measuredContentWidth : toolbarWidth
+    return min(availableWidth, max(toolbarWidth, measuredWidth))
+  }
+
+  private static func availableControlWidth(
+    for containerSize: CGSize,
+    controlInsets: InlineAreaControlInsets
+  ) -> CGFloat {
+    max(
+      0,
+      containerSize.width - controlInsets.controlLeadingPadding - controlInsets.controlTrailingPadding
+    )
+  }
+
+  private static func clampedControlCenterX(
+    _ preferredX: CGFloat,
+    width: CGFloat,
+    containerSize: CGSize,
+    controlInsets: InlineAreaControlInsets
+  ) -> CGFloat {
+    let minX = width / 2 + controlInsets.controlLeadingPadding
+    let maxX = containerSize.width - width / 2 - controlInsets.controlTrailingPadding
+    guard minX <= maxX else {
+      return containerSize.width / 2
+    }
+    return clamped(preferredX, min: minX, max: maxX)
+  }
+
+  private static func preferredVerticalSide(
+    for rect: CGRect,
+    containerSize: CGSize,
+    showsProperties: Bool,
+    controlInsets: InlineAreaControlInsets
+  ) -> InlineAreaVerticalSide {
+    let reservedHeight = InlineAreaLayout.reservedControlHeight(showsProperties: showsProperties)
+    let aboveSpace = spaceAbove(rect, controlInsets: controlInsets)
+    let belowSpace = spaceBelow(rect, containerSize: containerSize, controlInsets: controlInsets)
+
+    if aboveSpace >= reservedHeight {
+      return .above
+    }
+    if belowSpace >= reservedHeight {
+      return .below
+    }
+    if rect.minY <= controlInsets.controlTopPadding + InlineAreaLayout.selectionGap {
+      return .below
+    }
+    return aboveSpace >= belowSpace ? .above : .below
+  }
+
+  private static func splitControlSides(
+    for rect: CGRect,
+    preferredSide: InlineAreaVerticalSide,
+    containerSize: CGSize,
+    showsProperties: Bool,
+    controlInsets: InlineAreaControlInsets
+  ) -> (toolbar: InlineAreaVerticalSide, properties: InlineAreaVerticalSide)? {
+    guard showsProperties else { return nil }
+
+    let aboveSpace = spaceAbove(rect, controlInsets: controlInsets)
+    let belowSpace = spaceBelow(rect, containerSize: containerSize, controlInsets: controlInsets)
+
+    if aboveSpace >= InlineAreaLayout.reservedControlHeight(showsProperties: true)
+        || belowSpace >= InlineAreaLayout.reservedControlHeight(showsProperties: true) {
+      return nil
+    }
+
+    switch preferredSide {
+    case .above:
+      if aboveSpace >= InlineAreaLayout.toolbarHeight,
+         belowSpace >= InlineAreaLayout.propertiesHeight {
+        return (.above, .below)
+      }
+      if aboveSpace >= InlineAreaLayout.propertiesHeight,
+         belowSpace >= InlineAreaLayout.toolbarHeight {
+        return (.below, .above)
+      }
+    case .below:
+      if belowSpace >= InlineAreaLayout.toolbarHeight,
+         aboveSpace >= InlineAreaLayout.propertiesHeight {
+        return (.below, .above)
+      }
+      if belowSpace >= InlineAreaLayout.propertiesHeight,
+         aboveSpace >= InlineAreaLayout.toolbarHeight {
+        return (.above, .below)
+      }
+    }
+
+    return nil
+  }
+
+  private static func controlCenters(
+    for rect: CGRect,
+    side: InlineAreaVerticalSide,
+    containerSize: CGSize,
+    showsProperties: Bool,
+    controlInsets: InlineAreaControlInsets
+  ) -> (toolbar: CGFloat, properties: CGFloat) {
+    let reservedHeight = InlineAreaLayout.reservedControlHeight(showsProperties: showsProperties)
+    let minGroupCenter = controlInsets.controlTopPadding + reservedHeight / 2
+    let maxGroupCenter = containerSize.height - controlInsets.controlBottomPadding - reservedHeight / 2
+    let rawGroupCenter: CGFloat
+
+    switch side {
+    case .above:
+      rawGroupCenter = rect.minY - InlineAreaLayout.selectionGap - reservedHeight / 2
+    case .below:
+      rawGroupCenter = rect.maxY + InlineAreaLayout.selectionGap + reservedHeight / 2
+    }
+
+    let groupCenter = clamped(rawGroupCenter, min: minGroupCenter, max: maxGroupCenter)
+    let groupTop = groupCenter - reservedHeight / 2
+    let toolbarCenter = groupTop + InlineAreaLayout.toolbarHeight / 2
+    let propertiesCenter = showsProperties
+      ? groupTop + InlineAreaLayout.toolbarHeight + InlineAreaLayout.controlStackSpacing
+        + InlineAreaLayout.propertiesHeight / 2
+      : toolbarCenter
+
+    return (toolbarCenter, propertiesCenter)
+  }
+
+  private static func singleControlCenter(
+    for rect: CGRect,
+    height: CGFloat,
+    side: InlineAreaVerticalSide,
+    containerSize: CGSize,
+    controlInsets: InlineAreaControlInsets
+  ) -> CGFloat {
+    let rawCenter: CGFloat
+
+    switch side {
+    case .above:
+      rawCenter = rect.minY - InlineAreaLayout.selectionGap - height / 2
+    case .below:
+      rawCenter = rect.maxY + InlineAreaLayout.selectionGap + height / 2
+    }
+
+    return clamped(
+      rawCenter,
+      min: controlInsets.controlTopPadding + height / 2,
+      max: containerSize.height - controlInsets.controlBottomPadding - height / 2
+    )
+  }
+
+  private static func actionRailPosition(
+    for rect: CGRect,
+    containerSize: CGSize,
+    controlInsets: InlineAreaControlInsets
+  ) -> CGPoint {
+    let rightX = rect.maxX + InlineAreaLayout.actionRailWidth / 2 + InlineAreaLayout.selectionGap
+    let leftX = rect.minX - InlineAreaLayout.actionRailWidth / 2 - InlineAreaLayout.selectionGap
+    let minimumX = InlineAreaLayout.actionRailWidth / 2 + controlInsets.controlLeadingPadding
+    let maximumX = containerSize.width - InlineAreaLayout.actionRailWidth / 2 - controlInsets.controlTrailingPadding
+    let x: CGFloat
+    if rightX <= maximumX {
+      x = rightX
+    } else if leftX >= minimumX {
+      x = leftX
+    } else {
+      x = clamped(
+        rect.maxX - InlineAreaLayout.actionRailWidth / 2 - InlineAreaLayout.selectionGap,
+        min: minimumX,
+        max: maximumX
+      )
+    }
+    let y = clamped(
+      rect.midY,
+      min: InlineAreaLayout.actionRailHeight / 2 + controlInsets.controlTopPadding,
+      max: containerSize.height - InlineAreaLayout.actionRailHeight / 2 - controlInsets.controlBottomPadding
+    )
+    return CGPoint(x: x, y: y)
+  }
+
+  private static func spaceAbove(
+    _ rect: CGRect,
+    controlInsets: InlineAreaControlInsets
+  ) -> CGFloat {
+    rect.minY - controlInsets.controlTopPadding - InlineAreaLayout.selectionGap
+  }
+
+  private static func spaceBelow(
+    _ rect: CGRect,
+    containerSize: CGSize,
+    controlInsets: InlineAreaControlInsets
+  ) -> CGFloat {
+    containerSize.height - rect.maxY - controlInsets.controlBottomPadding - InlineAreaLayout.selectionGap
+  }
+
+  private static func clamped(_ value: CGFloat, min minValue: CGFloat, max maxValue: CGFloat) -> CGFloat {
+    guard minValue <= maxValue else { return value }
+    return min(max(value, minValue), maxValue)
   }
 }
 
