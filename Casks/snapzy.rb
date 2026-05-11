@@ -1,6 +1,6 @@
 cask "snapzy" do
-  version "1.14.1"
-  sha256 "d30edb2a2c0d909f99fe7a1c1ede1ceb753aaaaf3df8fd7e0734192d9cb89860"
+  version "1.14.2"
+  sha256 "88a5aa1d05bec2b0a5f4eba08051dda89052027faf7c444dd78f6088bb4c4049"
 
   url "https://github.com/duongductrong/Snapzy/releases/download/v#{version}/Snapzy-v#{version}.dmg"
   name "Snapzy"
