@@ -49,6 +49,7 @@ enum PreferencesKeys {
   static let scrollingCaptureShowHints = "scrollingCapture.showHints"
   static let backgroundCutoutAutoCropEnabled = "backgroundCutout.autoCropEnabled"
   static let annotateCanvasPresets = "annotate.canvasPresets.v1"
+  static let annotateDefaultCanvasPresetId = "annotate.defaultCanvasPresetId.v1"
   static let ocrSuccessNotificationEnabled = "ocr.successNotificationEnabled"
 
   // Floating Screenshot (Quick Access)

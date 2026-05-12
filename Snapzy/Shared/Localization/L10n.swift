@@ -3672,6 +3672,16 @@ enum L10n {
       defaultValue: "Delete preset",
       comment: "Tooltip for deleting an annotate preset"
     )
+    static let setDefaultPresetHelp = string(
+      "annotate.set-default-preset-help",
+      defaultValue: "Use as default preset",
+      comment: "Tooltip for setting an annotate preset as the default"
+    )
+    static let clearDefaultPresetHelp = string(
+      "annotate.clear-default-preset-help",
+      defaultValue: "Clear default preset",
+      comment: "Tooltip for clearing the default annotate preset"
+    )
     static let updatePreset = string(
       "annotate.update-preset",
       defaultValue: "Update preset",

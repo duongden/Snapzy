@@ -85,7 +85,7 @@ final class DragHandleNSView: NSView {
     updateState(state)
 
     let preparedFallbackFileURL = fallbackFileURLForDragStart()
-    let canUseSourceFileURL = state.sourceURL != nil && !state.hasUnsavedChanges
+    let canUseSourceFileURL = state.sourceURL != nil && !state.requiresRenderedOutputForSharing
     guard canUseSourceFileURL || preparedFallbackFileURL != nil else {
       state.setDragToAppPreparationState(.preparing)
       scheduleFallbackPreparationIfNeeded()
@@ -277,7 +277,7 @@ final class AnnotateDragFilePromiseProvider: NSFilePromiseProvider {
     // Also advertise as a file URL so non-promise apps can accept the drag.
     // Dirty source-backed edits must use the rendered fallback file; exposing
     // sourceURL here would let apps read stale pixels from disk.
-    let canUseSourceFileURL = annotateState?.sourceURL != nil && annotateState?.hasUnsavedChanges != true
+    let canUseSourceFileURL = annotateState?.sourceURL != nil && annotateState?.requiresRenderedOutputForSharing != true
     if fallbackFileURL != nil || canUseSourceFileURL {
       types.append(.fileURL)
     }
@@ -301,7 +301,7 @@ final class AnnotateDragFilePromiseProvider: NSFilePromiseProvider {
       if let fallbackFileURL {
         return (fallbackFileURL as NSURL).pasteboardPropertyList(forType: type)
       }
-      guard annotateState?.hasUnsavedChanges != true else { return nil }
+      guard annotateState?.requiresRenderedOutputForSharing != true else { return nil }
       let url = annotateState?.sourceURL
       return (url as NSURL?)?.pasteboardPropertyList(forType: type)
     }
@@ -327,7 +327,7 @@ extension DragHandleNSView {
   }
 
   private func fallbackFileURLForDragStart() -> URL? {
-    guard state.sourceURL == nil || state.hasUnsavedChanges else {
+    guard state.sourceURL == nil || state.requiresRenderedOutputForSharing else {
       return nil
     }
 
@@ -354,7 +354,7 @@ extension DragHandleNSView {
       return
     }
 
-    guard state.sourceURL == nil || state.hasUnsavedChanges else {
+    guard state.sourceURL == nil || state.requiresRenderedOutputForSharing else {
       cleanupGeneratedFallbackFileIfNeeded()
       state.setDragToAppPreparationState(.ready)
       return

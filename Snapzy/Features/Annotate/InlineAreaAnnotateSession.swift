@@ -21,7 +21,7 @@ final class InlineAreaAnnotateSession: ObservableObject {
   @Published var selectionRect: CGRect?
   @Published var isMoveModifierActive = false
 
-  let state = AnnotateState()
+  let state = AnnotateState(appliesDefaultCanvasPresetOnNewImages: false)
   let screenFrame: CGRect
   let controlInsets: InlineAreaControlInsets
   let backdropImage: NSImage

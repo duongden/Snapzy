@@ -100,7 +100,7 @@ struct AnnotateBottomBarView: View {
     .onReceive(NotificationCenter.default.publisher(for: .annotateCloudUpload)) { _ in
       // ⌘U shortcut: trigger cloud upload (with overwrite confirmation if needed)
       let showCloudButton = preferencesManager.isActionEnabled(.uploadToCloud, for: .screenshot)
-      let needsReUpload = state.hasUnsavedChanges || state.isCloudStale
+      let needsReUpload = state.requiresRenderedOutputForSharing || state.isCloudStale
       let alreadyUploaded = state.cloudURL != nil && !needsReUpload
       guard showCloudButton, !isCloudUploading, !alreadyUploaded else { return }
       if state.cloudKey != nil && needsReUpload {
@@ -360,8 +360,8 @@ struct AnnotateBottomBarView: View {
 
       // Cloud upload button
       if showCloudButton {
-        // needsReUpload: true when image changed in current session OR was changed since last upload
-        let needsReUpload = state.hasUnsavedChanges || state.isCloudStale
+        // needsReUpload: true when output changed in current session OR was changed since last upload
+        let needsReUpload = state.requiresRenderedOutputForSharing || state.isCloudStale
         let alreadyUploaded = state.cloudURL != nil && !needsReUpload
         BottomBarButton(
           icon: alreadyUploaded ? "checkmark.icloud" : "icloud.and.arrow.up",

@@ -37,7 +37,8 @@ final class AnnotateState: ObservableObject {
   private static let importedImageCountWarningThreshold: Int = 8
   private static let importedImagePixelBudgetWarningThreshold: Int64 = 40_000_000
   private static let canvasPresetLimit: Int = 20
-  private let canvasPresetStore = AnnotateCanvasPresetStore.shared
+  private let canvasPresetStore: AnnotateCanvasPresetStore
+  private let appliesDefaultCanvasPresetOnNewImages: Bool
   private var suppressCanvasEffectChangeTracking = false
 
   // MARK: - Source Image
@@ -389,6 +390,8 @@ final class AnnotateState: ObservableObject {
   @Published private(set) var canvasPresets: [AnnotateCanvasPreset] = []
   @Published var selectedCanvasPresetId: UUID?
   @Published private(set) var isSelectedCanvasPresetDirty: Bool = false
+  @Published private(set) var defaultCanvasPresetId: UUID?
+  @Published private(set) var isDefaultCanvasPresetAutoApplied = false
 
   enum CanvasPresetMutationResult {
     case success
@@ -403,6 +406,11 @@ final class AnnotateState: ObservableObject {
     return canvasPresets.first(where: { $0.id == selectedCanvasPresetId })
   }
 
+  var defaultCanvasPreset: AnnotateCanvasPreset? {
+    guard let defaultCanvasPresetId else { return nil }
+    return canvasPresets.first(where: { $0.id == defaultCanvasPresetId })
+  }
+
   var canUpdateSelectedCanvasPreset: Bool {
     selectedCanvasPresetId != nil && isSelectedCanvasPresetDirty
   }
@@ -413,6 +421,10 @@ final class AnnotateState: ObservableObject {
 
   var isCanvasPresetLimitReached: Bool {
     canvasPresets.count >= Self.canvasPresetLimit
+  }
+
+  var requiresRenderedOutputForSharing: Bool {
+    hasUnsavedChanges || isDefaultCanvasPresetAutoApplied
   }
 
   var nextSuggestedCanvasPresetName: String {
@@ -459,6 +471,7 @@ final class AnnotateState: ObservableObject {
       preferredSelectedCanvasPresetId: preferredSelectedCanvasPresetId,
       preferredPresetDirtyState: preferredPresetDirtyState
     )
+    isDefaultCanvasPresetAutoApplied = false
 
     previewPadding = nil
     previewInset = nil
@@ -468,11 +481,35 @@ final class AnnotateState: ObservableObject {
 
   func loadCanvasPresets() {
     canvasPresets = canvasPresetStore.loadPresets()
+    defaultCanvasPresetId = canvasPresetStore.loadDefaultPresetId(validating: canvasPresets)
     if let selectedCanvasPresetId,
        canvasPresets.contains(where: { $0.id == selectedCanvasPresetId }) == false {
       self.selectedCanvasPresetId = nil
     }
     recomputeCanvasPresetDirtyState()
+  }
+
+  func isDefaultCanvasPreset(_ preset: AnnotateCanvasPreset) -> Bool {
+    defaultCanvasPresetId == preset.id
+  }
+
+  func toggleDefaultCanvasPreset(id: UUID) {
+    if defaultCanvasPresetId == id {
+      clearDefaultCanvasPreset()
+    } else {
+      setDefaultCanvasPreset(id: id)
+    }
+  }
+
+  func setDefaultCanvasPreset(id: UUID) {
+    guard canvasPresets.contains(where: { $0.id == id }) else { return }
+    defaultCanvasPresetId = id
+    canvasPresetStore.saveDefaultPresetId(id)
+  }
+
+  func clearDefaultCanvasPreset() {
+    defaultCanvasPresetId = nil
+    canvasPresetStore.clearDefaultPresetId()
   }
 
   func resetCanvasEffectsToNone() {
@@ -488,6 +525,7 @@ final class AnnotateState: ObservableObject {
     }
     selectedCanvasPresetId = nil
     isSelectedCanvasPresetDirty = false
+    isDefaultCanvasPresetAutoApplied = false
 
     if let beforePayload,
        let afterPayload = currentCanvasPresetPayload(),
@@ -496,7 +534,7 @@ final class AnnotateState: ObservableObject {
     }
   }
 
-  func applyCanvasPreset(_ preset: AnnotateCanvasPreset) {
+  func applyCanvasPreset(_ preset: AnnotateCanvasPreset, marksUnsaved: Bool = true) {
     let beforePayload = currentCanvasPresetPayload()
     withCanvasEffectChangeTrackingSuspended {
       backgroundStyle = preset.payload.backgroundStyle.toBackgroundStyle()
@@ -510,9 +548,21 @@ final class AnnotateState: ObservableObject {
     selectedCanvasPresetId = preset.id
     isSelectedCanvasPresetDirty = false
 
-    if let beforePayload,
-       let afterPayload = currentCanvasPresetPayload(),
-       beforePayload.approximatelyEquals(afterPayload) == false {
+    let afterPayload = currentCanvasPresetPayload()
+    let didChange: Bool
+    if let beforePayload, let afterPayload {
+      didChange = beforePayload.approximatelyEquals(afterPayload) == false
+    } else {
+      didChange = beforePayload != nil || afterPayload != nil
+    }
+
+    if marksUnsaved && didChange {
+      isDefaultCanvasPresetAutoApplied = false
+    } else if !marksUnsaved {
+      isDefaultCanvasPresetAutoApplied = didChange
+    }
+
+    if marksUnsaved && didChange {
       hasUnsavedChanges = true
     }
   }
@@ -587,6 +637,11 @@ final class AnnotateState: ObservableObject {
     } else {
       recomputeCanvasPresetDirtyState()
     }
+
+    if defaultCanvasPresetId == id {
+      clearDefaultCanvasPreset()
+    }
+
     persistCanvasPresets()
     return true
   }
@@ -608,6 +663,7 @@ final class AnnotateState: ObservableObject {
   private func handleCanvasEffectDidChange() {
     recomputeCanvasPresetDirtyState()
     guard !suppressCanvasEffectChangeTracking else { return }
+    isDefaultCanvasPresetAutoApplied = false
     hasUnsavedChanges = true
   }
 
@@ -693,6 +749,12 @@ final class AnnotateState: ObservableObject {
 
   private func persistCanvasPresets() {
     canvasPresetStore.savePresets(canvasPresets)
+  }
+
+  private func applyDefaultCanvasPresetForNewImageIfNeeded() {
+    guard appliesDefaultCanvasPresetOnNewImages,
+          let defaultCanvasPreset else { return }
+    applyCanvasPreset(defaultCanvasPreset, marksUnsaved: false)
   }
 
   // MARK: - Preview Values (for smooth slider dragging)
@@ -908,7 +970,18 @@ final class AnnotateState: ObservableObject {
   private var redoStack: [AnnotationSnapshot] = []
   private var textEditingUndoTransaction: TextEditingUndoTransaction?
 
-  init(image: NSImage, url: URL, quickAccessItemId: UUID? = nil, cloudURL: URL? = nil, cloudKey: String? = nil, isCloudStale: Bool = false) {
+  init(
+    image: NSImage,
+    url: URL,
+    quickAccessItemId: UUID? = nil,
+    cloudURL: URL? = nil,
+    cloudKey: String? = nil,
+    isCloudStale: Bool = false,
+    canvasPresetStore: AnnotateCanvasPresetStore? = nil,
+    appliesDefaultCanvasPresetOnNewImages: Bool = true
+  ) {
+    self.canvasPresetStore = canvasPresetStore ?? AnnotateCanvasPresetStore.shared
+    self.appliesDefaultCanvasPresetOnNewImages = appliesDefaultCanvasPresetOnNewImages
     self.sourceImage = image
     self.sourceURL = url
     self.quickAccessItemId = quickAccessItemId
@@ -917,10 +990,16 @@ final class AnnotateState: ObservableObject {
     self.isCloudStale = isCloudStale
     self.dragToAppPreparationState = .ready
     loadCanvasPresets()
+    applyDefaultCanvasPresetForNewImageIfNeeded()
   }
 
   /// Empty initializer for drag-drop workflow
-  init() {
+  init(
+    canvasPresetStore: AnnotateCanvasPresetStore? = nil,
+    appliesDefaultCanvasPresetOnNewImages: Bool = true
+  ) {
+    self.canvasPresetStore = canvasPresetStore ?? AnnotateCanvasPresetStore.shared
+    self.appliesDefaultCanvasPresetOnNewImages = appliesDefaultCanvasPresetOnNewImages
     self.sourceImage = nil
     self.sourceURL = nil
     self.quickAccessItemId = nil
@@ -1114,6 +1193,7 @@ final class AnnotateState: ObservableObject {
   }
 
   private func resetCanvasForNewBaseImage(image: NSImage, url: URL?) {
+    let shouldApplyDefaultPreset = !hasImage
     resetBackgroundCutoutState(markUnsaved: false)
     sourceImage = image
     sourceURL = url
@@ -1137,9 +1217,14 @@ final class AnnotateState: ObservableObject {
     isCropActive = false
     editorMode = .annotate
     hasUnsavedChanges = false
+    isDefaultCanvasPresetAutoApplied = false
     importWarningMessage = nil
     lastImportWarningSignature = nil
     dragToAppPreparationState = url == nil ? .preparing : .ready
+
+    if shouldApplyDefaultPreset {
+      applyDefaultCanvasPresetForNewImageIfNeeded()
+    }
   }
 
   // MARK: - Background Cutout
@@ -1682,6 +1767,7 @@ final class AnnotateState: ObservableObject {
   /// Reset unsaved changes flag after successful save
   func markAsSaved() {
     hasUnsavedChanges = false
+    isDefaultCanvasPresetAutoApplied = false
   }
 
   /// Cancel crop and reset

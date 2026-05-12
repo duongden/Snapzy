@@ -15,12 +15,23 @@ final class AnnotateCoreTests: XCTestCase {
   // Keep AnnotateState alive for the test process; XCTest scope cleanup can
   // crash while deinitializing this MainActor app-level ObservableObject.
   @MainActor private static var retainedAnnotateStates: [AnnotateState] = []
+  @MainActor private static var retainedCanvasPresetStores: [AnnotateCanvasPresetStore] = []
+  @MainActor private static var retainedUserDefaults: [UserDefaults] = []
 
   @MainActor
   private func makeAnnotateState() -> AnnotateState {
     let state = AnnotateState()
     Self.retainedAnnotateStates.append(state)
     return state
+  }
+
+  @MainActor
+  private func makeCanvasPresetStore() -> (AnnotateCanvasPresetStore, UserDefaults) {
+    let defaults = UserDefaultsFactory.make()
+    let store = AnnotateCanvasPresetStore(defaults: defaults)
+    Self.retainedUserDefaults.append(defaults)
+    Self.retainedCanvasPresetStores.append(store)
+    return (store, defaults)
   }
 
   func testAnnotateCanvasDefaultsUseNoCornerRadius() {
@@ -590,6 +601,107 @@ final class AnnotateCoreTests: XCTestCase {
 
     XCTAssertTrue(first.approximatelyEquals(close))
     XCTAssertFalse(first.approximatelyEquals(different))
+  }
+
+  @MainActor
+  func testAnnotateCanvasPresetStoreClearsInvalidDefaultPreset() {
+    let (store, defaults) = makeCanvasPresetStore()
+    let preset = AnnotateCanvasPreset(
+      name: "Share",
+      payload: AnnotateCanvasPresetPayload(
+        backgroundStyle: CodableBackgroundStyle(from: .gradient(.bluePurple))!,
+        padding: 40,
+        shadowIntensity: 0.3,
+        cornerRadius: 12
+      )
+    )
+
+    store.savePresets([preset])
+    store.saveDefaultPresetId(preset.id)
+    XCTAssertEqual(store.loadDefaultPresetId(validating: [preset]), preset.id)
+
+    store.savePresets([])
+
+    XCTAssertNil(store.loadDefaultPresetId(validating: []))
+    XCTAssertNil(defaults.string(forKey: PreferencesKeys.annotateDefaultCanvasPresetId))
+  }
+
+  @MainActor
+  func testAnnotateCanvasPresetStoreClearsMalformedDefaultPresetId() {
+    let (store, defaults) = makeCanvasPresetStore()
+    defaults.set("not-a-uuid", forKey: PreferencesKeys.annotateDefaultCanvasPresetId)
+
+    XCTAssertNil(store.loadDefaultPresetId(validating: []))
+    XCTAssertNil(defaults.string(forKey: PreferencesKeys.annotateDefaultCanvasPresetId))
+  }
+
+  @MainActor
+  func testAnnotateStateAppliesDefaultCanvasPresetToNewImageWithoutDirtyFlag() {
+    let (store, _) = makeCanvasPresetStore()
+    let preset = AnnotateCanvasPreset(
+      name: "Default Share",
+      payload: AnnotateCanvasPresetPayload(
+        backgroundStyle: CodableBackgroundStyle(from: .gradient(.orangeRed))!,
+        padding: 48,
+        shadowIntensity: 0.35,
+        cornerRadius: 16
+      )
+    )
+    store.savePresets([preset])
+    store.saveDefaultPresetId(preset.id)
+
+    let state = AnnotateState(
+      image: NSImage(size: NSSize(width: 20, height: 20)),
+      url: URL(fileURLWithPath: "/tmp/snapzy-default-preset.png"),
+      canvasPresetStore: store
+    )
+    Self.retainedAnnotateStates.append(state)
+
+    XCTAssertEqual(state.defaultCanvasPresetId, preset.id)
+    XCTAssertEqual(state.selectedCanvasPresetId, preset.id)
+    XCTAssertEqual(state.backgroundStyle, .gradient(.orangeRed))
+    XCTAssertEqual(state.padding, 48)
+    XCTAssertEqual(state.shadowIntensity, 0.35)
+    XCTAssertEqual(state.cornerRadius, 16)
+    XCTAssertFalse(state.hasUnsavedChanges)
+    XCTAssertTrue(state.isDefaultCanvasPresetAutoApplied)
+    XCTAssertTrue(state.requiresRenderedOutputForSharing)
+
+    state.applyCanvasPreset(preset)
+
+    XCTAssertFalse(state.hasUnsavedChanges)
+    XCTAssertTrue(state.isDefaultCanvasPresetAutoApplied)
+    XCTAssertTrue(state.requiresRenderedOutputForSharing)
+  }
+
+  @MainActor
+  func testAnnotateStateCanOptOutOfDefaultCanvasPresetApplication() {
+    let (store, _) = makeCanvasPresetStore()
+    let preset = AnnotateCanvasPreset(
+      name: "Default Share",
+      payload: AnnotateCanvasPresetPayload(
+        backgroundStyle: CodableBackgroundStyle(from: .gradient(.orangeRed))!,
+        padding: 48,
+        shadowIntensity: 0.35,
+        cornerRadius: 16
+      )
+    )
+    store.savePresets([preset])
+    store.saveDefaultPresetId(preset.id)
+
+    let state = AnnotateState(
+      image: NSImage(size: NSSize(width: 20, height: 20)),
+      url: URL(fileURLWithPath: "/tmp/snapzy-default-preset.png"),
+      canvasPresetStore: store,
+      appliesDefaultCanvasPresetOnNewImages: false
+    )
+    Self.retainedAnnotateStates.append(state)
+
+    XCTAssertEqual(state.defaultCanvasPresetId, preset.id)
+    XCTAssertNil(state.selectedCanvasPresetId)
+    XCTAssertEqual(state.backgroundStyle, .none)
+    XCTAssertFalse(state.isDefaultCanvasPresetAutoApplied)
+    XCTAssertFalse(state.requiresRenderedOutputForSharing)
   }
 
   func testCropAspectRatioNumericValues() {

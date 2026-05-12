@@ -21,6 +21,7 @@ private struct AnnotateSidebarSnapshot: Equatable {
   let canvasPresets: [AnnotateCanvasPreset]
   let selectedCanvasPresetId: UUID?
   let isSelectedCanvasPresetDirty: Bool
+  let defaultCanvasPresetId: UUID?
 
   init(state: AnnotateState) {
     editorMode = state.editorMode
@@ -35,6 +36,7 @@ private struct AnnotateSidebarSnapshot: Equatable {
     canvasPresets = state.canvasPresets
     selectedCanvasPresetId = state.selectedCanvasPresetId
     isSelectedCanvasPresetDirty = state.isSelectedCanvasPresetDirty
+    defaultCanvasPresetId = state.defaultCanvasPresetId
   }
 }
 
@@ -238,6 +240,21 @@ struct AnnotateSidebarView: View, Equatable {
         .contentShape(Rectangle())
       }
       .buttonStyle(.plain)
+
+      Button {
+        state.toggleDefaultCanvasPreset(id: preset.id)
+      } label: {
+        Image(systemName: state.isDefaultCanvasPreset(preset) ? "star.fill" : "star")
+          .font(.system(size: 11, weight: .semibold))
+          .foregroundColor(state.isDefaultCanvasPreset(preset) ? .accentColor : SidebarColors.labelSecondary)
+          .frame(width: 18, height: 18)
+      }
+      .buttonStyle(.plain)
+      .help(
+        state.isDefaultCanvasPreset(preset)
+          ? L10n.AnnotateUI.clearDefaultPresetHelp
+          : L10n.AnnotateUI.setDefaultPresetHelp
+      )
 
       Button {
         handleDeletePreset(preset)

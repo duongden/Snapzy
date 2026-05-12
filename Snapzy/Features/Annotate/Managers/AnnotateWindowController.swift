@@ -34,7 +34,15 @@ final class AnnotateWindowController: NSWindowController, NSWindowDelegate {
         .flatMap({ img in Self.applyRetinaScaling(to: img) })
         ?? item.thumbnail
       self.originalImageData = sessionData.originalImageData
-      self.state = AnnotateState(image: image, url: item.url, quickAccessItemId: item.id, cloudURL: item.cloudURL, cloudKey: item.cloudKey, isCloudStale: item.isCloudStale)
+      self.state = AnnotateState(
+        image: image,
+        url: item.url,
+        quickAccessItemId: item.id,
+        cloudURL: item.cloudURL,
+        cloudKey: item.cloudKey,
+        isCloudStale: item.isCloudStale,
+        appliesDefaultCanvasPresetOnNewImages: false
+      )
       self.state.restoreEmbeddedImageAssets(from: sessionData.embeddedImageAssetsData)
       self.state.annotations = sessionData.annotations
       self.state.applyCanvasEffects(
@@ -247,6 +255,10 @@ final class AnnotateWindowController: NSWindowController, NSWindowDelegate {
     sourceFileAccess = fileAccessManager.beginAccessingURL(url)
   }
 
+  private var requiresCloudOverwriteConfirmation: Bool {
+    state.cloudURL != nil && (state.requiresRenderedOutputForSharing || state.isCloudStale)
+  }
+
   // MARK: - NSWindowDelegate
 
   func windowShouldClose(_ sender: NSWindow) -> Bool {
@@ -285,8 +297,8 @@ final class AnnotateWindowController: NSWindowController, NSWindowDelegate {
   }
 
   private func performSaveAndClose() {
-    // Cloud gate: if previously uploaded, require overwrite confirmation
-    if state.cloudURL != nil && state.hasUnsavedChanges {
+    // Cloud gate: if the rendered output differs from the uploaded file, require overwrite confirmation.
+    if requiresCloudOverwriteConfirmation {
       showCloudOverwriteAlert { [weak self] in
         self?.performCloudReUploadAndClose()
       }
@@ -442,7 +454,7 @@ final class AnnotateWindowController: NSWindowController, NSWindowDelegate {
   }
 
   private func commitDragSuccessChangesIfNeeded() {
-    guard state.hasUnsavedChanges else {
+    guard state.requiresRenderedOutputForSharing else {
       state.markAsSaved()
       return
     }
@@ -534,8 +546,8 @@ final class AnnotateWindowController: NSWindowController, NSWindowDelegate {
   private func performSave() {
     guard state.hasImage else { return }
 
-    // Cloud gate: if previously uploaded, require overwrite confirmation
-    if state.cloudURL != nil && state.hasUnsavedChanges {
+    // Cloud gate: if the rendered output differs from the uploaded file, require overwrite confirmation.
+    if requiresCloudOverwriteConfirmation {
       showCloudOverwriteAlert { [weak self] in
         self?.performCloudReUploadAndClose()
       }
@@ -633,12 +645,12 @@ final class AnnotateWindowController: NSWindowController, NSWindowDelegate {
   }
 
   /// Copy = render once, copy to clipboard, update thumbnail, close, save in background.
-  /// If previously uploaded to cloud and has changes, gate behind overwrite confirmation.
+  /// If previously uploaded to cloud and output changed, gate behind overwrite confirmation.
   private func performCopy() {
     guard state.hasImage else { return }
 
-    // Cloud gate: if previously uploaded and has changes, require overwrite confirmation
-    if state.cloudURL != nil && state.hasUnsavedChanges {
+    // Cloud gate: if the rendered output differs from the uploaded file, require overwrite confirmation.
+    if requiresCloudOverwriteConfirmation {
       showCloudOverwriteAlert { [weak self] in
         self?.performCloudReUploadCopyAndClose()
       }
