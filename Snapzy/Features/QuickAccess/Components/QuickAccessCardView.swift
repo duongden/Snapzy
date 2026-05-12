@@ -120,6 +120,10 @@ struct QuickAccessCardView: View {
     .onTapGesture(count: 2) {
       handleDoubleClick()
     }
+    .background(
+      QuickAccessContextMenuPresenter(entries: quickAccessContextMenuEntries)
+        .frame(width: scaledWidth, height: scaledHeight)
+    )
     // Use high-priority gesture for direction detection
     .gesture(directionAwareGesture)
     .onDisappear {
@@ -135,6 +139,49 @@ struct QuickAccessCardView: View {
     if isDismissing { return 0 }
     if reduceMotion { return 1.0 }
     return 1.0 - Double(abs(swipeOffset)) / 200.0
+  }
+
+  private var captureType: CaptureType {
+    item.isVideo ? .recording : .screenshot
+  }
+
+  private var isTempFile: Bool {
+    TempCaptureManager.shared.isTempFile(item.url)
+  }
+
+  private var shouldShowSaveOrOpenAction: Bool {
+    preferencesManager.isActionEnabled(.save, for: captureType) || isTempFile
+  }
+
+  private var saveOrOpenActionTitle: String {
+    isTempFile ? L10n.Common.save : L10n.Common.open
+  }
+
+  private var editActionTitle: String {
+    item.isVideo ? L10n.QuickAccess.editVideo : L10n.AnnotateUI.modeAnnotate
+  }
+
+  private var deleteActionTitle: String {
+    isTempFile ? L10n.Common.deleteAction : L10n.Common.moveToTrash
+  }
+
+  private var alreadyUploadedToCloud: Bool {
+    item.cloudURL != nil && !item.isCloudStale
+  }
+
+  private var cloudActionTitle: String {
+    if alreadyUploadedToCloud {
+      return L10n.AnnotateUI.uploadedToCloud
+    }
+    return item.isCloudStale ? L10n.AnnotateUI.reuploadToCloud : L10n.AnnotateUI.uploadToCloud
+  }
+
+  private var cloudActionIcon: String {
+    alreadyUploadedToCloud ? "checkmark.icloud" : "icloud.and.arrow.up"
+  }
+
+  private var canPerformCardActions: Bool {
+    item.processingState == .idle && !isCloudUploading
   }
 
   // MARK: - Gestures
@@ -302,6 +349,31 @@ struct QuickAccessCardView: View {
     }
   }
 
+  private func copyItem() {
+    QuickAccessSound.copy.play(reduceMotion: reduceMotion)
+    manager.copyToClipboard(id: item.id)
+  }
+
+  private func saveOrOpenItem() {
+    QuickAccessSound.save.play(reduceMotion: reduceMotion)
+    if isTempFile {
+      manager.saveItem(id: item.id)
+    } else {
+      manager.openInFinder(id: item.id)
+    }
+  }
+
+  private func dismissItem() {
+    isDismissing = true
+    QuickAccessSound.dismiss.play(reduceMotion: reduceMotion)
+    manager.removeScreenshot(id: item.id)
+  }
+
+  private func deleteItem() {
+    isDismissing = true
+    manager.deleteItem(id: item.id)
+  }
+
   // MARK: - Subviews
 
   private func durationBadge(_ duration: String) -> some View {
@@ -324,13 +396,7 @@ struct QuickAccessCardView: View {
   }
 
   private var hoverOverlay: some View {
-    let captureType: CaptureType = item.isVideo ? .recording : .screenshot
-    let showSaveToggle = preferencesManager.isActionEnabled(.save, for: captureType)
-    let isTempFile = TempCaptureManager.shared.isTempFile(item.url)
-    // Always show save button for temp files (it's the only way to persist them)
-    let showSave = showSaveToggle || isTempFile
-
-    return ZStack {
+    ZStack {
       // Dimming overlay
       RoundedRectangle(cornerRadius: cornerRadius)
         .fill(Color.black.opacity(0.4))
@@ -338,23 +404,13 @@ struct QuickAccessCardView: View {
       // Action buttons with stagger effect
       VStack(spacing: 8) {
         // Always show Copy button for manual copy, regardless of auto-copy setting
-        staggeredButton(label: L10n.Common.copy, delay: 0) {
-          QuickAccessSound.copy.play(reduceMotion: reduceMotion)
-          manager.copyToClipboard(id: item.id)
-        }
+        staggeredButton(label: L10n.Common.copy, delay: 0, action: copyItem)
 
-        if showSave {
+        if shouldShowSaveOrOpenAction {
           staggeredButton(
-            label: isTempFile ? L10n.Common.save : L10n.Common.open,
+            label: saveOrOpenActionTitle,
             delay: 1
-          ) {
-            QuickAccessSound.save.play(reduceMotion: reduceMotion)
-            if isTempFile {
-              manager.saveItem(id: item.id)
-            } else {
-              manager.openInFinder(id: item.id)
-            }
-          }
+          ) { saveOrOpenItem() }
         }
       }
     }
@@ -377,7 +433,6 @@ struct QuickAccessCardView: View {
   }
 
   private var cornerButtons: some View {
-    let captureType: CaptureType = item.isVideo ? .recording : .screenshot
     let isSaveEnabled = preferencesManager.isActionEnabled(.save, for: captureType)
 
     return ZStack {
@@ -385,11 +440,7 @@ struct QuickAccessCardView: View {
       VStack {
         HStack {
           Spacer()
-          QuickAccessIconButton(icon: "xmark") {
-            isDismissing = true
-            QuickAccessSound.dismiss.play(reduceMotion: reduceMotion)
-            manager.removeScreenshot(id: item.id)
-          }
+          QuickAccessIconButton(icon: "xmark", action: dismissItem, helpText: L10n.Common.close)
           .transition(cornerButtonTransition(delay: 2))
           .padding(6)
         }
@@ -402,11 +453,8 @@ struct QuickAccessCardView: View {
           HStack {
             QuickAccessIconButton(
               icon: "trash",
-              action: {
-                isDismissing = true
-                manager.deleteItem(id: item.id)
-              },
-              helpText: L10n.Common.deleteAction
+              action: deleteItem,
+              helpText: deleteActionTitle
             )
             .transition(cornerButtonTransition(delay: 3))
             .padding(6)
@@ -423,7 +471,7 @@ struct QuickAccessCardView: View {
           QuickAccessIconButton(
             icon: "pencil",
             action: handleDoubleClick,
-            helpText: item.isVideo ? L10n.QuickAccess.editVideo : L10n.AnnotateUI.modeAnnotate
+            helpText: editActionTitle
           )
           .transition(cornerButtonTransition(delay: 4))
           .padding(6)
@@ -433,24 +481,21 @@ struct QuickAccessCardView: View {
 
       // Cloud upload button (bottom-right)
       if shouldShowCloudButton {
-        let alreadyUploaded = item.cloudURL != nil && !item.isCloudStale
         VStack {
           Spacer()
           HStack {
             Spacer()
             QuickAccessIconButton(
-              icon: alreadyUploaded ? "checkmark.icloud" : "icloud.and.arrow.up",
+              icon: cloudActionIcon,
               action: {
                 uploadToCloud()
               },
-              helpText: alreadyUploaded
-                ? L10n.AnnotateUI.uploadedToCloud
-                : (item.isCloudStale ? L10n.AnnotateUI.reuploadToCloud : L10n.AnnotateUI.uploadToCloud)
+              helpText: cloudActionTitle
             )
             .transition(cornerButtonTransition(delay: 5))
             .padding(6)
-            .disabled(isCloudUploading || alreadyUploaded)
-            .opacity(alreadyUploaded ? 0.6 : 1)
+            .disabled(isCloudUploading || alreadyUploadedToCloud)
+            .opacity(alreadyUploadedToCloud ? 0.6 : 1)
           }
         }
       }
@@ -477,19 +522,76 @@ struct QuickAccessCardView: View {
       .shadow(color: Color.black.opacity(0.3), radius: 4, x: 0, y: 2)
   }
 
+  private var quickAccessContextMenuEntries: [QuickAccessContextMenuEntry] {
+    guard canPerformCardActions else { return [] }
+
+    var entries: [QuickAccessContextMenuEntry] = [
+      .action(
+        title: L10n.Common.copy,
+        systemImage: "doc.on.doc",
+        action: copyItem
+      ),
+    ]
+
+    if shouldShowSaveOrOpenAction {
+      entries.append(
+        .action(
+          title: saveOrOpenActionTitle,
+          systemImage: isTempFile ? "square.and.arrow.down" : "folder",
+          action: saveOrOpenItem
+        )
+      )
+    }
+
+    entries.append(
+      .action(
+        title: editActionTitle,
+        systemImage: "pencil",
+        action: handleDoubleClick
+      )
+    )
+
+    if shouldShowCloudButton {
+      entries.append(
+        .action(
+          title: cloudActionTitle,
+          systemImage: cloudActionIcon,
+          isEnabled: !alreadyUploadedToCloud,
+          action: uploadToCloud
+        )
+      )
+    }
+
+    entries.append(.separator)
+    entries.append(
+      .action(
+        title: L10n.Common.close,
+        systemImage: "xmark",
+        action: dismissItem
+      )
+    )
+    entries.append(
+      .action(
+        title: deleteActionTitle,
+        systemImage: "trash",
+        action: deleteItem
+      )
+    )
+
+    return entries
+  }
+
   // MARK: - Cloud Upload
 
   /// Whether to show the cloud upload button
   private var shouldShowCloudButton: Bool {
     guard cloudManager.isConfigured else { return false }
-    let captureType: CaptureType = item.isVideo ? .recording : .screenshot
     return preferencesManager.isActionEnabled(.uploadToCloud, for: captureType)
   }
 
   /// Upload the current item to cloud storage
   private func uploadToCloud() {
-    let alreadyUploaded = item.cloudURL != nil && !item.isCloudStale
-    guard !isCloudUploading, !alreadyUploaded else {
+    guard !isCloudUploading, !alreadyUploadedToCloud else {
       DiagnosticLogger.shared.log(
         .debug,
         .cloud,
@@ -497,7 +599,7 @@ struct QuickAccessCardView: View {
         context: [
           "fileName": item.url.lastPathComponent,
           "isUploading": isCloudUploading ? "true" : "false",
-          "alreadyUploaded": alreadyUploaded ? "true" : "false",
+          "alreadyUploaded": alreadyUploadedToCloud ? "true" : "false",
         ]
       )
       return
@@ -585,6 +687,202 @@ struct QuickAccessCardView: View {
         )
       }
     }
+  }
+}
+
+// MARK: - Context Menu
+
+private enum QuickAccessContextMenuEntry {
+  case action(
+    title: String,
+    systemImage: String,
+    isEnabled: Bool = true,
+    action: () -> Void
+  )
+  case separator
+}
+
+private struct QuickAccessContextMenuPresenter: NSViewRepresentable {
+  let entries: [QuickAccessContextMenuEntry]
+
+  func makeCoordinator() -> Coordinator {
+    Coordinator(entries: entries)
+  }
+
+  func makeNSView(context: Context) -> ContextMenuHostView {
+    let view = ContextMenuHostView()
+    view.coordinator = context.coordinator
+    return view
+  }
+
+  func updateNSView(_ nsView: ContextMenuHostView, context: Context) {
+    context.coordinator.entries = entries
+    nsView.coordinator = context.coordinator
+  }
+
+  final class Coordinator: NSObject {
+    var entries: [QuickAccessContextMenuEntry]
+
+    init(entries: [QuickAccessContextMenuEntry]) {
+      self.entries = entries
+    }
+
+    var hasMenuItems: Bool {
+      entries.contains { entry in
+        if case .action = entry { return true }
+        return false
+      }
+    }
+
+    func showMenu(for event: NSEvent, in view: NSView) {
+      guard hasMenuItems else { return }
+      guard let window = view.window else { return }
+
+      let menu = NSMenu()
+      menu.autoenablesItems = false
+
+      for entry in entries {
+        switch entry {
+        case .action(let title, let systemImage, let isEnabled, let action):
+          let item = NSMenuItem(title: title, action: #selector(performMenuAction(_:)), keyEquivalent: "")
+          item.target = self
+          item.isEnabled = isEnabled
+          item.image = NSImage(systemSymbolName: systemImage, accessibilityDescription: title)
+          item.representedObject = QuickAccessContextMenuAction(action)
+
+          menu.addItem(item)
+        case .separator:
+          menu.addItem(.separator())
+        }
+      }
+
+      menu.update()
+
+      let screenPoint = window.convertPoint(toScreen: event.locationInWindow)
+      let menuLocation = menuTopLeftLocationWithCursorNearTailItem(
+        from: screenPoint,
+        menu: menu,
+        window: window
+      )
+      menu.popUp(positioning: nil, at: menuLocation, in: nil)
+    }
+
+    @objc private func performMenuAction(_ sender: NSMenuItem) {
+      guard let action = sender.representedObject as? QuickAccessContextMenuAction else { return }
+      action.perform()
+    }
+
+    private func menuTopLeftLocationWithCursorNearTailItem(
+      from point: NSPoint,
+      menu: NSMenu,
+      window: NSWindow
+    ) -> NSPoint {
+      let targetIndex = menuItemIndexNearCursor(in: menu)
+      let targetCenterY = verticalOffsetToItemCenter(at: targetIndex, in: menu)
+      let menuSize = menuSize(for: menu)
+      let preferredPoint = NSPoint(
+        x: point.x - 28,
+        y: point.y + targetCenterY
+      )
+      let screen = window.screen ?? NSScreen.screens.first
+
+      guard let visibleFrame = screen?.visibleFrame else {
+        return preferredPoint
+      }
+
+      return NSPoint(
+        x: min(max(preferredPoint.x, visibleFrame.minX + 8), visibleFrame.maxX - menuSize.width - 8),
+        y: min(max(preferredPoint.y, visibleFrame.minY + menuSize.height + 8), visibleFrame.maxY - 8)
+      )
+    }
+
+    private func menuItemIndexNearCursor(in menu: NSMenu) -> Int {
+      let candidateIndex = max(0, menu.items.count - 2)
+      if !menu.items[candidateIndex].isSeparatorItem {
+        return candidateIndex
+      }
+
+      return menu.items.lastIndex { !$0.isSeparatorItem } ?? 0
+    }
+
+    private func verticalOffsetToItemCenter(at targetIndex: Int, in menu: NSMenu) -> CGFloat {
+      let rowsAbove = menu.items.prefix(targetIndex).reduce(6) { partial, item in
+        partial + menuItemHeight(item)
+      }
+      return rowsAbove + menuItemHeight(menu.items[targetIndex]) / 2
+    }
+
+    private func menuItemHeight(_ item: NSMenuItem) -> CGFloat {
+      item.isSeparatorItem ? 9 : 22
+    }
+
+    private func menuSize(for menu: NSMenu) -> NSSize {
+      let measured = menu.size
+      guard measured.width > 0, measured.height > 0 else {
+        let height = menu.items.reduce(12) { partial, item in
+          partial + menuItemHeight(item)
+        }
+        return NSSize(width: 220, height: height)
+      }
+      return measured
+    }
+  }
+
+  final class ContextMenuHostView: NSView {
+    weak var coordinator: Coordinator?
+    private var eventMonitor: Any?
+
+    override func viewDidMoveToWindow() {
+      super.viewDidMoveToWindow()
+      updateEventMonitor()
+    }
+
+    deinit {
+      if let eventMonitor {
+        NSEvent.removeMonitor(eventMonitor)
+      }
+    }
+
+    private func updateEventMonitor() {
+      if let eventMonitor {
+        NSEvent.removeMonitor(eventMonitor)
+        self.eventMonitor = nil
+      }
+
+      guard window != nil else { return }
+
+      eventMonitor = NSEvent.addLocalMonitorForEvents(matching: [.rightMouseDown, .leftMouseDown]) { [weak self] event in
+        guard let self else { return event }
+        return self.handleMouseDown(event)
+      }
+    }
+
+    private func handleMouseDown(_ event: NSEvent) -> NSEvent? {
+      guard event.window === window else { return event }
+      guard isContextClick(event) else { return event }
+      guard bounds.contains(convert(event.locationInWindow, from: nil)) else { return event }
+      guard coordinator?.hasMenuItems == true else { return event }
+
+      coordinator?.showMenu(for: event, in: self)
+      return nil
+    }
+
+    private func isContextClick(_ event: NSEvent) -> Bool {
+      event.type == .rightMouseDown || (event.type == .leftMouseDown && event.modifierFlags.contains(.control))
+    }
+  }
+}
+
+private final class QuickAccessContextMenuAction: NSObject {
+  private let action: () -> Void
+
+  init(_ action: @escaping () -> Void) {
+    self.action = action
+    super.init()
+  }
+
+  func perform() {
+    action()
   }
 }
 

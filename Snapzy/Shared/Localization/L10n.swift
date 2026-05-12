@@ -479,6 +479,11 @@ enum L10n {
       defaultValue: "Open in Finder",
       comment: "Generic button or tooltip title for opening a file in Finder"
     )
+    static let moveToTrash = string(
+      "common.move-to-trash",
+      defaultValue: "Move to Trash",
+      comment: "Generic destructive action title for moving a file to the system Trash"
+    )
     static let renameFile = string(
       "common.rename-file",
       defaultValue: "Rename file",
