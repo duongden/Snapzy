@@ -47,6 +47,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 
 
+
+## [1.14.3] - 2026-05-12
+
+### Features
+-  Add context menu and hover actions to Quick Access cards, including localization for "Move to Trash" (1778bf1)
+-  Implement default canvas preset functionality and update related UI components (#177) (a045a31)
+
+### Chore
+- chore: update appcast, cask, and readme for v1.14.2 (8595a26)
+
+### Contributors
+- @duongductrong
+- @github-actions[bot]
+
 ## [1.14.2] - 2026-05-11
 
 ### Bug Fixes
