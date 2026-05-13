@@ -59,6 +59,9 @@ enum PreferencesKeys {
   static let floatingAutoDismissDelay = "floatingScreenshot.autoDismissDelay"
   static let floatingOverlayScale = "floatingScreenshot.overlayScale"
   static let floatingDragDropEnabled = "floatingScreenshot.dragDropEnabled"
+  static let quickAccessActionOrder = "quickAccess.actions.order.v1"
+  static let quickAccessEnabledActions = "quickAccess.actions.enabled.v1"
+  static let quickAccessActionSlotAssignments = "quickAccess.actions.slots.v1"
 
   // Recording
   static let recordingFormat = "recording.format"

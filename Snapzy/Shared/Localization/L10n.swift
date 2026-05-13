@@ -1695,6 +1695,81 @@ enum L10n {
       defaultValue: "Keep overlay open until dismissed",
       comment: "Quick access description when auto-close is disabled"
     )
+    static let previewSection = string(
+      "preferences-quick-access.section-preview",
+      defaultValue: "Preview",
+      comment: "Quick access preferences section title"
+    )
+    static let quickActionsSection = string(
+      "preferences-quick-access.section-quick-actions",
+      defaultValue: "Quick Actions",
+      comment: "Quick access preferences section title"
+    )
+    static let quickActionsDescription = string(
+      "preferences-quick-access.quick-actions-description",
+      defaultValue: "Drag list rows to reorder the context menu. Drag actions onto the preview to set card positions.",
+      comment: "Quick access preferences quick actions helper text"
+    )
+    static let resetActions = string(
+      "preferences-quick-access.reset-actions",
+      defaultValue: "Reset Actions",
+      comment: "Quick access preferences reset button title"
+    )
+    static let saveOrOpenAction = string(
+      "preferences-quick-access.action-save-or-open",
+      defaultValue: "Save / Open",
+      comment: "Quick access configurable action title"
+    )
+    static let editAction = string(
+      "preferences-quick-access.action-edit",
+      defaultValue: "Edit",
+      comment: "Quick access configurable action title"
+    )
+    static let primaryActionBadge = string(
+      "preferences-quick-access.badge-primary",
+      defaultValue: "Primary",
+      comment: "Quick access configurable action placement badge"
+    )
+    static let cornerActionBadge = string(
+      "preferences-quick-access.badge-corner",
+      defaultValue: "Corner",
+      comment: "Quick access configurable action placement badge"
+    )
+    static let notOnCard = string(
+      "preferences-quick-access.not-on-card",
+      defaultValue: "Not on card",
+      comment: "Quick access configurable action placement badge when action is not assigned to the preview card"
+    )
+    static let slotCenterTop = string(
+      "preferences-quick-access.slot-center-top",
+      defaultValue: "Center top",
+      comment: "Quick access preview placement slot title"
+    )
+    static let slotCenterBottom = string(
+      "preferences-quick-access.slot-center-bottom",
+      defaultValue: "Center bottom",
+      comment: "Quick access preview placement slot title"
+    )
+    static let slotTopRight = string(
+      "preferences-quick-access.slot-top-right",
+      defaultValue: "Top right",
+      comment: "Quick access preview placement slot title"
+    )
+    static let slotTopLeft = string(
+      "preferences-quick-access.slot-top-left",
+      defaultValue: "Top left",
+      comment: "Quick access preview placement slot title"
+    )
+    static let slotBottomLeft = string(
+      "preferences-quick-access.slot-bottom-left",
+      defaultValue: "Bottom left",
+      comment: "Quick access preview placement slot title"
+    )
+    static let slotBottomRight = string(
+      "preferences-quick-access.slot-bottom-right",
+      defaultValue: "Bottom right",
+      comment: "Quick access preview placement slot title"
+    )
   }
 
   enum PreferencesCapture {

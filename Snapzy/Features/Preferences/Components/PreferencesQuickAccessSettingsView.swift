@@ -14,6 +14,8 @@ struct QuickAccessSettingsView: View {
 
   var body: some View {
     Form {
+      QuickAccessActionCustomizationView(manager: manager)
+
       Section(L10n.PreferencesQuickAccess.positionSection) {
         SettingRow(icon: "rectangle.leadinghalf.inset.filled", title: L10n.PreferencesQuickAccess.screenEdgeTitle, description: L10n.PreferencesQuickAccess.screenEdgeDescription) {
           Picker("", selection: $positionIsLeft) {

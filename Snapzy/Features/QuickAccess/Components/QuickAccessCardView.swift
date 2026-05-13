@@ -23,6 +23,7 @@ struct QuickAccessCardView: View {
   var onHover: ((Bool) -> Void)? = nil
 
   @ObservedObject private var preferencesManager = PreferencesManager.shared
+  @ObservedObject private var actionConfiguration = QuickAccessActionConfigurationStore.shared
   @ObservedObject private var cloudManager = CloudManager.shared
   @State private var isHovering = false
   @State private var isDragging = false
@@ -78,13 +79,13 @@ struct QuickAccessCardView: View {
       }
 
       // Hover overlay with staggered buttons
-      if isHovering && item.processingState == .idle && !isCloudUploading {
+      if isHovering && canPerformCardActions && hasVisibleOverlayActions {
         hoverOverlay
           .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.95)))
       }
 
       // Corner buttons (only visible on hover, hidden during cloud upload)
-      if isHovering && item.processingState == .idle && !isCloudUploading {
+      if isHovering && canPerformCardActions && !cornerOverlayActions.isEmpty {
         cornerButtons
       }
     }
@@ -182,6 +183,31 @@ struct QuickAccessCardView: View {
 
   private var canPerformCardActions: Bool {
     item.processingState == .idle && !isCloudUploading
+  }
+
+  private var orderedEnabledActions: [QuickAccessActionKind] {
+    actionConfiguration.orderedActions(includeDisabled: false)
+  }
+
+  private var primaryOverlayActions: [QuickAccessActionKind] {
+    QuickAccessActionSlot.centerSlots.compactMap(overlayAction)
+  }
+
+  private var cornerOverlayActions: [QuickAccessActionKind] {
+    QuickAccessActionSlot.cornerSlots.compactMap(overlayAction)
+  }
+
+  private var hasVisibleOverlayActions: Bool {
+    !primaryOverlayActions.isEmpty || !cornerOverlayActions.isEmpty
+  }
+
+  private func overlayAction(in slot: QuickAccessActionSlot) -> QuickAccessActionKind? {
+    guard let action = actionConfiguration.action(in: slot),
+          actionConfiguration.isEnabled(action),
+          isActionAvailable(action, on: .overlay) else {
+      return nil
+    }
+    return action
   }
 
   // MARK: - Gestures
@@ -331,6 +357,81 @@ struct QuickAccessCardView: View {
 
   // MARK: - Actions
 
+  private func actionTitle(for action: QuickAccessActionKind) -> String {
+    switch action {
+    case .copy:
+      return L10n.Common.copy
+    case .saveOrOpen:
+      return saveOrOpenActionTitle
+    case .dismiss:
+      return L10n.Common.close
+    case .delete:
+      return deleteActionTitle
+    case .edit:
+      return editActionTitle
+    case .uploadToCloud:
+      return cloudActionTitle
+    }
+  }
+
+  private func actionIcon(for action: QuickAccessActionKind) -> String {
+    switch action {
+    case .saveOrOpen:
+      return isTempFile ? "square.and.arrow.down" : "folder"
+    case .uploadToCloud:
+      return cloudActionIcon
+    default:
+      return action.systemImage
+    }
+  }
+
+  private func isActionAvailable(
+    _ action: QuickAccessActionKind,
+    on surface: QuickAccessActionSurface
+  ) -> Bool {
+    switch action {
+    case .copy, .dismiss, .edit:
+      return true
+    case .saveOrOpen:
+      return shouldShowSaveOrOpenAction
+    case .uploadToCloud:
+      return shouldShowCloudButton
+    case .delete:
+      if surface == .overlay {
+        return preferencesManager.isActionEnabled(.save, for: captureType)
+      }
+      return true
+    }
+  }
+
+  private func isActionEnabled(_ action: QuickAccessActionKind) -> Bool {
+    switch action {
+    case .uploadToCloud:
+      return !alreadyUploadedToCloud && !isCloudUploading
+    default:
+      return true
+    }
+  }
+
+  private func performAction(_ action: QuickAccessActionKind) {
+    guard isActionEnabled(action) else { return }
+
+    switch action {
+    case .copy:
+      copyItem()
+    case .saveOrOpen:
+      saveOrOpenItem()
+    case .dismiss:
+      dismissItem()
+    case .delete:
+      deleteItem()
+    case .edit:
+      handleDoubleClick()
+    case .uploadToCloud:
+      uploadToCloud()
+    }
+  }
+
   private func handleDoubleClick() {
     if item.isVideo {
       openVideoEditor()
@@ -403,22 +504,22 @@ struct QuickAccessCardView: View {
 
       // Action buttons with stagger effect
       VStack(spacing: 8) {
-        // Always show Copy button for manual copy, regardless of auto-copy setting
-        staggeredButton(label: L10n.Common.copy, delay: 0, action: copyItem)
-
-        if shouldShowSaveOrOpenAction {
-          staggeredButton(
-            label: saveOrOpenActionTitle,
-            delay: 1
-          ) { saveOrOpenItem() }
+        ForEach(Array(QuickAccessActionSlot.centerSlots.enumerated()), id: \.element) { index, slot in
+          if let action = overlayAction(in: slot) {
+            staggeredButton(action: action, delay: index)
+          } else {
+            Color.clear.frame(height: 28)
+          }
         }
       }
     }
   }
 
   @ViewBuilder
-  private func staggeredButton(label: String, delay: Int, action: @escaping () -> Void) -> some View {
-    QuickAccessTextButton(label: label, action: action)
+  private func staggeredButton(action: QuickAccessActionKind, delay: Int) -> some View {
+    QuickAccessTextButton(label: actionTitle(for: action)) {
+      performAction(action)
+    }
       .transition(buttonTransition(delay: delay))
   }
 
@@ -433,73 +534,36 @@ struct QuickAccessCardView: View {
   }
 
   private var cornerButtons: some View {
-    let isSaveEnabled = preferencesManager.isActionEnabled(.save, for: captureType)
-
-    return ZStack {
-      // Dismiss button (top-right)
-      VStack {
-        HStack {
-          Spacer()
-          QuickAccessIconButton(icon: "xmark", action: dismissItem, helpText: L10n.Common.close)
-          .transition(cornerButtonTransition(delay: 2))
-          .padding(6)
-        }
-        Spacer()
+    ZStack {
+      if let action = overlayAction(in: .topTrailing) {
+        cornerButton(action, delay: 2)
+          .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
       }
-
-      // Delete button (top-left) — hidden when "Save" after-capture action is disabled
-      if isSaveEnabled {
-        VStack {
-          HStack {
-            QuickAccessIconButton(
-              icon: "trash",
-              action: deleteItem,
-              helpText: deleteActionTitle
-            )
-            .transition(cornerButtonTransition(delay: 3))
-            .padding(6)
-            Spacer()
-          }
-          Spacer()
-        }
+      if let action = overlayAction(in: .topLeading) {
+        cornerButton(action, delay: 3)
+          .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
       }
-
-      // Edit button (bottom-left)
-      VStack {
-        Spacer()
-        HStack {
-          QuickAccessIconButton(
-            icon: "pencil",
-            action: handleDoubleClick,
-            helpText: editActionTitle
-          )
-          .transition(cornerButtonTransition(delay: 4))
-          .padding(6)
-          Spacer()
-        }
+      if let action = overlayAction(in: .bottomLeading) {
+        cornerButton(action, delay: 4)
+          .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
       }
-
-      // Cloud upload button (bottom-right)
-      if shouldShowCloudButton {
-        VStack {
-          Spacer()
-          HStack {
-            Spacer()
-            QuickAccessIconButton(
-              icon: cloudActionIcon,
-              action: {
-                uploadToCloud()
-              },
-              helpText: cloudActionTitle
-            )
-            .transition(cornerButtonTransition(delay: 5))
-            .padding(6)
-            .disabled(isCloudUploading || alreadyUploadedToCloud)
-            .opacity(alreadyUploadedToCloud ? 0.6 : 1)
-          }
-        }
+      if let action = overlayAction(in: .bottomTrailing) {
+        cornerButton(action, delay: 5)
+          .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
       }
     }
+  }
+
+  private func cornerButton(_ action: QuickAccessActionKind, delay: Int) -> some View {
+    QuickAccessIconButton(
+      icon: actionIcon(for: action),
+      action: { performAction(action) },
+      helpText: actionTitle(for: action)
+    )
+    .transition(cornerButtonTransition(delay: delay))
+    .padding(6)
+    .disabled(!isActionEnabled(action))
+    .opacity(isActionEnabled(action) ? 1 : 0.6)
   }
 
   private func cornerButtonTransition(delay: Int) -> AnyTransition {
@@ -525,58 +589,30 @@ struct QuickAccessCardView: View {
   private var quickAccessContextMenuEntries: [QuickAccessContextMenuEntry] {
     guard canPerformCardActions else { return [] }
 
-    var entries: [QuickAccessContextMenuEntry] = [
-      .action(
-        title: L10n.Common.copy,
-        systemImage: "doc.on.doc",
-        action: copyItem
-      ),
-    ]
+    let contextActions = orderedEnabledActions.filter {
+      isActionAvailable($0, on: .contextMenu)
+    }
+    let orderedContextActions = QuickAccessActionKind.contextMenuOrder(from: contextActions)
+    var entries: [QuickAccessContextMenuEntry] = []
+    var insertedDestructiveSeparator = false
 
-    if shouldShowSaveOrOpenAction {
+    for action in orderedContextActions {
+      if action.isContextMenuDestructiveGroup && !insertedDestructiveSeparator {
+        if !entries.isEmpty {
+          entries.append(.separator)
+        }
+        insertedDestructiveSeparator = true
+      }
+
       entries.append(
         .action(
-          title: saveOrOpenActionTitle,
-          systemImage: isTempFile ? "square.and.arrow.down" : "folder",
-          action: saveOrOpenItem
+          title: actionTitle(for: action),
+          systemImage: actionIcon(for: action),
+          isEnabled: isActionEnabled(action),
+          action: { performAction(action) }
         )
       )
     }
-
-    entries.append(
-      .action(
-        title: editActionTitle,
-        systemImage: "pencil",
-        action: handleDoubleClick
-      )
-    )
-
-    if shouldShowCloudButton {
-      entries.append(
-        .action(
-          title: cloudActionTitle,
-          systemImage: cloudActionIcon,
-          isEnabled: !alreadyUploadedToCloud,
-          action: uploadToCloud
-        )
-      )
-    }
-
-    entries.append(.separator)
-    entries.append(
-      .action(
-        title: L10n.Common.close,
-        systemImage: "xmark",
-        action: dismissItem
-      )
-    )
-    entries.append(
-      .action(
-        title: deleteActionTitle,
-        systemImage: "trash",
-        action: deleteItem
-      )
-    )
 
     return entries
   }

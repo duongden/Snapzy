@@ -301,7 +301,7 @@ flowchart TD
 - Current cloud behavior is manual from Quick Access for screenshots, videos, and GIFs, plus Annotate for screenshots. The preference toggle enables those affordances; it does not auto-upload in `PostCaptureActionHandler`.
 - Quick Access countdowns pause while a card is converting to GIF or uploading to cloud, then resume after the active work finishes.
 - Temp captures are intentionally stored in Application Support, not `/tmp`, so drag-and-drop remains stable.
-- Quick Access cards expose hover actions plus a matching context menu, opened with the cursor near the tail actions, for copy, save/open, edit, cloud upload, dismiss, and delete/trash actions.
+- Quick Access cards expose hover actions plus a matching context menu, opened with the cursor near the tail actions, for copy, save/open, edit, cloud upload, dismiss, and delete/trash actions. Settings → Quick Access lets users toggle actions and drag list rows to reorder the context menu. Card placement is separate: users drag actions onto the preview's center and corner slots, or drag preview actions outside the card to clear a slot.
 - Quick Access action labels and post-capture error states are localized.
 
 ## Capture History Restore
@@ -409,6 +409,7 @@ flowchart TD
 | `Snapzy/Features/Recording/RecordingCoordinator.swift` | Recording toolbar, overlays, stop/GIF handoff |
 | `Snapzy/Services/Capture/ScreenRecordingManager.swift` | Screen recording media pipeline and metadata persistence |
 | `Snapzy/Features/QuickAccess/QuickAccessManager.swift` | Floating stack state and countdown behavior |
+| `Snapzy/Features/QuickAccess/Models/QuickAccessActionConfigurationStore.swift` | User-configurable Quick Access action visibility, context menu order, and card slot assignments |
 | `Snapzy/Features/QuickAccess/Components/QuickAccessCardView.swift` | Card hover and context-menu actions including screenshot, video, and GIF cloud upload |
 | `Snapzy/Features/History/HistoryWindowController.swift` | History restore routing through Quick Access |
 | `Snapzy/Features/Annotate/AnnotateManager.swift` | Annotate window lifecycle and session caching |
