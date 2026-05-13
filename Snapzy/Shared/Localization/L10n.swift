@@ -6344,6 +6344,26 @@ enum L10n {
         count
       )
     }
+    static let uploadToCloud = string(
+      "preferences-history.upload-to-cloud",
+      defaultValue: "Upload to Cloud",
+      comment: "Context menu title for uploading a capture history item to cloud storage"
+    )
+    static let uploadingToCloud = string(
+      "preferences-history.uploading-to-cloud",
+      defaultValue: "Uploading to Cloud...",
+      comment: "Loading label shown while a capture history item is uploading to cloud storage"
+    )
+    static let uploadedToCloud = string(
+      "preferences-history.uploaded-to-cloud",
+      defaultValue: "Uploaded to Cloud",
+      comment: "Success label shown after a capture history item has uploaded to cloud storage"
+    )
+    static let uploadedToCloudAndCopiedLink = string(
+      "preferences-history.uploaded-to-cloud-and-copied-link",
+      defaultValue: "Uploaded to Cloud and copied link",
+      comment: "Toast shown after a capture history item uploads to cloud and its public link is copied"
+    )
   }
 
   enum HistoryPanelPosition {

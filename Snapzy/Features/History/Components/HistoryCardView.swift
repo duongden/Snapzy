@@ -12,6 +12,7 @@ struct HistoryCardView: View {
   let isSelected: Bool
   let onTap: () -> Void
 
+  @ObservedObject private var manager = HistoryFloatingManager.shared
   @AppStorage(PreferencesKeys.historyBackgroundStyle) private var backgroundStyle: HistoryBackgroundStyle = .defaultStyle
   @Environment(\.colorScheme) private var colorScheme
   @State private var thumbnailImage: NSImage?
@@ -118,6 +119,10 @@ struct HistoryCardView: View {
 
         typeBadge
           .padding(10)
+
+        if let uploadState = manager.cloudUploadState(for: record) {
+          HistoryCloudUploadOverlayView(state: uploadState)
+        }
       }
       .clipShape(cardShape)
       .overlay(cardShape.stroke(cardBorderColor, lineWidth: isSelected ? 3 : 1.2))

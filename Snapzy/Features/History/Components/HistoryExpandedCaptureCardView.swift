@@ -13,6 +13,7 @@ struct HistoryExpandedCaptureCardView: View {
   let backgroundStyle: HistoryBackgroundStyle
   let onTap: () -> Void
 
+  @ObservedObject private var manager = HistoryFloatingManager.shared
   @Environment(\.colorScheme) private var colorScheme
   @State private var thumbnailImage: NSImage?
   @State private var isHovering = false
@@ -124,6 +125,10 @@ struct HistoryExpandedCaptureCardView: View {
           typeBadge
         }
         .padding(8)
+
+        if let uploadState = manager.cloudUploadState(for: record) {
+          HistoryCloudUploadOverlayView(state: uploadState)
+        }
       }
       .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
       .overlay(

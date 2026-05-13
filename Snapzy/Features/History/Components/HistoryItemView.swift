@@ -12,6 +12,7 @@ struct HistoryItemView: View {
   let isSelected: Bool
   let onSelect: () -> Void
 
+  @ObservedObject private var manager = HistoryFloatingManager.shared
   @State private var thumbnailImage: NSImage?
   @State private var isHovering = false
   @State private var fileExists: Bool = true
@@ -96,6 +97,10 @@ struct HistoryItemView: View {
                   .padding(4)
               }
             }
+          }
+
+          if let uploadState = manager.cloudUploadState(for: record) {
+            HistoryCloudUploadOverlayView(state: uploadState)
           }
         }
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
