@@ -67,6 +67,26 @@ private struct QuickAccessActionConfigurationRow: View {
 
   var body: some View {
     HStack(spacing: 10) {
+      actionLabel
+
+      Spacer()
+
+      placementBadge
+
+      Toggle("", isOn: $isEnabled)
+        .labelsHidden()
+    }
+    .padding(.vertical, 2)
+    .contentShape(Rectangle())
+    .onDrag {
+      QuickAccessActionDragPayload.itemProvider(action: action, source: .actionList)
+    } preview: {
+      QuickAccessActionDragPreview(action: action)
+    }
+  }
+
+  private var actionLabel: some View {
+    HStack(spacing: 10) {
       Image(systemName: action.systemImage)
         .font(.system(size: 14, weight: .semibold))
         .foregroundStyle(.secondary)
@@ -74,22 +94,41 @@ private struct QuickAccessActionConfigurationRow: View {
 
       Text(action.settingsTitle)
         .lineLimit(1)
+    }
+  }
 
-      Spacer()
+  private var placementBadge: some View {
+    Text(assignedSlot?.settingsTitle ?? L10n.PreferencesQuickAccess.notOnCard)
+      .font(.caption2.weight(.semibold))
+      .foregroundStyle(.secondary)
+      .padding(.horizontal, 7)
+      .padding(.vertical, 3)
+      .background(.quaternary, in: Capsule())
+  }
+}
 
-      Text(assignedSlot?.settingsTitle ?? L10n.PreferencesQuickAccess.notOnCard)
-        .font(.caption2.weight(.semibold))
+private struct QuickAccessActionDragPreview: View {
+  let action: QuickAccessActionKind
+
+  var body: some View {
+    HStack(spacing: 8) {
+      Image(systemName: action.systemImage)
+        .font(.system(size: 13, weight: .semibold))
         .foregroundStyle(.secondary)
-        .padding(.horizontal, 7)
-        .padding(.vertical, 3)
-        .background(.quaternary, in: Capsule())
+        .frame(width: 16)
 
-      Toggle("", isOn: $isEnabled)
-        .labelsHidden()
+      Text(action.settingsTitle)
+        .font(.system(size: 13, weight: .semibold))
+        .lineLimit(1)
     }
-    .padding(.vertical, 2)
-    .onDrag {
-      QuickAccessActionDragPayload.itemProvider(action: action, source: .actionList)
-    }
+    .padding(.horizontal, 10)
+    .padding(.vertical, 7)
+    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+    .overlay(
+      RoundedRectangle(cornerRadius: 8)
+        .stroke(.quaternary, lineWidth: 1)
+    )
+    .shadow(color: Color.black.opacity(0.14), radius: 8, x: 0, y: 4)
+    .fixedSize(horizontal: true, vertical: false)
   }
 }
